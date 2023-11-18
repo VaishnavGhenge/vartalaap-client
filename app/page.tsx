@@ -3,6 +3,7 @@
 import Navbar from "../components/Navbar/Navbar";
 import { IBM_Plex_Sans_Devanagari } from "next/font/google";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { ChangeEvent, useState } from "react";
 
 const ibmPlexSansDevanagari = IBM_Plex_Sans_Devanagari({
@@ -13,6 +14,7 @@ const ibmPlexSansDevanagari = IBM_Plex_Sans_Devanagari({
 export default function Home() {
     const [joinButtonDisabled, setJoinButtonDisabled] = useState(true);
     const [meetCode, setMeetCode] = useState("");
+    const router = useRouter();
 
     const onMeetCodeChange = (event: ChangeEvent<HTMLInputElement>) => {
         setMeetCode(event.target.value);
@@ -22,6 +24,10 @@ export default function Home() {
             setJoinButtonDisabled(true);
         }
     };
+
+    const onJoinButtonClick = () => {
+        router.push(`/join?code=${meetCode}`);
+    }
 
     return (
         <div>
@@ -53,14 +59,14 @@ export default function Home() {
                                 and organize meetings seamlessly
                             </p>
 
-                            <form method='post'>
-                                <div className='flex gap-4'>
-                                    <button
-                                        className='bg-sky-700 px-4 py-2 rounded text-white hover:bg-sky-800 transition duration-300'
-                                        type='button'
-                                    >
-                                        <span>New meeting</span>
-                                    </button>
+                            <div className='flex gap-4'>
+                                <button
+                                    className='bg-sky-700 px-4 py-2 rounded text-white hover:bg-sky-800 transition duration-300'
+                                    type='button'
+                                >
+                                    <span>New meeting</span>
+                                </button>
+                                <div className='flex gap-2'>
                                     <input
                                         value={meetCode}
                                         onChange={onMeetCodeChange}
@@ -72,12 +78,13 @@ export default function Home() {
                                     <button
                                         disabled={joinButtonDisabled}
                                         type='button'
-                                        className='text-sky-700 py-2 disabled:text-gray-400'
+                                        className='text-sky-700 px-3 py-2 rounded hover:bg-sky-100 hover:cursor-pointer disabled:text-gray-400'
+                                        onClick={onJoinButtonClick}
                                     >
                                         Join
                                     </button>
                                 </div>
-                            </form>
+                            </div>
                         </div>
                     </div>
                 </div>
