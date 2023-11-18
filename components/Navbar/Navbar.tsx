@@ -1,5 +1,5 @@
-import AppTitle from '../AppTitle';
-import Image from 'next/image';
+import AppTitle from "../AppTitle";
+import Image from "next/image";
 
 const Navbar = () => {
     return (
@@ -10,11 +10,11 @@ const Navbar = () => {
                 </li>
                 <li>
                     <div>
-                        <a href="#account">
+                        <a href='#account'>
                             <Image
                                 className='w-[50px] h-[50px] rounded-full'
-                                src="/static/images/test-account.png" 
-                                alt="profile"
+                                src='/static/images/test-account.png'
+                                alt='profile'
                                 width={50}
                                 height={50}
                             />
@@ -23,7 +23,7 @@ const Navbar = () => {
                 </li>
             </ul>
         </nav>
-    )
-}
+    );
+};
 
 export default Navbar;
