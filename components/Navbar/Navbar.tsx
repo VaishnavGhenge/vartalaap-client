@@ -1,4 +1,5 @@
 import AppTitle from '../AppTitle';
+import Image from 'next/image';
 
 const Navbar = () => {
     return (
@@ -10,7 +11,13 @@ const Navbar = () => {
                 <li>
                     <div>
                         <a href="#account">
-                            <img className='' src="/static/images/test-account.png" alt="profile" />
+                            <Image
+                                className='w-[50px] h-[50px] rounded-full'
+                                src="/static/images/test-account.png" 
+                                alt="profile"
+                                width={50}
+                                height={50}
+                            />
                         </a>
                     </div>
                 </li>
