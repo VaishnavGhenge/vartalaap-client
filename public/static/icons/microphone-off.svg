@@ -1,13 +1,2 @@
-<svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="24px" height="24px" viewBox="0,0,256,256">
-    <g fill="#ffffff" fill-rule="evenodd" stroke="none" stroke-width="1" stroke-linecap="butt" stroke-linejoin="miter" stroke-miterlimit="10" stroke-dasharray="" stroke-dashoffset="0" font-family="none" font-weight="none" font-size="none" text-anchor="none" style="mix-blend-mode: normal">
-        <g transform="scale(10.66667,10.66667)">
-            <g>
-                <path d="M9.5,5c0,-1.38071 1.1193,-2.5 2.5,-2.5c1.3807,0 2.5,1.11929 2.5,2.5v1.5h-1v-1.5c0,-0.82843 -0.6716,-1.5 -1.5,-1.5c-0.8284,0 -1.5,0.67157 -1.5,1.5v5.5h-1z"></path>
-                <path d="M7.5,10.5v2.7929c0,0.3201 0.12718,0.6272 0.35355,0.8535l-0.7071,0.7072c-0.41392,-0.414 -0.64645,-0.9753 -0.64645,-1.5607v-2.7929zM16.5,12.5v-2h1v2c0,3.0376 -2.4624,5.5 -5.5,5.5h-0.5c-1.1017,0 -2.13901,-0.5187 -2.8,-1.4l-0.6,-0.8l0.8,-0.6l0.6,0.8c0.47214,0.6295 1.2131,1 2,1h0.5c2.4853,0 4.5,-2.0147 4.5,-4.5z"></path>
-                <path d="M11.5,22v-4.5h1v4.5z"></path>
-                <path d="M3.64645,19.6465l16,-16l0.7072,0.70711l-16.0001,16l-0.7071,-0.7071z"></path>
-                <path d="M13.5,12.75v-2.75h1v2.75c0,1.2426 -1.0074,2.25 -2.25,2.25h-0.75c-0.8284,0 -1.5,-0.6716 -1.5,-1.5h1c0,0.2761 0.2239,0.5 0.5,0.5h0.75c0.6904,0 1.25,-0.5596 1.25,-1.25z"></path>
-            </g>
-        </g>
-    </g>
-</svg>
+<!-- License: MIT. Made by feathericons: https://github.com/feathericons/feather -->
+<svg width="24px" height="24px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="white" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" class="feather feather-mic-off"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"></path><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>

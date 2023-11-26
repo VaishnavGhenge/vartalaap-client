@@ -1,9 +1,9 @@
-import AppTitle from "../AppTitle";
+import AppTitle from "./AppTitle";
 import Image from "next/image";
 
 const Navbar = () => {
     return (
-        <nav className='width-full'>
+        <nav className='width-full bg-white'>
             <ul className='flex justify-between items-center px-6 py-4'>
                 <li>
                     <AppTitle />

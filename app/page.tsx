@@ -1,6 +1,6 @@
 "use client";
 
-import Navbar from "../components/Navbar/Navbar";
+import Navbar from "../components/Navbar";
 import { IBM_Plex_Sans_Devanagari } from "next/font/google";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
