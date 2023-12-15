@@ -13,4 +13,6 @@ const getMeetPreferences = (): UserPreferences => {
     return meetPreferences;
 }
 
-export {setMeetPreferences as setUserMeetPreferences, getMeetPreferences as getUserMeetPreferences}
+const exports = {setMeetPreferences, getMeetPreferences}
+
+export default exports;
