@@ -9,12 +9,9 @@ import {
 } from "@heroicons/react/24/outline";
 import { useSearchParams, useRouter } from "next/navigation";
 
-import {
-    setUserMeetPreferences,
-    getUserMeetPreferences,
-    UserPreferences,
-} from "@/utils/userPreferences";
+import stored, { UserPreferences } from "@/utils/persisitUserPreferences";
 import Image from "next/image";
+import { useDebounce } from "@/cutom_hooks/debounce";
 
 export default function JoinMeet() {
     const searchParams = useSearchParams();
@@ -22,29 +19,72 @@ export default function JoinMeet() {
 
     const [meetCode, setMeetCode] = useState(searchParams.get("code") || "");
     const videoRef = useRef<HTMLVideoElement>(null);
-    const [stream, setStream] = useState<MediaStream | null>();
+    const mediaStreamRef = useRef<MediaStream| null>(null);
+    const [mediaInitialized, setMediaInitialized] = useState(false);
     const [userPreferences, setUserPreferences] = useState<UserPreferences>({
         micStatus: false,
         cameraStatus: false,
     });
 
-    const [videoConstraints, setVideoConstraints] = useState({
+    const videoConstraints = {
         width: 1280,
         height: 720,
         facingMode: "user",
-    }); // Adjust the width and height as needed
-    const [audioConstraints, setAudioConstraints] = useState({
+    };
+    const audioConstraints = {
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
-    });
+    };
+
+    const startMedia = ({cameraStatus = false, micStatus = false}) => {
+        let mediaConstraints: any = {};
+
+        console.log('startMedia');
+
+        if(cameraStatus && micStatus) {
+            mediaConstraints = {video: videoConstraints, audio: audioConstraints};
+        } else if(cameraStatus) {
+            mediaConstraints.video = videoConstraints;
+        } else if(micStatus) {
+            mediaConstraints.audio = audioConstraints;
+        }
+
+        if(Object.keys(mediaConstraints).length !== 0) {
+            navigator.mediaDevices.getUserMedia(mediaConstraints)
+            .then((localStream: MediaStream) => {
+                console.log(localStream);
+                mediaStreamRef.current = localStream;
+                
+                if(videoRef.current) {
+                    videoRef.current.srcObject = localStream;
+                }
+                setMediaInitialized(true);
+            });
+        }
+    }
+
+    const stopMedia = () => {
+        const localStream = mediaStreamRef;
+        const tracks = localStream.current?.getTracks();
+        tracks?.forEach((track: MediaStreamTrack) => {
+            track.stop();
+            mediaStreamRef.current?.removeTrack(track);
+        });
+    }
 
     // Retrieve user preferences from localStorage
     useEffect(() => {
-        const userPreferences = getUserMeetPreferences();
+        const userPreferences = stored.getMeetPreferences();
         setUserPreferences(userPreferences);
 
         console.log("user preferences restored: ", userPreferences);
+
+        startMedia(userPreferences);
+
+        return () => {
+            stopMedia();
+        }
     }, []);
 
     const updateUserPreferences = (preferences: {
@@ -56,116 +96,80 @@ export default function JoinMeet() {
             ...preferences,
         } as UserPreferences;
 
-        console.log("newely formed preferences: ", updatedPreferences);
+        // console.log("newely formed preferences: ", updatedPreferences);
 
-        setUserMeetPreferences(updatedPreferences);
+        stored.setMeetPreferences(updatedPreferences);
         setUserPreferences(updatedPreferences);
     };
 
-    // Start camera and mic according to user preferences
-    const startMedia = useCallback(async () => {
-        if (!userPreferences.cameraStatus && !userPreferences.micStatus) return;
+    const toggleCameraButton = (cameraStatus: boolean) => {
+        const newCameraStatus = !cameraStatus;
 
-        try {
-            const streamLocal = await navigator.mediaDevices.getUserMedia({
-                video: userPreferences.cameraStatus
-                    ? videoConstraints
-                    : userPreferences.cameraStatus,
-                audio: userPreferences.micStatus
-                    ? audioConstraints
-                    : userPreferences.micStatus,
-            });
-
-            setStream(streamLocal);
-            console.log("stream local", streamLocal);
-
-            if (videoRef.current) {
-                videoRef.current.srcObject = streamLocal;
+        if(newCameraStatus) {
+            if(!mediaInitialized) {
+                startMedia({cameraStatus: true});
+                updateUserPreferences({cameraStatus: newCameraStatus});
+                return;
             }
-        } catch (error) {
-            console.log(error);
-        }
-    }, [
-        userPreferences.cameraStatus,
-        userPreferences.micStatus,
-        audioConstraints,
-        videoConstraints,
-    ]);
 
-    // TODO: fix stopMedia(), not working (stream is undesfined for some reason)
-    // Stop camera and mic
-    const stopMedia = useCallback(() => {
-        console.log('inside stop media');
-        console.log(stream)
-        const tracks = stream?.getTracks();
-        console.log(tracks)
-        if (tracks) {
-            tracks.forEach((track: MediaStreamTrack) => {
-                console.log('tracks: ', track)
-                track.stop();
+            navigator.mediaDevices.getUserMedia({video: videoConstraints})
+            .then((videoStream) => {
+                const videoTrack = videoStream.getVideoTracks()[0];
+
+                mediaStreamRef.current?.addTrack(videoTrack);
+                updateUserPreferences({cameraStatus: newCameraStatus});
             });
-        }
-    }, []);
-
-    // Start camera and audio streaming after loaded
-    useEffect(() => {
-        startMedia();
-
-        return () => {
-            stopMedia();
-        };
-    }, [userPreferences.micStatus, userPreferences.cameraStatus]);
-
-    // Stop browser camera
-    const stopCamera = () => {
-        const videoTracks = stream?.getVideoTracks();
-        if (videoTracks) {
-            videoTracks.forEach((track: MediaStreamTrack) => {
-                track.stop();
-            });
-        }
-    };
-
-    const stopMic = () => {
-        const audioTracks = stream?.getAudioTracks();
-        if (audioTracks) {
-            audioTracks.forEach((track: MediaStreamTrack) => {
-                track.stop();
-            });
-        }
-    };
-
-    const toggleCameraButton = () => {
-        // If video is on then turn it off
-        if (userPreferences.cameraStatus) {
-            // turn of stream
-            stopCamera();
         } else {
-            // switch on stream
-            startMedia();
+            const videoTracks = mediaStreamRef.current?.getVideoTracks();
+            console.warn('total video tracks: ' + videoTracks?.length);
+            videoTracks?.forEach((track) => {
+                track.stop();
+                mediaStreamRef.current?.removeTrack(track);
+                console.log(track.id + ' video track stopped');
+            });
+            updateUserPreferences({cameraStatus: newCameraStatus});
         }
-        updateUserPreferences({ cameraStatus: !userPreferences.cameraStatus });
+        
     };
 
-    const toggleMicButton = () => {
-        if (userPreferences.micStatus) {
-            stopMic();
+    const toggleMicButton = (micStatus: boolean) => {
+        const newMicStatus = !micStatus;
+
+        if(newMicStatus) {
+            if(!mediaInitialized) {
+                startMedia({micStatus: true});
+                updateUserPreferences({micStatus: newMicStatus});
+                return;
+            }
+
+            navigator.mediaDevices.getUserMedia({audio: audioConstraints})
+                .then((audioStream) => {
+                    const audioTrack = audioStream.getAudioTracks()[0];
+                    mediaStreamRef.current?.addTrack(audioTrack);
+                    updateUserPreferences({micStatus: newMicStatus});
+                });
         } else {
-            startMedia();
+            const audioTracks = mediaStreamRef.current?.getAudioTracks();
+            console.warn('total audio tracks: ' + audioTracks?.length);
+            audioTracks?.forEach((track) => {
+                track.stop();
+                mediaStreamRef.current?.removeTrack(track);
+                console.log(track.id + ' audio track stopped');
+            });
+            updateUserPreferences({micStatus: newMicStatus});
         }
-        updateUserPreferences({ micStatus: !userPreferences.micStatus });
     };
 
     const cameraButton = userPreferences.cameraStatus ? (
         <div
-            onClick={toggleCameraButton}
+            onClick={() => toggleCameraButton(userPreferences.cameraStatus)}
             className='rounded-full w-[56px] h-[56px] border border-white flex justify-center items-center hover:cursor-pointer hover:bg-slate-400 transition duration-300'
         >
             <VideoCameraIcon className='w-[24px] h-[24px]' />
         </div>
     ) : (
         <div
-            onClick={toggleCameraButton}
+            onClick={() => toggleCameraButton(userPreferences.cameraStatus)}
             className='rounded-full w-[56px] h-[56px] bg-red-600 flex justify-center items-center hover:cursor-pointer hover:bg-red-700 transition duration-300'
         >
             <VideoCameraSlashIcon className='w-[24px] h-[24px]' />
@@ -174,14 +178,14 @@ export default function JoinMeet() {
 
     const micButton = userPreferences.micStatus ? (
         <div
-            onClick={toggleMicButton}
+            onClick={() => toggleMicButton(userPreferences.micStatus)}
             className='rounded-full w-[56px] h-[56px] border border-white flex justify-center items-center hover:cursor-pointer hover:bg-slate-400 transition duration-300'
         >
             <MicrophoneIcon className='w-[24px] h-[24px]' />
         </div>
     ) : (
         <div
-            onClick={toggleMicButton}
+            onClick={() => toggleMicButton(userPreferences.micStatus)}
             className='rounded-full w-[56px] h-[56px] bg-red-600 flex justify-center items-center hover:cursor-pointer hover:bg-red-700 transition duration-300'
         >
             <Image
@@ -195,9 +199,8 @@ export default function JoinMeet() {
 
     // TODO: Invistigate useRouter(), why its not working?
     const onJoinButtonClick = () => {
-        stopMedia();
-        // router.push(`/${meetCode}`);
-    }
+        router.push(`/${meetCode}`);
+    };
 
     return (
         <div>
