@@ -1,6 +1,6 @@
 'use client';
 
-import { UserPreferences, getUserMeetPreferences, setUserMeetPreferences } from "@/utils/userPreferences";
+import persist, { UserPreferences} from "@/utils/persisitUserPreferences";
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import { MicrophoneIcon, VideoCameraIcon, VideoCameraSlashIcon, PhoneXMarkIcon } from "@heroicons/react/24/outline";
@@ -9,7 +9,7 @@ export default function Meet() {
     const [userPreferences, setUserPreferences] = useState<UserPreferences>({micStatus: false, cameraStatus: false});
 
     useEffect(() => {
-        const _userPreferences = getUserMeetPreferences();
+        const _userPreferences = persist.getMeetPreferences();
         console.log("user preferences restored: ", _userPreferences);
         setUserPreferences(_userPreferences);
     }, []);
@@ -25,7 +25,7 @@ export default function Meet() {
 
         console.log("newely formed preferences: ", updatedPreferences);
 
-        setUserMeetPreferences(updatedPreferences);
+        persist.setMeetPreferences(updatedPreferences);
         setUserPreferences(updatedPreferences);
     };
 
