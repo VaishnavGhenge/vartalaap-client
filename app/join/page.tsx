@@ -19,6 +19,7 @@ export default function JoinMeet() {
     const [meetCode, setMeetCode] = useState(searchParams.get("code") || "");
     const videoRef = useRef<HTMLVideoElement>(null);
     const mediaStreamRef = useRef<MediaStream| null>(null);
+    const isMountedRef = useRef({status: false});
     const [mediaInitialized, setMediaInitialized] = useState(false);
     const [userPreferences, setUserPreferences] = useState<UserPreferences>({
         micStatus: false,
@@ -36,10 +37,9 @@ export default function JoinMeet() {
         autoGainControl: true,
     };
 
-    const startMedia = ({cameraStatus = false, micStatus = false}) => {
+    const startMedia = async ({cameraStatus = false, micStatus = false}) => {
         let mediaConstraints: any = {};
-
-        console.log('startMedia');
+        isMountedRef.current.status = true;
 
         if(cameraStatus && micStatus) {
             mediaConstraints = {video: videoConstraints, audio: audioConstraints};
@@ -50,26 +50,33 @@ export default function JoinMeet() {
         }
 
         if(Object.keys(mediaConstraints).length !== 0) {
-            navigator.mediaDevices.getUserMedia(mediaConstraints)
-            .then((localStream: MediaStream) => {
-                console.log(localStream);
-                mediaStreamRef.current = localStream;
-                
-                if(videoRef.current) {
-                    videoRef.current.srcObject = localStream;
-                }
-                setMediaInitialized(true);
-            });
+            const localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
+            
+            console.log('isMounted: ', isMountedRef.current);
+            if(!isMountedRef.current) return;
+
+            mediaStreamRef.current = localStream;
+            
+            if(videoRef.current) {
+                videoRef.current.srcObject = mediaStreamRef.current;
+            }
+            setMediaInitialized(true);
+            console.log(mediaStreamRef.current.id + " initialized");
+        
         }
+
+        console.log('startMedia() ran');
     }
 
     const stopMedia = () => {
-        const localStream = mediaStreamRef;
-        const tracks = localStream.current?.getTracks();
+        console.log('isMountedRef: ', isMountedRef.current.status);
+        if(mediaStreamRef === null) return;
+        const tracks = mediaStreamRef.current?.getTracks();
         tracks?.forEach((track: MediaStreamTrack) => {
             track.stop();
             mediaStreamRef.current?.removeTrack(track);
         });
+        console.log('stopMedia() ran', mediaStreamRef.current?.id + " stream stopped");
     }
 
     // Retrieve user preferences from localStorage
@@ -78,10 +85,10 @@ export default function JoinMeet() {
         setUserPreferences(userPreferences);
 
         console.log("user preferences restored: ", userPreferences);
-
         startMedia(userPreferences);
 
         return () => {
+            isMountedRef.current = {status: false};
             stopMedia();
         }
     }, []);
@@ -124,9 +131,9 @@ export default function JoinMeet() {
             videoTracks?.forEach((track) => {
                 track.stop();
                 mediaStreamRef.current?.removeTrack(track);
-                console.log(track.id + ' video track stopped');
             });
             updateUserPreferences({cameraStatus: newCameraStatus});
+            console.log(mediaStreamRef.current?.id + " stream stopped");
         }
         
     };
