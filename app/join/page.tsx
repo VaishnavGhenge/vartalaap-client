@@ -18,8 +18,6 @@ export default function JoinMeet() {
 
     const [meetCode, setMeetCode] = useState(searchParams.get("code") || "");
     const videoRef = useRef<HTMLVideoElement>(null);
-    const mediaStreamRef = useRef<MediaStream| null>(null);
-    const isMountedRef = useRef({status: false});
     const [mediaInitialized, setMediaInitialized] = useState(false);
     const [userPreferences, setUserPreferences] = useState<UserPreferences>({
         micStatus: false,
@@ -37,47 +35,47 @@ export default function JoinMeet() {
         autoGainControl: true,
     };
 
-    const startMedia = async ({cameraStatus = false, micStatus = false}) => {
+    const startMedia = async ({ cameraStatus = false, micStatus = false }) => {
         let mediaConstraints: any = {};
-        isMountedRef.current.status = true;
 
-        if(cameraStatus && micStatus) {
-            mediaConstraints = {video: videoConstraints, audio: audioConstraints};
-        } else if(cameraStatus) {
+        if (cameraStatus && micStatus) {
+            mediaConstraints = {
+                video: videoConstraints,
+                audio: audioConstraints,
+            };
+        } else if (cameraStatus) {
             mediaConstraints.video = videoConstraints;
-        } else if(micStatus) {
+        } else if (micStatus) {
             mediaConstraints.audio = audioConstraints;
         }
 
-        if(Object.keys(mediaConstraints).length !== 0) {
-            const localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
-            
-            console.log('isMounted: ', isMountedRef.current);
-            if(!isMountedRef.current) return;
+        if (Object.keys(mediaConstraints).length !== 0) {
+            const localStream = await navigator.mediaDevices.getUserMedia(
+                mediaConstraints
+            );
 
-            mediaStreamRef.current = localStream;
-            
-            if(videoRef.current) {
-                videoRef.current.srcObject = mediaStreamRef.current;
+            if (videoRef.current) {
+                videoRef.current.srcObject = localStream;
+                setMediaInitialized(true);
+                console.log(videoRef.current.id + " initialized");
             }
-            setMediaInitialized(true);
-            console.log(mediaStreamRef.current.id + " initialized");
-        
         }
 
-        console.log('startMedia() ran');
-    }
+        console.log("startMedia() ran");
+    };
 
     const stopMedia = () => {
-        console.log('isMountedRef: ', isMountedRef.current.status);
-        if(mediaStreamRef === null) return;
-        const tracks = mediaStreamRef.current?.getTracks();
-        tracks?.forEach((track: MediaStreamTrack) => {
-            track.stop();
-            mediaStreamRef.current?.removeTrack(track);
-        });
-        console.log('stopMedia() ran', mediaStreamRef.current?.id + " stream stopped");
-    }
+        if (videoRef.current) {
+            const stream = videoRef.current
+                .srcObject as MediaStream as MediaStream;
+            if (stream) {
+                const tracks = stream.getTracks();
+                tracks.forEach((track) => {
+                    track.stop();
+                });
+            }
+        }
+    };
 
     // Retrieve user preferences from localStorage
     useEffect(() => {
@@ -88,9 +86,8 @@ export default function JoinMeet() {
         startMedia(userPreferences);
 
         return () => {
-            isMountedRef.current = {status: false};
             stopMedia();
-        }
+        };
     }, []);
 
     const updateUserPreferences = (preferences: {
@@ -111,58 +108,85 @@ export default function JoinMeet() {
     const toggleCameraButton = (cameraStatus: boolean) => {
         const newCameraStatus = !cameraStatus;
 
-        if(newCameraStatus) {
-            if(!mediaInitialized) {
-                startMedia({cameraStatus: true});
-                updateUserPreferences({cameraStatus: newCameraStatus});
+        if (newCameraStatus) {
+            if (!mediaInitialized) {
+                startMedia({ cameraStatus: true });
+                updateUserPreferences({ cameraStatus: newCameraStatus });
                 return;
             }
 
-            navigator.mediaDevices.getUserMedia({video: videoConstraints})
-            .then((videoStream) => {
-                const videoTrack = videoStream.getVideoTracks()[0];
+            navigator.mediaDevices
+                .getUserMedia({ video: videoConstraints })
+                .then((videoStream) => {
+                    const videoTrack = videoStream.getVideoTracks()[0];
 
-                mediaStreamRef.current?.addTrack(videoTrack);
-                updateUserPreferences({cameraStatus: newCameraStatus});
-            });
+                    if (videoRef.current) {
+                        (videoRef.current.srcObject as MediaStream)?.addTrack(
+                            videoTrack
+                        );
+                        console.log((videoRef.current.srcObject as MediaStream).getVideoTracks());
+                    }
+                    updateUserPreferences({ cameraStatus: newCameraStatus });
+                });
         } else {
-            const videoTracks = mediaStreamRef.current?.getVideoTracks();
-            console.warn('total video tracks: ' + videoTracks?.length);
-            videoTracks?.forEach((track) => {
-                track.stop();
-                mediaStreamRef.current?.removeTrack(track);
-            });
-            updateUserPreferences({cameraStatus: newCameraStatus});
-            console.log(mediaStreamRef.current?.id + " stream stopped");
+            if (videoRef.current) {
+                const videoTracks = (
+                    videoRef.current.srcObject as MediaStream
+                )?.getVideoTracks();
+                console.warn("total video tracks: " + videoTracks?.length);
+                videoTracks?.forEach((track) => {
+                    track.stop();
+                    if(videoRef.current) {
+                        (videoRef.current.srcObject as MediaStream)?.removeTrack(track);
+                    }
+                });
+                updateUserPreferences({ cameraStatus: newCameraStatus });
+                console.log(
+                    (videoRef.current.srcObject as MediaStream)?.id +
+                        " stream stopped"
+                );
+            }
         }
-        
     };
 
     const toggleMicButton = (micStatus: boolean) => {
         const newMicStatus = !micStatus;
 
-        if(newMicStatus) {
-            if(!mediaInitialized) {
-                startMedia({micStatus: true});
-                updateUserPreferences({micStatus: newMicStatus});
+        if (newMicStatus) {
+            if (!mediaInitialized) {
+                startMedia({ micStatus: true });
+                updateUserPreferences({ micStatus: newMicStatus });
                 return;
             }
 
-            navigator.mediaDevices.getUserMedia({audio: audioConstraints})
+            navigator.mediaDevices
+                .getUserMedia({ audio: audioConstraints })
                 .then((audioStream) => {
                     const audioTrack = audioStream.getAudioTracks()[0];
-                    mediaStreamRef.current?.addTrack(audioTrack);
-                    updateUserPreferences({micStatus: newMicStatus});
+                    if (videoRef.current) {
+                        (videoRef.current.srcObject as MediaStream)?.addTrack(
+                            audioTrack
+                        );
+                        updateUserPreferences({ micStatus: newMicStatus });
+                    }
                 });
         } else {
-            const audioTracks = mediaStreamRef.current?.getAudioTracks();
-            console.warn('total audio tracks: ' + audioTracks?.length);
-            audioTracks?.forEach((track) => {
-                track.stop();
-                mediaStreamRef.current?.removeTrack(track);
-                console.log(track.id + ' audio track stopped');
-            });
-            updateUserPreferences({micStatus: newMicStatus});
+            if (videoRef.current) {
+                const audioTracks = (
+                    videoRef.current.srcObject as MediaStream
+                )?.getAudioTracks();
+                console.warn("total audio tracks: " + audioTracks?.length);
+                audioTracks?.forEach((track) => {
+                    track.stop();
+                    if (videoRef.current) {
+                        (
+                            videoRef.current.srcObject as MediaStream
+                        )?.removeTrack(track);
+                        console.log(track.id + " audio track stopped");
+                    }
+                });
+                updateUserPreferences({ micStatus: newMicStatus });
+            }
         }
     };
 
@@ -194,7 +218,7 @@ export default function JoinMeet() {
             onClick={() => toggleMicButton(userPreferences.micStatus)}
             className='rounded-full w-[46px] h-[46px] bg-red-600 flex justify-center items-center hover:cursor-pointer hover:bg-red-700 transition duration-300'
         >
-            <MicrophoneSlashIcon className="w-[23px] h-[23px]" />
+            <MicrophoneSlashIcon className='w-[23px] h-[23px]' />
         </div>
     );
 
