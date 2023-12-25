@@ -4,7 +4,7 @@ export type UserPreferences = {
 }
 
 const setMeetPreferences = (preferences: UserPreferences): void => {
-    localStorage.setItem('meetPreferences', JSON.stringify({...getMeetPreferences(), ...preferences}));
+    localStorage.setItem('meetPreferences', JSON.stringify({...preferences}));
 }
 
 const getMeetPreferences = (): UserPreferences => {
