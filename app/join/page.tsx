@@ -11,6 +11,7 @@ import { MicrophoneSlashIcon } from "@/cutom_icons/MicrophoneSlashIcon";
 import { useSearchParams, useRouter } from "next/navigation";
 
 import stored, { UserPreferences } from "@/utils/persisitUserPreferences";
+import { videoConstraints, audioConstraints } from "@/utils/config";
 
 export default function JoinMeet() {
     const searchParams = useSearchParams();
@@ -18,22 +19,12 @@ export default function JoinMeet() {
 
     const [meetCode, setMeetCode] = useState(searchParams.get("code") || "");
     const videoRef = useRef<HTMLVideoElement>(null);
+    const [localAudioTrack, setLocalAudioTrack] = useState<MediaStreamTrack | null>(null); 
     const [mediaInitialized, setMediaInitialized] = useState(false);
     const [userPreferences, setUserPreferences] = useState<UserPreferences>({
         micStatus: false,
         cameraStatus: false,
     });
-
-    const videoConstraints = {
-        width: 1280,
-        height: 720,
-        facingMode: "user",
-    };
-    const audioConstraints = {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-    };
 
     const startMedia = async ({ cameraStatus = false, micStatus = false }) => {
         let mediaConstraints: any = {};
@@ -54,10 +45,17 @@ export default function JoinMeet() {
                 mediaConstraints
             );
 
-            if (videoRef.current) {
-                videoRef.current.srcObject = localStream;
+            if (videoRef.current && localStream.getVideoTracks().length !== 0) {
+                const localVideoTrack = localStream.getVideoTracks()[0];
+                videoRef.current.srcObject = new MediaStream([localVideoTrack]);
                 setMediaInitialized(true);
+
                 console.log(videoRef.current.id + " initialized");
+            }
+
+            if(localStream.getAudioTracks().length !== 0) {
+                const audioTrack = localStream.getAudioTracks()[0];
+                setLocalAudioTrack(audioTrack);
             }
         }
 
@@ -66,8 +64,7 @@ export default function JoinMeet() {
 
     const stopMedia = () => {
         if (videoRef.current) {
-            const stream = videoRef.current
-                .srcObject as MediaStream as MediaStream;
+            const stream = videoRef.current.srcObject as MediaStream;
             if (stream) {
                 const tracks = stream.getTracks();
                 tracks.forEach((track) => {
@@ -121,30 +118,25 @@ export default function JoinMeet() {
                     const videoTrack = videoStream.getVideoTracks()[0];
 
                     if (videoRef.current) {
-                        (videoRef.current.srcObject as MediaStream)?.addTrack(
-                            videoTrack
-                        );
+                        const videoStream = videoRef.current.srcObject as MediaStream;
+                        videoStream.addTrack(videoTrack);
                         console.log((videoRef.current.srcObject as MediaStream).getVideoTracks());
                     }
                     updateUserPreferences({ cameraStatus: newCameraStatus });
                 });
         } else {
             if (videoRef.current) {
-                const videoTracks = (
-                    videoRef.current.srcObject as MediaStream
-                )?.getVideoTracks();
+                const videoStream = videoRef.current.srcObject as MediaStream;
+                const videoTracks = videoStream.getVideoTracks();
                 console.warn("total video tracks: " + videoTracks?.length);
-                videoTracks?.forEach((track) => {
+                videoTracks.forEach((track) => {
                     track.stop();
                     if(videoRef.current) {
-                        (videoRef.current.srcObject as MediaStream)?.removeTrack(track);
+                        videoStream.removeTrack(track);
                     }
                 });
                 updateUserPreferences({ cameraStatus: newCameraStatus });
-                console.log(
-                    (videoRef.current.srcObject as MediaStream)?.id +
-                        " stream stopped"
-                );
+                console.log(videoStream.id + " stream stopped");
             }
         }
     };
@@ -163,28 +155,13 @@ export default function JoinMeet() {
                 .getUserMedia({ audio: audioConstraints })
                 .then((audioStream) => {
                     const audioTrack = audioStream.getAudioTracks()[0];
-                    if (videoRef.current) {
-                        (videoRef.current.srcObject as MediaStream)?.addTrack(
-                            audioTrack
-                        );
-                        updateUserPreferences({ micStatus: newMicStatus });
-                    }
+                    setLocalAudioTrack(audioTrack);
+                    updateUserPreferences({ micStatus: newMicStatus });
+                    
                 });
         } else {
-            if (videoRef.current) {
-                const audioTracks = (
-                    videoRef.current.srcObject as MediaStream
-                )?.getAudioTracks();
-                console.warn("total audio tracks: " + audioTracks?.length);
-                audioTracks?.forEach((track) => {
-                    track.stop();
-                    if (videoRef.current) {
-                        (
-                            videoRef.current.srcObject as MediaStream
-                        )?.removeTrack(track);
-                        console.log(track.id + " audio track stopped");
-                    }
-                });
+            if (localAudioTrack) {
+                localAudioTrack.stop();
                 updateUserPreferences({ micStatus: newMicStatus });
             }
         }
