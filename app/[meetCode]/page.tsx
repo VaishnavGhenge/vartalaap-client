@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRecoilValue } from "recoil";
+import { useRecoilState } from "recoil";
 
 import { isMeetJoined } from "@/utils/globalStates";
 import JoinMeet from "@/components/meet/JoinMeet";
@@ -10,7 +10,7 @@ import stored from "@/utils/persisitUserPreferences";
 import { IUserPreferences } from "@/utils/types";
 
 export default function Meet({ params }: { params: { meetCode: string } }) {
-    const isMeetJoinedState = useRecoilValue(isMeetJoined);
+    const [isMeetJoinedState, setIsMeetJoinedState] = useRecoilState(isMeetJoined);
     const [userPreferences, setUserPreferences] = useState<IUserPreferences>({
         micStatus: false,
         cameraStatus: false,
@@ -19,6 +19,9 @@ export default function Meet({ params }: { params: { meetCode: string } }) {
     useEffect(() => {
         const userPreferences = stored.getMeetPreferences();
         setUserPreferences(userPreferences);
+
+        const isMeetJoined = stored.getIsMeetJoinned();
+        setIsMeetJoinedState(isMeetJoined);
 
         console.log("user preferences restored: ", userPreferences);
     }, []);

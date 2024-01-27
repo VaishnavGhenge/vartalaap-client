@@ -13,7 +13,7 @@ import { useRecoilState } from "recoil";
 import { videoConstraints, audioConstraints } from "@/utils/config";
 
 import { localVideoTrack, localAudioTrack } from "@/webrtc/trackStates";
-import { releaseVideoTracks } from "@/webrtc/utils";
+import { releaseVideoTracks, initializeStreamWithTracks } from "@/webrtc/utils";
 import { isMeetJoined } from "@/utils/globalStates";
 import { IUserPreferences } from "@/utils/types";
 
@@ -37,22 +37,17 @@ export default function JoinMeet({
         useRecoilState(isMeetJoined);
     const [mediaInitialized, setMediaInitialized] = useState(false);
 
-    const initializeStreamWithTracks = (tracks: MediaStreamTrack[]) => {
-        if (videoRef.current) {
-            videoRef.current.srcObject = new MediaStream(tracks);
-
-            console.log(videoRef.current.id + " initialized");
-        }
-    };
-
-    const createStream = async (mediaConstraints: MediaStreamConstraints) => {
+    const createLocalVideoStream = async (
+        mediaConstraints: MediaStreamConstraints
+    ) => {
         const localStream = await navigator.mediaDevices.getUserMedia(
             mediaConstraints
         );
 
         if (localStream.getVideoTracks().length !== 0) {
             const localVideoTrack = localStream.getVideoTracks()[0];
-            initializeStreamWithTracks([localVideoTrack]);
+            initializeStreamWithTracks(videoRef.current, [localVideoTrack]);
+            setLocalVideoTrackState(localVideoTrack);
         }
 
         if (localStream.getAudioTracks().length !== 0) {
@@ -66,7 +61,12 @@ export default function JoinMeet({
         micStatus = false,
     }) => {
         if (localVideoTrackState) {
-            initializeStreamWithTracks([localVideoTrackState]);
+            initializeStreamWithTracks(videoRef.current, [
+                localVideoTrackState,
+            ]);
+
+            setMediaInitialized(true);
+            return;
         }
 
         let mediaConstraints: MediaStreamConstraints = {};
@@ -83,16 +83,18 @@ export default function JoinMeet({
         }
 
         if (Object.keys(mediaConstraints).length !== 0) {
-            await createStream(mediaConstraints);
-        }
+            await createLocalVideoStream(mediaConstraints);
 
-        console.log("initializeStream() ran");
+            setMediaInitialized(true);
+        }
     };
 
     // Retrieve user preferences from localStorage
     useEffect(() => {
-        initializeStream(userPreferences);
-    }, []);
+        if (!mediaInitialized) {
+            initializeStream(userPreferences);
+        }
+    }, [userPreferences.cameraStatus, userPreferences.micStatus]);
 
     const toggleCameraButton = (cameraStatus: boolean) => {
         const updatedCameraStatus = !cameraStatus;
@@ -127,12 +129,13 @@ export default function JoinMeet({
                     setMediaInitialized(true);
                 })
                 .catch((error) => {
-                    console.error("Error while startign camera: ", error);
+                    console.error("Error while starting camera: ", error);
                 });
         } else {
             if (videoRef.current) {
                 const stream = videoRef.current.srcObject as MediaStream;
                 releaseVideoTracks(stream);
+                setLocalVideoTrackState(null);
 
                 updateUserPreferences({ cameraStatus: updatedCameraStatus });
             }
@@ -215,16 +218,19 @@ export default function JoinMeet({
                                 <span className='absolute top-6 left-6 z-10'>
                                     Vaishnav Ghenge
                                 </span>
+
                                 <span
                                     hidden={userPreferences.cameraStatus}
                                     className='text-2xl absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2'
                                 >
                                     Camera is off
                                 </span>
+
                                 <div className='absolute bottom-6 left-1/2 transform -translate-x-1/2 flex gap-4 justify-center items-center z-10'>
                                     {micButton}
                                     {cameraButton}
                                 </div>
+
                                 <video
                                     hidden={!userPreferences.cameraStatus}
                                     ref={videoRef}
@@ -239,10 +245,12 @@ export default function JoinMeet({
                                     <h2 className='mb-6 text-2xl'>
                                         Ready to join?
                                     </h2>
+
                                     <p className='text-xs'>
                                         No one else is here
                                     </p>
                                 </div>
+
                                 <button
                                     className='bg-sky-700 rounded-full text-white px-6 py-3 hover:cursor-pointer hover:bg-sky-800 transition duration-300'
                                     type='button'

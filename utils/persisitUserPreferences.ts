@@ -13,6 +13,15 @@ const getMeetPreferences = (): IUserPreferences => {
     return meetPreferences;
 };
 
-const exports = { setMeetPreferences, getMeetPreferences };
+const getIsMeetJoinned = (): boolean => {
+    const storedIsMeetJoined = localStorage.getItem("isMeetJoined") || null;
+    return storedIsMeetJoined === "true" ? true : false;
+}
+
+const setIsMeetJoined = (isMeetJoined: boolean) => {
+    localStorage.setItem("isMeetJoined", String(isMeetJoined))
+}
+
+const exports = { setMeetPreferences, getMeetPreferences, getIsMeetJoinned, setIsMeetJoined };
 
 export default exports;

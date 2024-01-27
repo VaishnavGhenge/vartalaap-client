@@ -27,3 +27,11 @@ export function releaseAudioTracks(stream: MediaStream) {
         removeAllTracks(stream, audioTracks);
     }
 }
+
+export function initializeStreamWithTracks(videoRefCurrent: HTMLVideoElement | null, tracks: MediaStreamTrack[]) {
+    if (videoRefCurrent) {
+        videoRefCurrent.srcObject = new MediaStream(tracks);
+
+        // console.log(videoRefCurrent.srcObject.id + " initialized");
+    }
+};
