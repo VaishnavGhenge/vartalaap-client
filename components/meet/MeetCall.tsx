@@ -1,6 +1,6 @@
 "use client";
 
-import persist, { UserPreferences } from "@/utils/persisitUserPreferences";
+import persist from "@/utils/persisitUserPreferences";
 import { useEffect, useState } from "react";
 import {
     MicrophoneIcon,
@@ -9,34 +9,17 @@ import {
     PhoneXMarkIcon,
 } from "@heroicons/react/24/outline";
 import { MicrophoneSlashIcon } from "@/cutom_icons/MicrophoneSlashIcon";
+import { IUserPreferences } from "@/utils/types";
 
-export default function MeetCall({meetCode}: {meetCode: string}) {
-    const [userPreferences, setUserPreferences] = useState<UserPreferences>({
-        micStatus: false,
-        cameraStatus: false,
-    });
-
-    useEffect(() => {
-        const _userPreferences = persist.getMeetPreferences();
-        console.log("user preferences restored: ", _userPreferences);
-        setUserPreferences(_userPreferences);
-    }, []);
-
-    const updateUserPreferences = (preferences: {
-        micStatus?: boolean;
-        cameraStatus?: boolean;
-    }) => {
-        const updatedPreferences = {
-            ...userPreferences,
-            ...preferences,
-        } as UserPreferences;
-
-        console.log("newely formed preferences: ", updatedPreferences);
-
-        persist.setMeetPreferences(updatedPreferences);
-        setUserPreferences(updatedPreferences);
-    };
-
+export default function MeetCall({
+    meetCode,
+    userPreferences,
+    updateUserPreferences,
+}: {
+    meetCode: string;
+    userPreferences: IUserPreferences;
+    updateUserPreferences: Function;
+}) {
     const toggleMicButton = () => {
         updateUserPreferences({ micStatus: !userPreferences.micStatus });
     };

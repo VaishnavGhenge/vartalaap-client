@@ -1,18 +1,15 @@
-export type UserPreferences = {
-    micStatus: boolean;
-    cameraStatus: boolean;
-};
+import { IUserPreferences } from "./types";
 
-const setMeetPreferences = (preferences: UserPreferences): void => {
+const setMeetPreferences = (preferences: IUserPreferences): void => {
     localStorage.setItem("meetPreferences", JSON.stringify({ ...preferences }));
 };
 
-const getMeetPreferences = (): UserPreferences => {
+const getMeetPreferences = (): IUserPreferences => {
     const storedPreferencesString =
         localStorage.getItem("meetPreferences") || null;
     const meetPreferences = storedPreferencesString
         ? JSON.parse(storedPreferencesString)
-        : ({ micStatus: true, cameraStatus: true } as UserPreferences);
+        : ({ micStatus: true, cameraStatus: true } as IUserPreferences);
     return meetPreferences;
 };
 
