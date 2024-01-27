@@ -12,7 +12,8 @@
     "@heroicons/react": "^2.0.18",
     "next": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "recoil": "^0.7.7"
   },
   "devDependencies": {
     "@types/node": "latest",

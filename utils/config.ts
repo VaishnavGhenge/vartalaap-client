@@ -4,7 +4,6 @@ export const videoConstraints = {
     facingMode: "user",
 };
 
-
 export const audioConstraints = {
     echoCancellation: true,
     noiseSuppression: true,

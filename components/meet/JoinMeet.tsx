@@ -8,26 +8,60 @@ import {
     VideoCameraIcon,
 } from "@heroicons/react/24/outline";
 import { MicrophoneSlashIcon } from "@/cutom_icons/MicrophoneSlashIcon";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useRecoilState } from "recoil";
 
 import stored, { UserPreferences } from "@/utils/persisitUserPreferences";
 import { videoConstraints, audioConstraints } from "@/utils/config";
 
-export default function JoinMeet() {
-    const searchParams = useSearchParams();
-    const router = useRouter();
+import { localVideoTrack, localAudioTrack } from "@/webrtc/trackStates";
+import { releaseVideoTracks } from "@/webrtc/utils";
+import { isMeetJoined } from "@/utils/globalStates";
 
-    const [meetCode, setMeetCode] = useState(searchParams.get("code") || "");
+export default function JoinMeet({meetCode}: {meetCode: string}) {
     const videoRef = useRef<HTMLVideoElement>(null);
-    const [localAudioTrack, setLocalAudioTrack] = useState<MediaStreamTrack | null>(null); 
+
+    const [localAudioTrackState, setLocalAudioTrackState] =
+        useRecoilState(localAudioTrack);
+    const [localVideoTrackState, setLocalVideoTrackState] =
+        useRecoilState(localVideoTrack);
+
+    const [isMeetJoinedState, setMediaJoinedState] = useRecoilState(isMeetJoined);
     const [mediaInitialized, setMediaInitialized] = useState(false);
     const [userPreferences, setUserPreferences] = useState<UserPreferences>({
         micStatus: false,
         cameraStatus: false,
     });
 
-    const startMedia = async ({ cameraStatus = false, micStatus = false }) => {
-        let mediaConstraints: any = {};
+    const initializeStreamWithTracks = (tracks: MediaStreamTrack[]) => {
+        if(videoRef.current) {
+            videoRef.current.srcObject = new MediaStream(tracks);
+
+            console.log(videoRef.current.id + " initialized");
+        }
+    }
+
+    const createStream = async (mediaConstraints: MediaStreamConstraints) => {
+        const localStream = await navigator.mediaDevices.getUserMedia(
+            mediaConstraints
+        );
+
+        if (localStream.getVideoTracks().length !== 0) {
+            const localVideoTrack = localStream.getVideoTracks()[0];
+            initializeStreamWithTracks([localVideoTrack]);
+        }
+
+        if (localStream.getAudioTracks().length !== 0) {
+            const audioTrack = localStream.getAudioTracks()[0];
+            setLocalAudioTrackState(audioTrack);
+        }
+    }
+
+    const initializeStream = async ({ cameraStatus = false, micStatus = false }) => {
+        if(localVideoTrackState) {
+            initializeStreamWithTracks([localVideoTrackState]);
+        }
+
+        let mediaConstraints: MediaStreamConstraints = {};
 
         if (cameraStatus && micStatus) {
             mediaConstraints = {
@@ -41,37 +75,10 @@ export default function JoinMeet() {
         }
 
         if (Object.keys(mediaConstraints).length !== 0) {
-            const localStream = await navigator.mediaDevices.getUserMedia(
-                mediaConstraints
-            );
-
-            if (videoRef.current && localStream.getVideoTracks().length !== 0) {
-                const localVideoTrack = localStream.getVideoTracks()[0];
-                videoRef.current.srcObject = new MediaStream([localVideoTrack]);
-                setMediaInitialized(true);
-
-                console.log(videoRef.current.id + " initialized");
-            }
-
-            if(localStream.getAudioTracks().length !== 0) {
-                const audioTrack = localStream.getAudioTracks()[0];
-                setLocalAudioTrack(audioTrack);
-            }
+            await createStream(mediaConstraints);
         }
 
-        console.log("startMedia() ran");
-    };
-
-    const stopMedia = () => {
-        if (videoRef.current) {
-            const stream = videoRef.current.srcObject as MediaStream;
-            if (stream) {
-                const tracks = stream.getTracks();
-                tracks.forEach((track) => {
-                    track.stop();
-                });
-            }
-        }
+        console.log("initializeStream() ran");
     };
 
     // Retrieve user preferences from localStorage
@@ -80,11 +87,7 @@ export default function JoinMeet() {
         setUserPreferences(userPreferences);
 
         console.log("user preferences restored: ", userPreferences);
-        startMedia(userPreferences);
-
-        return () => {
-            stopMedia();
-        };
+        initializeStream(userPreferences);
     }, []);
 
     const updateUserPreferences = (preferences: {
@@ -103,12 +106,13 @@ export default function JoinMeet() {
     };
 
     const toggleCameraButton = (cameraStatus: boolean) => {
-        const newCameraStatus = !cameraStatus;
+        const updatedCameraStatus = !cameraStatus;
 
-        if (newCameraStatus) {
+        if (updatedCameraStatus) {
             if (!mediaInitialized) {
-                startMedia({ cameraStatus: true });
-                updateUserPreferences({ cameraStatus: newCameraStatus });
+                initializeStream({ cameraStatus: true });
+
+                updateUserPreferences({ cameraStatus: updatedCameraStatus });
                 return;
             }
 
@@ -118,36 +122,42 @@ export default function JoinMeet() {
                     const videoTrack = videoStream.getVideoTracks()[0];
 
                     if (videoRef.current) {
-                        const videoStream = videoRef.current.srcObject as MediaStream;
-                        videoStream.addTrack(videoTrack);
-                        console.log((videoRef.current.srcObject as MediaStream).getVideoTracks());
+                        const stream = videoRef.current
+                            .srcObject as MediaStream;
+
+                        // releaseVideoTracks(stream);
+
+                        stream.addTrack(videoTrack);
+                        setLocalVideoTrackState(videoTrack);
                     }
-                    updateUserPreferences({ cameraStatus: newCameraStatus });
+
+                    updateUserPreferences({
+                        cameraStatus: updatedCameraStatus,
+                    });
+
+                    setMediaInitialized(true);
+                })
+                .catch((error) => {
+                    console.error("Error while startign camera: ", error);
                 });
         } else {
             if (videoRef.current) {
-                const videoStream = videoRef.current.srcObject as MediaStream;
-                const videoTracks = videoStream.getVideoTracks();
-                console.warn("total video tracks: " + videoTracks?.length);
-                videoTracks.forEach((track) => {
-                    track.stop();
-                    if(videoRef.current) {
-                        videoStream.removeTrack(track);
-                    }
-                });
-                updateUserPreferences({ cameraStatus: newCameraStatus });
-                console.log(videoStream.id + " stream stopped");
+                const stream = videoRef.current.srcObject as MediaStream;
+                releaseVideoTracks(stream);
+
+                updateUserPreferences({ cameraStatus: updatedCameraStatus });
             }
         }
     };
 
     const toggleMicButton = (micStatus: boolean) => {
-        const newMicStatus = !micStatus;
+        const updatedMicStatus = !micStatus;
 
-        if (newMicStatus) {
+        if (updatedMicStatus) {
             if (!mediaInitialized) {
-                startMedia({ micStatus: true });
-                updateUserPreferences({ micStatus: newMicStatus });
+                initializeStream({ micStatus: true });
+
+                updateUserPreferences({ micStatus: updatedMicStatus });
                 return;
             }
 
@@ -155,14 +165,16 @@ export default function JoinMeet() {
                 .getUserMedia({ audio: audioConstraints })
                 .then((audioStream) => {
                     const audioTrack = audioStream.getAudioTracks()[0];
-                    setLocalAudioTrack(audioTrack);
-                    updateUserPreferences({ micStatus: newMicStatus });
-                    
+                    setLocalAudioTrackState(audioTrack);
+
+                    updateUserPreferences({ micStatus: updatedMicStatus });
                 });
         } else {
-            if (localAudioTrack) {
-                localAudioTrack.stop();
-                updateUserPreferences({ micStatus: newMicStatus });
+            if (localAudioTrackState) {
+                localAudioTrackState.stop();
+                setLocalAudioTrackState(null);
+
+                updateUserPreferences({ micStatus: updatedMicStatus });
             }
         }
     };
@@ -199,9 +211,8 @@ export default function JoinMeet() {
         </div>
     );
 
-    // TODO: Invistigate useRouter(), why its not working?
     const onJoinButtonClick = () => {
-        router.push(`/${meetCode}`);
+        setMediaJoinedState(true);
     };
 
     return (

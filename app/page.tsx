@@ -26,7 +26,7 @@ export default function Home() {
     };
 
     const onJoinButtonClick = () => {
-        router.push(`/join?code=${meetCode}`);
+        router.push(`/${meetCode}`);
     }
 
     return (
