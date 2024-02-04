@@ -1,43 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useRecoilState } from "recoil";
 
-import { isMeetJoined } from "@/utils/globalStates";
+import { isMeetJoined, userPreferences } from "@/utils/globalStates";
 import JoinMeet from "@/components/meet/JoinMeet";
 import MeetCall from "@/components/meet/MeetCall";
-import stored from "@/utils/persisitUserPreferences";
 import { IUserPreferences } from "@/utils/types";
 
 export default function Meet({ params }: { params: { meetCode: string } }) {
     const [isMeetJoinedState, setIsMeetJoinedState] = useRecoilState(isMeetJoined);
-    const [userPreferences, setUserPreferences] = useState<IUserPreferences>({
-        micStatus: false,
-        cameraStatus: false,
-    });
-
-    useEffect(() => {
-        const userPreferences = stored.getMeetPreferences();
-        setUserPreferences(userPreferences);
-
-        const isMeetJoined = stored.getIsMeetJoinned();
-        setIsMeetJoinedState(isMeetJoined);
-
-        console.log("user preferences restored: ", userPreferences);
-    }, []);
+    const [userPreferencesState, setUserPreferences] = useRecoilState<IUserPreferences>(userPreferences);
 
     const updateUserPreferences = (preferences: {
         micStatus?: boolean;
         cameraStatus?: boolean;
     }) => {
         const updatedPreferences = {
-            ...userPreferences,
+            ...userPreferencesState,
             ...preferences,
         } as IUserPreferences;
 
         // console.log("newely formed preferences: ", updatedPreferences);
-
-        stored.setMeetPreferences(updatedPreferences);
         setUserPreferences(updatedPreferences);
     };
 
@@ -45,7 +28,7 @@ export default function Meet({ params }: { params: { meetCode: string } }) {
         return (
             <MeetCall
                 meetCode={params.meetCode}
-                userPreferences={userPreferences}
+                userPreferences={userPreferencesState}
                 updateUserPreferences={updateUserPreferences}
             />
         );
@@ -53,7 +36,7 @@ export default function Meet({ params }: { params: { meetCode: string } }) {
         return (
             <JoinMeet
                 meetCode={params.meetCode}
-                userPreferences={userPreferences}
+                userPreferences={userPreferencesState}
                 updateUserPreferences={updateUserPreferences}
             />
         );
