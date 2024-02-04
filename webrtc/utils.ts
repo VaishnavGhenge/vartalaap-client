@@ -1,4 +1,10 @@
-function removeAllTracks(stream: MediaStream, tracks: MediaStreamTrack[]) {
+function removeAllTracks(stream: MediaStream, trackLabel?: "video" | "audio") {
+    const tracks: MediaStreamTrack[] = trackLabel
+        ? trackLabel === "video"
+            ? stream.getVideoTracks()
+            : stream.getAudioTracks()
+        : stream.getTracks();
+
     tracks.forEach((track) => {
         track.stop();
         stream?.removeTrack(track);
@@ -21,7 +27,7 @@ export function releaseVideoTracks(videoRefCurrent: HTMLVideoElement | null) {
 
         if (stream) {
             const videoTracks = stream.getVideoTracks();
-            removeAllTracks(stream, videoTracks);
+            removeAllTracks(stream, "video");
         }
     }
 }
@@ -29,13 +35,13 @@ export function releaseVideoTracks(videoRefCurrent: HTMLVideoElement | null) {
 export function releaseAudioTracks(stream: MediaStream | null) {
     if (stream) {
         const audioTracks = stream.getAudioTracks();
-        removeAllTracks(stream, audioTracks);
+        removeAllTracks(stream, "audio");
     }
 }
 
-export function initializeStreamWithTracks(
+export function initializeVideoStream(
     videoRefCurrent: HTMLVideoElement | null,
-    tracks: MediaStreamTrack[]
+    track: MediaStreamTrack
 ) {
     if (videoRefCurrent) {
         let stream: MediaStream;
@@ -48,9 +54,9 @@ export function initializeStreamWithTracks(
             streamMap.set(stream.id, stream);
         }
 
-        tracks.forEach((track) => {
-            stream.addTrack(track);
-        });
+        // removeAllTracks(stream, "video");
+
+        stream.addTrack(track);
     } else {
         console.error("VideRef current not initialized yet");
     }
@@ -59,7 +65,7 @@ export function initializeStreamWithTracks(
 export const streamMap = new Map<any, any>();
 
 export function printMap() {
-    streamMap.forEach(entry => {
+    streamMap.forEach((entry) => {
         console.log(entry.getTracks());
-    })
+    });
 }

@@ -11,7 +11,7 @@ import { MicrophoneSlashIcon } from "@/cutom_icons/MicrophoneSlashIcon";
 import { IUserPreferences } from "@/utils/types";
 import { useRecoilState } from "recoil";
 import { localAudioTrack, localVideoTrack } from "@/webrtc/tracks";
-import { initializeStreamWithTracks, releaseMediaStream } from "@/webrtc/utils";
+import { initializeVideoStream, releaseMediaStream } from "@/webrtc/utils";
 import { videoConstraints, audioConstraints } from "@/utils/config";
 import { releaseVideoTracks } from "@/webrtc/utils";
 import { isMeetJoined } from "@/utils/globalStates";
@@ -37,7 +37,7 @@ export default function MeetCall({
 
     const init = () => {
         if (localVideoTrackState) {
-            initializeStreamWithTracks(localVideoRef.current, [localVideoTrackState]);
+            initializeVideoStream(localVideoRef.current, localVideoTrackState);
             return;
         }
 
@@ -51,7 +51,7 @@ export default function MeetCall({
                 const audioTrack = localStream.getAudioTracks()[0];
 
                 setLocalVideoTrack(videoTrack);
-                initializeStreamWithTracks(localVideoRef.current, [videoTrack]);
+                initializeVideoStream(localVideoRef.current, videoTrack);
 
                 setLocalAudioTrack(audioTrack);
                 releaseMediaStream(localStream);
@@ -75,7 +75,7 @@ export default function MeetCall({
                     const videoTrack = localVideoStream.getVideoTracks()[0];
 
                     setLocalVideoTrack(videoTrack);
-                    initializeStreamWithTracks(localVideoRef.current, [videoTrack]);
+                    initializeVideoStream(localVideoRef.current, videoTrack);
                     releaseMediaStream(localVideoStream);
 
                     updateUserPreferences({ cameraStatus: true });

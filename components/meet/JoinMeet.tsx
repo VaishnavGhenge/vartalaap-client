@@ -1,7 +1,7 @@
 "use client";
 
 import Navbar from "@/components/Navbar";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
     VideoCameraSlashIcon,
     MicrophoneIcon,
@@ -10,7 +10,7 @@ import {
 import { MicrophoneSlashIcon } from "@/cutom_icons/MicrophoneSlashIcon";
 import { useRecoilState } from "recoil";
 import {
-    initializeStreamWithTracks,
+    initializeVideoStream,
     printMap,
     streamMap,
     releaseMediaStream,
@@ -19,7 +19,7 @@ import {
 import { localAudioTrack, localVideoTrack } from "@/webrtc/tracks";
 import { isMeetJoined } from "@/utils/globalStates";
 import { IUserPreferences } from "@/utils/types";
-import { videoConstraints } from "@/utils/config";
+import { audioConstraints, videoConstraints } from "@/utils/config";
 
 export default function JoinMeet({
     meetCode,
@@ -39,16 +39,25 @@ export default function JoinMeet({
 
     const [isMeetjoinedState, setIsMeetJoined] = useRecoilState(isMeetJoined);
 
-    const init = () => {
-        if(localAudioTrackState && localVideoTrackState) {
+    
+
+    const init = useCallback(() => {
+        let mediaConstraints: MediaStreamConstraints = {};
+
+        if(!localVideoTrackState) {
+            mediaConstraints.video = videoConstraints;
+        }
+
+        if(!localAudioTrackState) {
+            mediaConstraints.audio = audioConstraints;
+        }
+
+        if(Object.keys(mediaConstraints).length <= 0) {
             return;
         }
 
         window.navigator.mediaDevices
-            .getUserMedia({
-                video: videoConstraints,
-                audio: true,
-            })
+            .getUserMedia(mediaConstraints)
             .then((localStream) => {
                 streamMap.set(localStream.id, localStream);
 
@@ -56,7 +65,7 @@ export default function JoinMeet({
                 const audioTrack = localStream.getAudioTracks()[0];
 
                 setLocalVideoTrack(videoTrack);
-                initializeStreamWithTracks(videoRef.current, [videoTrack]);
+                initializeVideoStream(videoRef.current, videoTrack);
 
                 setLocalAudioTrack(audioTrack);
 
@@ -65,11 +74,11 @@ export default function JoinMeet({
             .catch((err) => {
                 console.error("Error occured when initializinf media: ", err);
             });
-    };
+    }, []);
 
     useEffect(() => {
         init();
-    }, []);
+    }, [init]);
 
     const toggleCameraButton = (updatedCameraStatus: boolean) => {
         if (updatedCameraStatus && !localVideoTrackState) {
@@ -83,7 +92,7 @@ export default function JoinMeet({
                     const videoTrack = localVideoStream.getVideoTracks()[0];
 
                     setLocalVideoTrack(videoTrack);
-                    initializeStreamWithTracks(videoRef.current, [videoTrack]);
+                    initializeVideoStream(videoRef.current, videoTrack);
 
                     updateUserPreferences({ cameraStatus: true });
                     releaseMediaStream(localVideoStream);
@@ -118,6 +127,8 @@ export default function JoinMeet({
                     );
                 });
         } else {
+            printMap();
+
             if (localAudioTrackState) {
                 localAudioTrackState.stop();
                 setLocalAudioTrack(null);
@@ -162,10 +173,10 @@ export default function JoinMeet({
     );
 
     const onJoinButtonClick = () => {
-        if(videoRef.current) {
+        if (videoRef.current) {
             const stream = videoRef.current.srcObject as MediaStream;
-            stream.getTracks().forEach(track => {
-                if(!(track.id === localVideoTrackState?.id)) {
+            stream.getTracks().forEach((track) => {
+                if (!(track.id === localVideoTrackState?.id)) {
                     track.stop();
                 }
             });
