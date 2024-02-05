@@ -25,7 +25,7 @@ export function turnOffMic() {
     });
 }
 
-export function getVideoStreamTrack(): MediaStreamTrack | null {
+export function getLocalVideoStreamTrack(): MediaStreamTrack | null {
     let firstTrack: MediaStreamTrack | null = null;
 
     videoStreamTrackMap.forEach((videoTrack) => {

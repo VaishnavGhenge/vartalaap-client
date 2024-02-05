@@ -59,21 +59,29 @@ export default function JoinMeet({
         window.navigator.mediaDevices
             .getUserMedia(mediaConstraints)
             .then((localStream) => {
-                const videoTrack = localStream.getVideoTracks()[0];
-                const audioTrack = localStream.getAudioTracks()[0];
+                const videoStreamTracks = localStream.getVideoTracks();
 
-                const videoStream = new MediaStream([videoTrack]);
-                if(videoRef.current) {
-                    const prevStream = videoRef.current.srcObject as MediaStream;
-                    releaseMediaStream(prevStream);
-                    videoRef.current.srcObject = videoStream;
+                if(videoStreamTracks.length >= 1) {
+                    const videoTrack = localStream.getVideoTracks()[0];
+
+                    const videoStream = new MediaStream([videoTrack]);
+                    if(videoRef.current) {
+                        const prevStream = videoRef.current.srcObject as MediaStream;
+                        releaseMediaStream(prevStream);
+                        videoRef.current.srcObject = videoStream;
+                    }
+    
+                    setLocalVideoTrack(videoTrack);
+                    videoStreamTrackMap.set(videoTrack.id, videoTrack);
                 }
+                
+                const audiStreamTracks = localStream.getAudioTracks();
+                if(audiStreamTracks.length >= 1) {
+                    const audioTrack = localStream.getAudioTracks()[0];
 
-                setLocalVideoTrack(videoTrack);
-                videoStreamTrackMap.set(videoTrack.id, videoTrack);
-
-                setLocalAudioTrack(audioTrack);
-                audioStreamTrackMap.set(audioTrack.id, audioTrack);
+                    setLocalAudioTrack(audioTrack);
+                    audioStreamTrackMap.set(audioTrack.id, audioTrack);
+                }
             })
             .catch((err) => {
                 console.error("Error occured when initializing media: ", err);

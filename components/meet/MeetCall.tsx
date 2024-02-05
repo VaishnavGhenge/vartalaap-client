@@ -11,7 +11,7 @@ import { MicrophoneSlashIcon } from "@/cutom_icons/MicrophoneSlashIcon";
 import { IUserPreferences } from "@/utils/types";
 import { useRecoilState } from "recoil";
 import { localAudioTrack, localVideoTrack } from "@/webrtc/tracks";
-import { audioStreamTrackMap, getVideoStreamTrack, releaseMediaStream, turnOffCamera, turnOffMic, videoStreamTrackMap } from "@/webrtc/utils";
+import { audioStreamTrackMap, getLocalVideoStreamTrack, releaseMediaStream, turnOffCamera, turnOffMic, videoStreamTrackMap } from "@/webrtc/utils";
 import { videoConstraints, audioConstraints } from "@/utils/config";
 import { isMeetJoined } from "@/utils/globalStates";
 
@@ -35,7 +35,8 @@ export default function MeetCall({
         useRecoilState(isMeetJoined);
 
     const init = () => {
-        const localVideoTrackFromMap = getVideoStreamTrack();
+        const localVideoTrackFromMap = getLocalVideoStreamTrack();
+
         if(localVideoTrackFromMap) {
             const newVideoStream = new MediaStream([localVideoTrackFromMap]);
             if(localVideoRef.current) {
@@ -45,25 +46,49 @@ export default function MeetCall({
             return;
         }
 
+        let mediaConstraints: MediaStreamConstraints = {};
+
+        console.log(userPreferences.cameraStatus, userPreferences.micStatus);
+
+        if(userPreferences.cameraStatus) {
+            mediaConstraints.video = videoConstraints;
+        }
+
+        if(userPreferences.micStatus) {
+            mediaConstraints.audio = audioConstraints;
+        }
+
+        if(Object.keys(mediaConstraints).length <= 0) {
+            return;
+        }
+
         window.navigator.mediaDevices
-            .getUserMedia({
-                video: videoConstraints,
-                audio: true,
-            })
+            .getUserMedia(mediaConstraints)
             .then((localStream) => {
-                const videoTrack = localStream.getVideoTracks()[0];
-                const audioTrack = localStream.getAudioTracks()[0];
+                const videoStreamTracks = localStream.getVideoTracks();
 
-                setLocalVideoTrack(videoTrack);
-                videoStreamTrackMap.set(videoTrack.id, videoTrack);
+                if(videoStreamTracks.length >= 1) {
+                    const videoTrack = localStream.getVideoTracks()[0];
 
-                const newVideoStream = new MediaStream([videoTrack]);
-                if(localVideoRef.current) {
-                    localVideoRef.current.srcObject = newVideoStream;
+                    const videoStream = new MediaStream([videoTrack]);
+                    if(localVideoRef.current) {
+                        const prevStream = localVideoRef.current.srcObject as MediaStream;
+                        releaseMediaStream(prevStream);
+
+                        localVideoRef.current.srcObject = videoStream;
+                    }
+    
+                    setLocalVideoTrack(videoTrack);
+                    videoStreamTrackMap.set(videoTrack.id, videoTrack);
                 }
+                
+                const audiStreamTracks = localStream.getAudioTracks();
+                if(audiStreamTracks.length >= 1) {
+                    const audioTrack = localStream.getAudioTracks()[0];
 
-                setLocalAudioTrack(audioTrack);
-                audioStreamTrackMap.set(audioTrack.id, audioTrack);
+                    setLocalAudioTrack(audioTrack);
+                    audioStreamTrackMap.set(audioTrack.id, audioTrack);
+                }
             })
             .catch((err) => {
                 console.error("Error occured when initializinf media: ", err);
@@ -87,6 +112,9 @@ export default function MeetCall({
                     videoStreamTrackMap.set(videoTrack.id, videoTrack);
 
                     if(localVideoRef.current) {
+                        const prevVideoStream = localVideoRef.current.srcObject as MediaStream;
+                        releaseMediaStream(prevVideoStream);
+                        
                         localVideoRef.current.srcObject = localVideoStream;
                     }
 
