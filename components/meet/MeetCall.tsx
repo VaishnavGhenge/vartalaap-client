@@ -48,8 +48,6 @@ export default function MeetCall({
 
         let mediaConstraints: MediaStreamConstraints = {};
 
-        console.log(userPreferences.cameraStatus, userPreferences.micStatus);
-
         if(userPreferences.cameraStatus) {
             mediaConstraints.video = videoConstraints;
         }
@@ -114,7 +112,7 @@ export default function MeetCall({
                     if(localVideoRef.current) {
                         const prevVideoStream = localVideoRef.current.srcObject as MediaStream;
                         releaseMediaStream(prevVideoStream);
-                        
+
                         localVideoRef.current.srcObject = localVideoStream;
                     }
 

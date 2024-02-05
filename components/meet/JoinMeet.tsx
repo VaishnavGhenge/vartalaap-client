@@ -1,7 +1,7 @@
 "use client";
 
 import Navbar from "@/components/Navbar";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useReducer } from "react";
 import {
     VideoCameraSlashIcon,
     MicrophoneIcon,
@@ -15,6 +15,7 @@ import {
     turnOffMic,
     videoStreamTrackMap,
     turnOffCamera,
+    videoDimensionReducer,
 } from "@/webrtc/utils";
 import { localAudioTrack, localVideoTrack } from "@/webrtc/tracks";
 import { isMeetJoined } from "@/utils/globalStates";
@@ -36,6 +37,8 @@ export default function JoinMeet({
         useRecoilState(localAudioTrack);
     const [localVideoTrackState, setLocalVideoTrack] =
         useRecoilState(localVideoTrack);
+
+    const [videoDimensions, dispatchVideoDimensions] = useReducer(videoDimensionReducer, {width: 740, height: 416});
 
     const [isMeetjoinedState, setIsMeetJoined] = useRecoilState(isMeetJoined);
 
@@ -91,6 +94,22 @@ export default function JoinMeet({
     useEffect(() => {
         init();
     }, [init]);
+
+    useEffect(() => {
+        const handleResize= () => {
+            const screenWidth = window.innerWidth;
+
+            dispatchVideoDimensions({type: "width", value: screenWidth / 2});
+        }
+
+        window.addEventListener("resize", handleResize);
+
+        handleResize();
+
+        return () => {
+            window.removeEventListener("resize", handleResize)
+        }
+    }, []);
 
     const toggleCameraButton = (updatedCameraStatus: boolean) => {
         if (updatedCameraStatus && !localVideoTrackState) {
@@ -203,7 +222,10 @@ export default function JoinMeet({
                 <div className='container mx-auto h-full'>
                     <div className='grid grid-cols-3 gap-4 h-full'>
                         <div className='col-span-2 flex flex-col items-center justify-center text-white h-full'>
-                            <div className='relative bg-gray-900 rounded-xl w-[750px] h-[422px] p-6'>
+                            <div 
+                                className='relative bg-gray-900 rounded-xl p-6'
+                                style={{width: videoDimensions.width, height: videoDimensions.height}}
+                            >
                                 <span className='absolute top-6 left-6 z-10'>
                                     Vaishnav Ghenge
                                 </span>
