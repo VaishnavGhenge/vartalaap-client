@@ -11,9 +11,8 @@ import { MicrophoneSlashIcon } from "@/cutom_icons/MicrophoneSlashIcon";
 import { IUserPreferences } from "@/utils/types";
 import { useRecoilState } from "recoil";
 import { localAudioTrack, localVideoTrack } from "@/webrtc/tracks";
-import { initializeVideoStream, releaseMediaStream } from "@/webrtc/utils";
+import { audioStreamTrackMap, getVideoStreamTrack, releaseMediaStream, turnOffCamera, turnOffMic, videoStreamTrackMap } from "@/webrtc/utils";
 import { videoConstraints, audioConstraints } from "@/utils/config";
-import { releaseVideoTracks } from "@/webrtc/utils";
 import { isMeetJoined } from "@/utils/globalStates";
 
 export default function MeetCall({
@@ -36,8 +35,13 @@ export default function MeetCall({
         useRecoilState(isMeetJoined);
 
     const init = () => {
-        if (localVideoTrackState) {
-            initializeVideoStream(localVideoRef.current, localVideoTrackState);
+        const localVideoTrackFromMap = getVideoStreamTrack();
+        if(localVideoTrackFromMap) {
+            const newVideoStream = new MediaStream([localVideoTrackFromMap]);
+            if(localVideoRef.current) {
+                localVideoRef.current.srcObject = newVideoStream;
+            }
+
             return;
         }
 
@@ -51,10 +55,15 @@ export default function MeetCall({
                 const audioTrack = localStream.getAudioTracks()[0];
 
                 setLocalVideoTrack(videoTrack);
-                initializeVideoStream(localVideoRef.current, videoTrack);
+                videoStreamTrackMap.set(videoTrack.id, videoTrack);
+
+                const newVideoStream = new MediaStream([videoTrack]);
+                if(localVideoRef.current) {
+                    localVideoRef.current.srcObject = newVideoStream;
+                }
 
                 setLocalAudioTrack(audioTrack);
-                releaseMediaStream(localStream);
+                audioStreamTrackMap.set(audioTrack.id, audioTrack);
             })
             .catch((err) => {
                 console.error("Error occured when initializinf media: ", err);
@@ -75,14 +84,17 @@ export default function MeetCall({
                     const videoTrack = localVideoStream.getVideoTracks()[0];
 
                     setLocalVideoTrack(videoTrack);
-                    initializeVideoStream(localVideoRef.current, videoTrack);
-                    releaseMediaStream(localVideoStream);
+                    videoStreamTrackMap.set(videoTrack.id, videoTrack);
+
+                    if(localVideoRef.current) {
+                        localVideoRef.current.srcObject = localVideoStream;
+                    }
 
                     updateUserPreferences({ cameraStatus: true });
                 });
         } else {
-            releaseVideoTracks(localVideoRef.current);
             setLocalVideoTrack(null);
+            turnOffCamera();
 
             updateUserPreferences({ cameraStatus: false });
         }
@@ -98,7 +110,7 @@ export default function MeetCall({
                     const audioTrack = localAudioStream.getAudioTracks()[0];
 
                     setLocalAudioTrack(audioTrack);
-                    releaseMediaStream(localAudioStream);
+                    audioStreamTrackMap.set(audioTrack.id, audioTrack);
 
                     updateUserPreferences({ micStatus: true });
                 })
@@ -109,14 +121,10 @@ export default function MeetCall({
                     );
                 });
         } else {
-            if (localAudioTrackState) {
-                localAudioTrackState.stop();
-                setLocalAudioTrack(null);
+            setLocalAudioTrack(null);
+            turnOffMic();
 
-                updateUserPreferences({ micStatus: false });
-            } else {
-                console.error("Audio track not found");
-            }
+            updateUserPreferences({ micStatus: false });
         }
     };
 

@@ -1,15 +1,5 @@
-function removeAllTracks(stream: MediaStream, trackLabel?: "video" | "audio") {
-    const tracks: MediaStreamTrack[] = trackLabel
-        ? trackLabel === "video"
-            ? stream.getVideoTracks()
-            : stream.getAudioTracks()
-        : stream.getTracks();
-
-    tracks.forEach((track) => {
-        track.stop();
-        stream?.removeTrack(track);
-    });
-}
+export const audioStreamTrackMap = new Map<string, MediaStreamTrack>();
+export const videoStreamTrackMap = new Map<string, MediaStreamTrack>();
 
 export function releaseMediaStream(stream: MediaStream | null) {
     if (stream) {
@@ -21,51 +11,31 @@ export function releaseMediaStream(stream: MediaStream | null) {
     }
 }
 
-export function releaseVideoTracks(videoRefCurrent: HTMLVideoElement | null) {
-    if (videoRefCurrent) {
-        const stream = videoRefCurrent.srcObject as MediaStream;
-
-        if (stream) {
-            const videoTracks = stream.getVideoTracks();
-            removeAllTracks(stream, "video");
-        }
-    }
-}
-
-export function releaseAudioTracks(stream: MediaStream | null) {
-    if (stream) {
-        const audioTracks = stream.getAudioTracks();
-        removeAllTracks(stream, "audio");
-    }
-}
-
-export function initializeVideoStream(
-    videoRefCurrent: HTMLVideoElement | null,
-    track: MediaStreamTrack
-) {
-    if (videoRefCurrent) {
-        let stream: MediaStream;
-
-        if (videoRefCurrent.srcObject) {
-            stream = videoRefCurrent.srcObject as MediaStream;
-        } else {
-            stream = new MediaStream();
-            videoRefCurrent.srcObject = stream;
-            streamMap.set(stream.id, stream);
-        }
-
-        // removeAllTracks(stream, "video");
-
-        stream.addTrack(track);
-    } else {
-        console.error("VideRef current not initialized yet");
-    }
-}
-
-export const streamMap = new Map<any, any>();
-
-export function printMap() {
-    streamMap.forEach((entry) => {
-        console.log(entry.getTracks());
+export function turnOffCamera() {
+    videoStreamTrackMap.forEach((track) => {
+        track.stop();
+        videoStreamTrackMap.delete(track.id);
     });
+}
+
+export function turnOffMic() {
+    audioStreamTrackMap.forEach((track) => {
+        track.stop();
+        audioStreamTrackMap.delete(track.id);
+    });
+}
+
+export function getVideoStreamTrack(): MediaStreamTrack | null {
+    let firstTrack: MediaStreamTrack | null = null;
+
+    videoStreamTrackMap.forEach((videoTrack) => {
+        if(!firstTrack) {
+            firstTrack = videoTrack;
+        } else {
+            videoTrack.stop();
+            videoStreamTrackMap.delete(videoTrack.id);
+        }
+    });
+
+    return firstTrack;
 }

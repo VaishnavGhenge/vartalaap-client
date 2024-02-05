@@ -10,11 +10,11 @@ import {
 import { MicrophoneSlashIcon } from "@/cutom_icons/MicrophoneSlashIcon";
 import { useRecoilState } from "recoil";
 import {
-    initializeVideoStream,
-    printMap,
-    streamMap,
     releaseMediaStream,
-    releaseVideoTracks,
+    audioStreamTrackMap,
+    turnOffMic,
+    videoStreamTrackMap,
+    turnOffCamera,
 } from "@/webrtc/utils";
 import { localAudioTrack, localVideoTrack } from "@/webrtc/tracks";
 import { isMeetJoined } from "@/utils/globalStates";
@@ -59,20 +59,24 @@ export default function JoinMeet({
         window.navigator.mediaDevices
             .getUserMedia(mediaConstraints)
             .then((localStream) => {
-                streamMap.set(localStream.id, localStream);
-
                 const videoTrack = localStream.getVideoTracks()[0];
                 const audioTrack = localStream.getAudioTracks()[0];
 
+                const videoStream = new MediaStream([videoTrack]);
+                if(videoRef.current) {
+                    const prevStream = videoRef.current.srcObject as MediaStream;
+                    releaseMediaStream(prevStream);
+                    videoRef.current.srcObject = videoStream;
+                }
+
                 setLocalVideoTrack(videoTrack);
-                initializeVideoStream(videoRef.current, videoTrack);
+                videoStreamTrackMap.set(videoTrack.id, videoTrack);
 
                 setLocalAudioTrack(audioTrack);
-
-                releaseMediaStream(localStream);
+                audioStreamTrackMap.set(audioTrack.id, audioTrack);
             })
             .catch((err) => {
-                console.error("Error occured when initializinf media: ", err);
+                console.error("Error occured when initializing media: ", err);
             });
     }, []);
 
@@ -82,24 +86,29 @@ export default function JoinMeet({
 
     const toggleCameraButton = (updatedCameraStatus: boolean) => {
         if (updatedCameraStatus && !localVideoTrackState) {
+            videoStreamTrackMap.forEach((track) => console.log(track));
             window.navigator.mediaDevices
                 .getUserMedia({
                     video: videoConstraints,
                 })
                 .then((localVideoStream) => {
-                    streamMap.set(localVideoStream.id, localVideoStream);
-
                     const videoTrack = localVideoStream.getVideoTracks()[0];
 
+                    if(videoRef.current) {
+                        const prevStream = videoRef.current.srcObject as MediaStream;
+                        releaseMediaStream(prevStream);
+                        
+                        videoRef.current.srcObject = localVideoStream;
+                    }
+
                     setLocalVideoTrack(videoTrack);
-                    initializeVideoStream(videoRef.current, videoTrack);
+                    videoStreamTrackMap.set(videoTrack.id, videoTrack);
 
                     updateUserPreferences({ cameraStatus: true });
-                    releaseMediaStream(localVideoStream);
                 });
         } else {
-            releaseVideoTracks(videoRef.current);
             setLocalVideoTrack(null);
+            turnOffCamera();
 
             updateUserPreferences({ cameraStatus: false });
         }
@@ -112,10 +121,10 @@ export default function JoinMeet({
                     audio: true,
                 })
                 .then((localAudioStream) => {
-                    streamMap.set(localAudioStream.id, localAudioStream);
-
                     const audioTrack = localAudioStream.getAudioTracks()[0];
+
                     setLocalAudioTrack(audioTrack);
+                    audioStreamTrackMap.set(audioTrack.id, audioTrack);
 
                     updateUserPreferences({ micStatus: true });
                     releaseMediaStream(localAudioStream);
@@ -127,16 +136,10 @@ export default function JoinMeet({
                     );
                 });
         } else {
-            printMap();
+            setLocalAudioTrack(null);
+            turnOffMic();
 
-            if (localAudioTrackState) {
-                localAudioTrackState.stop();
-                setLocalAudioTrack(null);
-
-                updateUserPreferences({ micStatus: false });
-            } else {
-                console.error("Audio track not found");
-            }
+            updateUserPreferences({ micStatus: false });
         }
     };
 
