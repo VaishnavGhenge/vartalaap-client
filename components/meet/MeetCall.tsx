@@ -11,52 +11,57 @@ import { MicrophoneSlashIcon } from "@/cutom_icons/MicrophoneSlashIcon";
 import { IUserPreferences } from "@/utils/types";
 import { useRecoilState } from "recoil";
 import { localAudioTrack, localVideoTrack } from "@/webrtc/tracks";
-import { audioStreamTrackMap, getLocalVideoStreamTrack, releaseMediaStream, turnOffCamera, turnOffMic, videoStreamTrackMap } from "@/webrtc/utils";
+import {
+    audioStreamTrackMap,
+    getLocalVideoStreamTrack,
+    releaseMediaStream,
+    turnOffCamera,
+    turnOffMic,
+    videoStreamTrackMap,
+} from "@/webrtc/utils";
 import { videoConstraints, audioConstraints } from "@/utils/config";
-import { isMeetJoined } from "@/utils/globalStates";
+import { isMeetJoined, currentPeer } from "@/utils/globalStates";
+import { Meet } from "@/webrtc/webrtc";
 
 export default function MeetCall({
     meetCode,
     userPreferences,
-    updateUserPreferences,
+    updateUserPreferences
 }: {
     meetCode: string;
     userPreferences: IUserPreferences;
     updateUserPreferences: Function;
 }) {
     const localVideoRef = useRef<HTMLVideoElement | null>(null);
+    const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
 
-    const [localVideoTrackState, setLocalVideoTrack] =
-        useRecoilState(localVideoTrack);
-    const [localAudioTrackState, setLocalAudioTrack] =
-        useRecoilState(localAudioTrack);
-
-    const [isMeetJoinedState, setIsMeetJoinedState] =
-        useRecoilState(isMeetJoined);
+    const [localVideoTrackState, setLocalVideoTrack] = useRecoilState(localVideoTrack);
+    const [localAudioTrackState, setLocalAudioTrack] = useRecoilState(localAudioTrack);
+    const [peerState, setPeer] = useRecoilState(currentPeer);
+    const [isMeetJoinedState, setIsMeetJoinedState] = useRecoilState(isMeetJoined);
+    const [meet, setMeet] = useState<Meet>(new Meet());
 
     const init = () => {
         const localVideoTrackFromMap = getLocalVideoStreamTrack();
 
-        if(localVideoTrackFromMap) {
+        if (localVideoTrackFromMap) {
             const newVideoStream = new MediaStream([localVideoTrackFromMap]);
-            if(localVideoRef.current) {
+            if (localVideoRef.current) {
                 localVideoRef.current.srcObject = newVideoStream;
             }
-
-            return;
         }
 
         let mediaConstraints: MediaStreamConstraints = {};
 
-        if(userPreferences.cameraStatus) {
+        if (userPreferences.cameraStatus) {
             mediaConstraints.video = videoConstraints;
         }
 
-        if(userPreferences.micStatus) {
+        if (userPreferences.micStatus) {
             mediaConstraints.audio = audioConstraints;
         }
 
-        if(Object.keys(mediaConstraints).length <= 0) {
+        if (Object.keys(mediaConstraints).length <= 0) {
             return;
         }
 
@@ -65,23 +70,24 @@ export default function MeetCall({
             .then((localStream) => {
                 const videoStreamTracks = localStream.getVideoTracks();
 
-                if(videoStreamTracks.length >= 1) {
+                if (videoStreamTracks.length >= 1) {
                     const videoTrack = localStream.getVideoTracks()[0];
 
                     const videoStream = new MediaStream([videoTrack]);
-                    if(localVideoRef.current) {
-                        const prevStream = localVideoRef.current.srcObject as MediaStream;
+                    if (localVideoRef.current) {
+                        const prevStream = localVideoRef.current
+                            .srcObject as MediaStream;
                         releaseMediaStream(prevStream);
 
                         localVideoRef.current.srcObject = videoStream;
                     }
-    
+
                     setLocalVideoTrack(videoTrack);
                     videoStreamTrackMap.set(videoTrack.id, videoTrack);
                 }
-                
+
                 const audiStreamTracks = localStream.getAudioTracks();
-                if(audiStreamTracks.length >= 1) {
+                if (audiStreamTracks.length >= 1) {
                     const audioTrack = localStream.getAudioTracks()[0];
 
                     setLocalAudioTrack(audioTrack);
@@ -93,8 +99,21 @@ export default function MeetCall({
             });
     };
 
+    const startMeet = () => {
+        meet.signalingChannel.onopen = () => {
+            if(peerState.owner) {
+                meet.initiateMeet(meetCode, peerState);
+            }
+        }
+    }
+
+    const joinMeet = () => {}
+
     useEffect(() => {
         init();
+        
+
+        startMeet();
     }, []);
 
     const toggleCameraButton = (updatedCameraStatus: boolean) => {
@@ -109,8 +128,9 @@ export default function MeetCall({
                     setLocalVideoTrack(videoTrack);
                     videoStreamTrackMap.set(videoTrack.id, videoTrack);
 
-                    if(localVideoRef.current) {
-                        const prevVideoStream = localVideoRef.current.srcObject as MediaStream;
+                    if (localVideoRef.current) {
+                        const prevVideoStream = localVideoRef.current
+                            .srcObject as MediaStream;
                         releaseMediaStream(prevVideoStream);
 
                         localVideoRef.current.srcObject = localVideoStream;
@@ -212,6 +232,13 @@ export default function MeetCall({
                             </span>
 
                             <div className='absolute top-0 left-0 w-full h-full rounded-xl bg-gray-600'></div>
+
+                            <video
+                                hidden={!userPreferences.cameraStatus}
+                                ref={remoteVideoRef}
+                                className='absolute top-0 left-0 w-full h-full rounded-xl'
+                                autoPlay
+                            ></video>
                         </div>
 
                         <div className='relative bg-gray-900 rounded-xl w-[350px] h-[198px] p-4'>

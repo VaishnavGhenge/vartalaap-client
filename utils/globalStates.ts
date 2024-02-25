@@ -1,4 +1,5 @@
 import { atom } from "recoil";
+import { IPeer } from "./types";
 
 export const isMeetJoined = atom({
     key: "isMeetJoined",
@@ -12,3 +13,12 @@ export const userPreferences = atom({
         micStatus: true,
     }
 })
+
+export const currentPeer = atom<IPeer>({
+    key: "peerState",
+    default: {
+        peerId: null,
+        name: "Vaishnav",
+        owner: false,
+    }
+});

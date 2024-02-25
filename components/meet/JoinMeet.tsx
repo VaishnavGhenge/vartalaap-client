@@ -18,7 +18,7 @@ import {
     videoDimensionReducer,
 } from "@/webrtc/utils";
 import { localAudioTrack, localVideoTrack } from "@/webrtc/tracks";
-import { isMeetJoined } from "@/utils/globalStates";
+import { currentPeer, isMeetJoined } from "@/utils/globalStates";
 import { IUserPreferences } from "@/utils/types";
 import { audioConstraints, videoConstraints } from "@/utils/config";
 
@@ -33,10 +33,9 @@ export default function JoinMeet({
 }) {
     const videoRef = useRef<HTMLVideoElement>(null);
 
-    const [localAudioTrackState, setLocalAudioTrack] =
-        useRecoilState(localAudioTrack);
-    const [localVideoTrackState, setLocalVideoTrack] =
-        useRecoilState(localVideoTrack);
+    const [localAudioTrackState, setLocalAudioTrack] = useRecoilState(localAudioTrack);
+    const [localVideoTrackState, setLocalVideoTrack] = useRecoilState(localVideoTrack);
+    const [currentPeerState, setCurrentPeer] = useRecoilState(currentPeer);
 
     const [videoDimensions, dispatchVideoDimensions] = useReducer(videoDimensionReducer, {width: 740, height: 416});
 
@@ -206,7 +205,7 @@ export default function JoinMeet({
         if (videoRef.current) {
             const stream = videoRef.current.srcObject as MediaStream;
             stream.getTracks().forEach((track) => {
-                if (!(track.id === localVideoTrackState?.id)) {
+                if (track.id !== localVideoTrackState?.id) {
                     track.stop();
                 }
             });
@@ -215,12 +214,32 @@ export default function JoinMeet({
         }
     };
 
+    const onStartMeetButtonClick = () => {
+        if(videoRef.current) {
+            const stream = videoRef.current.srcObject as MediaStream;
+            stream.getTracks().forEach((track) => {
+                if (track.id !== localVideoTrackState?.id) {
+                    if (track.id !== localVideoTrackState?.id) {
+                        track.stop();
+                    }
+                }
+            });
+
+            setCurrentPeer({
+                name: "Meet Starter",
+                peerId: 1,
+                owner: true,
+            });
+            setIsMeetJoined(true);
+        }
+    }
+
     return (
         <div>
             <Navbar />
-            <main className='h-screen mt-[-82px]'>
+            <main className='mt-[82px]'>
                 <div className='container mx-auto h-full'>
-                    <div className='grid grid-cols-3 gap-4 h-full'>
+                    <div className='grid grid-cols-2 md:grid-cols-3 gap-4 h-full'>
                         <div className='col-span-2 flex flex-col items-center justify-center text-white h-full'>
                             <div 
                                 className='relative bg-gray-900 rounded-xl p-6'
@@ -268,6 +287,13 @@ export default function JoinMeet({
                                     onClick={onJoinButtonClick}
                                 >
                                     Join Now
+                                </button>
+
+                                <button
+                                    className="bg-sky-700 rounded-full text-white px-6 py-3 hover:cursor-pointer hover:bg-sky-800 transition duration-300"
+                                    onClick={onStartMeetButtonClick}
+                                >
+                                    Start Meet
                                 </button>
                             </div>
                         </div>

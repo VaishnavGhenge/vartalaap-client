@@ -1,10 +1,12 @@
 "use client";
 
+import { currentPeer } from "@/utils/globalStates";
 import Navbar from "../components/Navbar";
 import { IBM_Plex_Sans_Devanagari } from "next/font/google";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ChangeEvent, useState } from "react";
+import { useRecoilState } from "recoil";
 
 const ibmPlexSansDevanagari = IBM_Plex_Sans_Devanagari({
     weight: "500",
@@ -25,9 +27,13 @@ export default function Home() {
         }
     };
 
+    const onNewMeetButtonClick = () => {
+        router.push(`/${meetCode}`);
+    };
+
     const onJoinButtonClick = () => {
         router.push(`/${meetCode}`);
-    }
+    };
 
     return (
         <div>
@@ -63,6 +69,7 @@ export default function Home() {
                                 <button
                                     className='bg-sky-700 px-4 py-2 rounded text-white hover:bg-sky-800 transition duration-300'
                                     type='button'
+                                    onClick={onNewMeetButtonClick}
                                 >
                                     <span>New meeting</span>
                                 </button>

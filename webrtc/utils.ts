@@ -1,3 +1,5 @@
+import { IVideoDimensionState, IVideoDimesionAction } from "@/utils/types";
+
 export const audioStreamTrackMap = new Map<string, MediaStreamTrack>();
 export const videoStreamTrackMap = new Map<string, MediaStreamTrack>();
 
@@ -40,14 +42,12 @@ export function getLocalVideoStreamTrack(): MediaStreamTrack | null {
     return firstTrack;
 }
 
-export function videoDimensionReducer(state: {width: number, height: number}, action: {type: "width" | "height", value: number}) {
+export function videoDimensionReducer(state: IVideoDimensionState, action: IVideoDimesionAction) {
     const aspectRatio = 16 / 9;
 
     if (action.type === "width") {
         // Calculate new height based on the desired aspect ratio (e.g., 16:9)
         const newHeight = Math.round(action.value / aspectRatio);
-
-        console.log(newHeight)
 
         // Return the updated state with the new width and height
         return { width: action.value, height: newHeight };
@@ -58,4 +58,21 @@ export function videoDimensionReducer(state: {width: number, height: number}, ac
         // If the action is related to height, update the height directly
         return { width: newWidth, height: action.value };
     }
+
+    return state;
+}
+
+export async function createOffer(localConnection: RTCPeerConnection) {
+    const offer = await localConnection.createOffer();
+    await localConnection.setLocalDescription(new RTCSessionDescription(offer));
+
+    return offer;
+}
+
+export async function createAnswer(localConnection: RTCPeerConnection, offer: any) {
+    await localConnection.setRemoteDescription(offer);
+    const answer = await localConnection.createAnswer();
+    await localConnection.setLocalDescription(new RTCSessionDescription(answer));
+
+    return answer;
 }
