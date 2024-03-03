@@ -1,12 +1,12 @@
 "use client";
 
-import { currentPeer } from "@/utils/globalStates";
 import Navbar from "../components/Navbar";
 import { IBM_Plex_Sans_Devanagari } from "next/font/google";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
-import { ChangeEvent, useState } from "react";
-import { useRecoilState } from "recoil";
+import { ChangeEvent, useCallback, useState } from "react";
+import { RecoilRoot } from "recoil";
+import { NewMeetingButton } from "@/components/NewMeetButton";
+import { JoinMeetButton } from "@/components/JoinMeetButton";
 
 const ibmPlexSansDevanagari = IBM_Plex_Sans_Devanagari({
     weight: "500",
@@ -16,7 +16,6 @@ const ibmPlexSansDevanagari = IBM_Plex_Sans_Devanagari({
 export default function Home() {
     const [joinButtonDisabled, setJoinButtonDisabled] = useState(true);
     const [meetCode, setMeetCode] = useState("");
-    const router = useRouter();
 
     const onMeetCodeChange = (event: ChangeEvent<HTMLInputElement>) => {
         setMeetCode(event.target.value);
@@ -27,15 +26,8 @@ export default function Home() {
         }
     };
 
-    const onNewMeetButtonClick = () => {
-        router.push(`/${meetCode}`);
-    };
-
-    const onJoinButtonClick = () => {
-        router.push(`/${meetCode}`);
-    };
-
     return (
+        <RecoilRoot>
         <div>
             <Navbar></Navbar>
             <main className='h-full'>
@@ -66,13 +58,7 @@ export default function Home() {
                             </p>
 
                             <div className='flex gap-4'>
-                                <button
-                                    className='bg-sky-700 px-4 py-2 rounded text-white hover:bg-sky-800 transition duration-300'
-                                    type='button'
-                                    onClick={onNewMeetButtonClick}
-                                >
-                                    <span>New meeting</span>
-                                </button>
+                                <NewMeetingButton meetId={meetCode} />
                                 <div className='flex gap-2'>
                                     <input
                                         value={meetCode}
@@ -82,14 +68,7 @@ export default function Home() {
                                         name='meet-code'
                                         placeholder='Enter meeting code or link'
                                     />
-                                    <button
-                                        disabled={joinButtonDisabled}
-                                        type='button'
-                                        className='text-sky-700 px-3 py-2 rounded hover:bg-sky-100 hover:cursor-pointer disabled:text-gray-400'
-                                        onClick={onJoinButtonClick}
-                                    >
-                                        Join
-                                    </button>
+                                    <JoinMeetButton meetId={meetCode} />
                                 </div>
                             </div>
                         </div>
@@ -97,5 +76,6 @@ export default function Home() {
                 </div>
             </main>
         </div>
+        </RecoilRoot>
     );
 }

@@ -1,5 +1,6 @@
 import { atom } from "recoil";
 import { IPeer } from "./types";
+import { Meet } from "@/webrtc/webrtc";
 
 export const isMeetJoined = atom({
     key: "isMeetJoined",
@@ -12,7 +13,7 @@ export const userPreferences = atom({
         cameraStatus: true,
         micStatus: true,
     }
-})
+});
 
 export const currentPeer = atom<IPeer>({
     key: "peerState",
@@ -21,4 +22,9 @@ export const currentPeer = atom<IPeer>({
         name: "Vaishnav",
         owner: false,
     }
+});
+
+export const meet = atom<Meet>({
+    key: "meet",
+    default: new Meet(),
 });

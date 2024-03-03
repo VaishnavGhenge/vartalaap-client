@@ -16,7 +16,7 @@ export interface IVideoDimesionAction {
 export interface ISignalingMessage {
     type: string;
     meetId?: string;
-    peer?: IPeer;
+    sessionId: string;
     offer?: any;
     answer?: any;
 }

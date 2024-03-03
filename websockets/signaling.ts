@@ -20,16 +20,14 @@ export class SignalingChannel extends WebSocket {
 
     private handleMessage(event: MessageEvent) {
         console.log("Received message:", event.data);
-        // Implement your message handling logic here
     }
 
     private handleError(event: Event) {
-        console.error("WebSocket error:", event);
+        console.error("WebSocket error", event.type);
     }
 
     sendMessage(messageObj: ISignalingMessage) {
         try {
-            console.log(WebSocket.OPEN);
             if (this.readyState == WebSocket.OPEN) {
                 this.send(JSON.stringify(messageObj));
             } else {
@@ -40,9 +38,3 @@ export class SignalingChannel extends WebSocket {
         }
     }
 }
-
-
-// Initialize WebRTC
-const configuration = {
-    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-};

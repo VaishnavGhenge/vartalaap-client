@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
     MicrophoneIcon,
     VideoCameraIcon,
@@ -39,7 +39,7 @@ export default function MeetCall({
     const [localAudioTrackState, setLocalAudioTrack] = useRecoilState(localAudioTrack);
     const [peerState, setPeer] = useRecoilState(currentPeer);
     const [isMeetJoinedState, setIsMeetJoinedState] = useRecoilState(isMeetJoined);
-    const [meet, setMeet] = useState<Meet>(new Meet());
+    const [meet, setMeet] = useState<Meet | null>(null);
 
     const init = () => {
         const localVideoTrackFromMap = getLocalVideoStreamTrack();
@@ -99,21 +99,21 @@ export default function MeetCall({
             });
     };
 
-    const startMeet = () => {
-        meet.signalingChannel.onopen = () => {
-            if(peerState.owner) {
-                meet.initiateMeet(meetCode, peerState);
-            }
-        }
-    }
-
-    const joinMeet = () => {}
-
     useEffect(() => {
         init();
-        
 
-        startMeet();
+        const meet = new Meet(meetCode);
+
+        const handleBeforeUnload = () => {
+            meet.leaveMeet();
+        }
+
+        window.addEventListener('beforeunload', handleBeforeUnload);
+
+        return () => {
+            meet.leaveMeet();
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+        }
     }, []);
 
     const toggleCameraButton = (updatedCameraStatus: boolean) => {

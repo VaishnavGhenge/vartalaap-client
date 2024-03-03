@@ -288,13 +288,6 @@ export default function JoinMeet({
                                 >
                                     Join Now
                                 </button>
-
-                                <button
-                                    className="bg-sky-700 rounded-full text-white px-6 py-3 hover:cursor-pointer hover:bg-sky-800 transition duration-300"
-                                    onClick={onStartMeetButtonClick}
-                                >
-                                    Start Meet
-                                </button>
                             </div>
                         </div>
                     </div>
