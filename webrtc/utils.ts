@@ -1,4 +1,4 @@
-import { IVideoDimensionState, IVideoDimesionAction } from "@/utils/types";
+import { IVideoDimensionState, IVideoDimensionAction } from "@/utils/types";
 
 export const audioStreamTrackMap = new Map<string, MediaStreamTrack>();
 export const videoStreamTrackMap = new Map<string, MediaStreamTrack>();
@@ -42,7 +42,7 @@ export function getLocalVideoStreamTrack(): MediaStreamTrack | null {
     return firstTrack;
 }
 
-export function videoDimensionReducer(state: IVideoDimensionState, action: IVideoDimesionAction) {
+export function videoDimensionReducer(state: IVideoDimensionState, action: IVideoDimensionAction) {
     const aspectRatio = 16 / 9;
 
     if (action.type === "width") {

@@ -1,16 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {useCallback, useEffect, useRef, useState} from "react";
 import {
     MicrophoneIcon,
     VideoCameraIcon,
     VideoCameraSlashIcon,
     PhoneXMarkIcon,
 } from "@heroicons/react/24/outline";
-import { MicrophoneSlashIcon } from "@/cutom_icons/MicrophoneSlashIcon";
-import { IUserPreferences } from "@/utils/types";
-import { useRecoilState } from "recoil";
-import { localAudioTrack, localVideoTrack } from "@/webrtc/tracks";
+import {MicrophoneSlashIcon} from "@/cutom_icons/MicrophoneSlashIcon";
+import {IUserPreferences} from "@/utils/types";
+import {useRecoilState} from "recoil";
+import {localAudioTrack, localVideoTrack} from "@/webrtc/tracks";
 import {
     audioStreamTrackMap,
     getLocalVideoStreamTrack,
@@ -19,15 +19,17 @@ import {
     turnOffMic,
     videoStreamTrackMap,
 } from "@/webrtc/utils";
-import { videoConstraints, audioConstraints } from "@/utils/config";
-import { isMeetJoined, currentPeer } from "@/utils/globalStates";
-import { Meet } from "@/webrtc/webrtc";
+import {videoConstraints, audioConstraints} from "@/utils/config";
+import {isMeetJoined, currentPeer} from "@/utils/globalStates";
+import {Meet} from "@/webrtc/webrtc";
+import {MicButton} from "@/components/vartalaap-elements/MicButton";
+import {CameraButton} from "@/components/vartalaap-elements/CameraButton";
 
 export default function MeetCall({
-    meetCode,
-    userPreferences,
-    updateUserPreferences
-}: {
+                                     meetCode,
+                                     userPreferences,
+                                     updateUserPreferences
+                                 }: {
     meetCode: string;
     userPreferences: IUserPreferences;
     updateUserPreferences: Function;
@@ -37,11 +39,9 @@ export default function MeetCall({
 
     const [localVideoTrackState, setLocalVideoTrack] = useRecoilState(localVideoTrack);
     const [localAudioTrackState, setLocalAudioTrack] = useRecoilState(localAudioTrack);
-    const [peerState, setPeer] = useRecoilState(currentPeer);
-    const [isMeetJoinedState, setIsMeetJoinedState] = useRecoilState(isMeetJoined);
     const [meet, setMeet] = useState<Meet | null>(null);
 
-    const init = () => {
+    const init = useCallback(() => {
         const localVideoTrackFromMap = getLocalVideoStreamTrack();
 
         if (localVideoTrackFromMap) {
@@ -97,24 +97,12 @@ export default function MeetCall({
             .catch((err) => {
                 console.error("Error occured when initializinf media: ", err);
             });
-    };
+    }, [meetCode]);
 
     useEffect(() => {
         init();
 
-        const meet = new Meet(meetCode);
-
-        const handleBeforeUnload = () => {
-            meet.leaveMeet();
-        }
-
-        window.addEventListener('beforeunload', handleBeforeUnload);
-
-        return () => {
-            meet.leaveMeet();
-            window.removeEventListener('beforeunload', handleBeforeUnload);
-        }
-    }, []);
+    }, [init]);
 
     const toggleCameraButton = (updatedCameraStatus: boolean) => {
         if (updatedCameraStatus && !localVideoTrackState) {
@@ -136,13 +124,13 @@ export default function MeetCall({
                         localVideoRef.current.srcObject = localVideoStream;
                     }
 
-                    updateUserPreferences({ cameraStatus: true });
+                    updateUserPreferences({cameraStatus: true});
                 });
         } else {
             setLocalVideoTrack(null);
             turnOffCamera();
 
-            updateUserPreferences({ cameraStatus: false });
+            updateUserPreferences({cameraStatus: false});
         }
     };
 
@@ -158,11 +146,11 @@ export default function MeetCall({
                     setLocalAudioTrack(audioTrack);
                     audioStreamTrackMap.set(audioTrack.id, audioTrack);
 
-                    updateUserPreferences({ micStatus: true });
+                    updateUserPreferences({micStatus: true});
                 })
                 .catch((err) => {
                     console.error(
-                        "Error while initializinf audio stream: ",
+                        "Error while initializing audio stream: ",
                         err
                     );
                 });
@@ -170,7 +158,7 @@ export default function MeetCall({
             setLocalAudioTrack(null);
             turnOffMic();
 
-            updateUserPreferences({ micStatus: false });
+            updateUserPreferences({micStatus: false});
         }
     };
 
@@ -179,14 +167,14 @@ export default function MeetCall({
             onClick={() => toggleCameraButton(!userPreferences.cameraStatus)}
             className='rounded-full w-[46px] h-[46px] border border-white flex justify-center items-center hover:cursor-pointer hover:bg-slate-400 transition duration-300'
         >
-            <VideoCameraIcon className='w-[23px] h-[23px]' />
+            <VideoCameraIcon className='w-[23px] h-[23px]'/>
         </div>
     ) : (
         <div
             onClick={() => toggleCameraButton(!userPreferences.cameraStatus)}
             className='rounded-full w-[46px] h-[46px] bg-red-600 flex justify-center items-center hover:cursor-pointer hover:bg-red-700 transition duration-300'
         >
-            <VideoCameraSlashIcon className='w-[23px] h-[23px]' />
+            <VideoCameraSlashIcon className='w-[23px] h-[23px]'/>
         </div>
     );
 
@@ -195,14 +183,14 @@ export default function MeetCall({
             onClick={() => toggleMicButton(!userPreferences.micStatus)}
             className='rounded-full w-[46px] h-[46px] border border-white flex justify-center items-center hover:cursor-pointer hover:bg-slate-400 transition duration-300'
         >
-            <MicrophoneIcon className='w-[23px] h-[23px]' />
+            <MicrophoneIcon className='w-[23px] h-[23px]'/>
         </div>
     ) : (
         <div
             onClick={() => toggleMicButton(!userPreferences.micStatus)}
             className='rounded-full w-[46px] h-[46px] bg-red-600 flex justify-center items-center hover:cursor-pointer hover:bg-red-700 transition duration-300'
         >
-            <MicrophoneSlashIcon className='w-[23px] h-[23px]' />
+            <MicrophoneSlashIcon className='w-[23px] h-[23px]'/>
         </div>
     );
 
@@ -253,13 +241,21 @@ export default function MeetCall({
 
                 <div className='bg-slate-800 h-[80px]'>
                     <div className='flex gap-4 justify-center items-center h-full text-white'>
-                        {micButton}
-                        {cameraButton}
+                        <MicButton
+                            onClickFn={toggleMicButton}
+                            action={userPreferences.micStatus ? "open" : "close"}
+                        />
+                        <CameraButton
+                            onClickFn={toggleCameraButton}
+                            action={userPreferences.cameraStatus ? "open" : "close"}
+                        />
 
                         {/* end call button */}
-                        <div className='absolute z-10 invisible inline-block px-3 py-2 text-sm font-medium text-white bg-gray-900 rounded-lg shadow-sm opacity-0 tooltip dark:bg-gray-700'></div>
-                        <div className='rounded-full w-[46px] h-[46px] bg-red-600 flex justify-center items-center hover:cursor-pointer hover:bg-red-700 transition duration-300'>
-                            <PhoneXMarkIcon className='w-[23px] h-[23px]' />
+                        <div
+                            className='absolute z-10 invisible inline-block px-3 py-2 text-sm font-medium text-white bg-gray-900 rounded-lg shadow-sm opacity-0 tooltip dark:bg-gray-700'></div>
+                        <div
+                            className='rounded-full w-[46px] h-[46px] bg-red-600 flex justify-center items-center hover:cursor-pointer hover:bg-red-700 transition duration-300'>
+                            <PhoneXMarkIcon className='w-[23px] h-[23px]'/>
                         </div>
                     </div>
                 </div>

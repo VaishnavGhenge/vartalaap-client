@@ -6,15 +6,14 @@ import { MeetEvents } from "./config";
 export class Meet {
     private localConnection = new RTCPeerConnection(MEET_CONFIG);
     private dataChannel = this.localConnection.createDataChannel("vartalaap-channel");
-    isCreator: boolean = false;
-    private sessionId: string | null = null;
     private signalingChannel = new SignalingChannel();
+
+    public isCreator: boolean = false;
+    public sessionId: string | null = null;
 
     constructor() {
         this.signalingChannel.onopen = (event) => {
             console.log("WebSocket connection opened!");
-
-            console.log(event);
         };
 
         this.signalingChannel.onerror = (err) => {
@@ -58,10 +57,10 @@ export class Meet {
     onSession(data: ISignalingMessage) {
         this.sessionId = data.sessionId;
 
-        console.log("session id: ", this.sessionId);
+        console.log("session id: ", data.sessionId);
 
         if(window !== undefined) {
-            localStorage.setItem("sessionId", this.sessionId);
+            localStorage.setItem("sessionId", data.sessionId || "");
         }
     }
 

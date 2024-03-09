@@ -1,3 +1,5 @@
+import {Meet} from "@/webrtc/webrtc";
+
 export enum MeetEvents {
     REQUEST_SESSION = "request-session",
     SESSION_RESPONSE = "session-response",

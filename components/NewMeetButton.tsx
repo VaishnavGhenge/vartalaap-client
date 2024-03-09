@@ -1,29 +1,31 @@
-import { useCallback } from "react";
-import { useRecoilValue } from "recoil";
-import { meet } from "@/utils/globalStates";
-import { useRouter } from "next/navigation";
+import {useCallback} from "react";
+import {useRouter} from "next/navigation";
+import {httpServerUri} from "@/utils/config";
 
-interface IProps {
-    meetId: string;
-}
-
-export const NewMeetingButton = ({ meetId }: IProps) => {
+export const NewMeetingButton = () => {
     const router = useRouter();
-    const meetState = useRecoilValue(meet);
 
     const onNewMeetButtonClick = useCallback(() => {
-        meetState.requestSession(true);
-
-        router.push(`/${meetId}`);
-    }, [meetState, meetId, router]);
+        fetch(`${httpServerUri}/get-meetId`, {
+            method: "POST",
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        })
+            .then((response) => response.json())
+            .then((data) => {
+                const meetId = data.meetId;
+                router.push(`/${meetId}?role=creating`);
+            });
+    }, []);
 
     return (
         <button
-        className='bg-sky-700 px-4 py-2 rounded text-white hover:bg-sky-800 transition duration-300'
-        type='button'
-        onClick={onNewMeetButtonClick}
-    >
-        <span>New meeting</span>
-    </button>
+            className='bg-sky-700 px-4 py-2 rounded text-white hover:bg-sky-800 transition duration-300'
+            type='button'
+            onClick={onNewMeetButtonClick}
+        >
+            <span>New meeting</span>
+        </button>
     )
 }

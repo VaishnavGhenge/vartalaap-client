@@ -1,12 +1,11 @@
 "use client";
 
 import Navbar from "../components/Navbar";
-import { IBM_Plex_Sans_Devanagari } from "next/font/google";
+import {IBM_Plex_Sans_Devanagari} from "next/font/google";
 import Image from "next/image";
-import { ChangeEvent, useCallback, useState } from "react";
-import { RecoilRoot } from "recoil";
-import { NewMeetingButton } from "@/components/NewMeetButton";
-import { JoinMeetButton } from "@/components/JoinMeetButton";
+import {ChangeEvent, useState} from "react";
+import {NewMeetingButton} from "@/components/NewMeetButton";
+import {JoinMeetButton} from "@/components/JoinMeetButton";
 
 const ibmPlexSansDevanagari = IBM_Plex_Sans_Devanagari({
     weight: "500",
@@ -27,7 +26,6 @@ export default function Home() {
     };
 
     return (
-        <RecoilRoot>
         <div>
             <Navbar></Navbar>
             <main className='h-full'>
@@ -58,7 +56,7 @@ export default function Home() {
                             </p>
 
                             <div className='flex gap-4'>
-                                <NewMeetingButton meetId={meetCode} />
+                                <NewMeetingButton meetId={meetCode}/>
                                 <div className='flex gap-2'>
                                     <input
                                         value={meetCode}
@@ -68,7 +66,7 @@ export default function Home() {
                                         name='meet-code'
                                         placeholder='Enter meeting code or link'
                                     />
-                                    <JoinMeetButton meetId={meetCode} />
+                                    <JoinMeetButton meetId={meetCode}/>
                                 </div>
                             </div>
                         </div>
@@ -76,6 +74,5 @@ export default function Home() {
                 </div>
             </main>
         </div>
-        </RecoilRoot>
     );
 }

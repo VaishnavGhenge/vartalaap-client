@@ -8,7 +8,7 @@ export interface IVideoDimensionState {
     height: number;
 }
 
-export interface IVideoDimesionAction {
+export interface IVideoDimensionAction {
     type: "height" | "width";
     value: number;
 }
@@ -22,7 +22,7 @@ export interface ISignalingMessage {
 }
 
 export interface IPeer {
-    peerId: number | null;
+    sessionId: string | null;
     name: string;
     owner: boolean;
 }

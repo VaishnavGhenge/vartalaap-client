@@ -1,14 +1,8 @@
 "use client";
 
 import Navbar from "@/components/Navbar";
-import { useState, useRef, useEffect, useCallback, useReducer } from "react";
-import {
-    VideoCameraSlashIcon,
-    MicrophoneIcon,
-    VideoCameraIcon,
-} from "@heroicons/react/24/outline";
-import { MicrophoneSlashIcon } from "@/cutom_icons/MicrophoneSlashIcon";
-import { useRecoilState } from "recoil";
+import {useRef, useEffect, useCallback, useReducer} from "react";
+import {useRecoilState} from "recoil";
 import {
     releaseMediaStream,
     audioStreamTrackMap,
@@ -17,44 +11,42 @@ import {
     turnOffCamera,
     videoDimensionReducer,
 } from "@/webrtc/utils";
-import { localAudioTrack, localVideoTrack } from "@/webrtc/tracks";
-import { currentPeer, isMeetJoined } from "@/utils/globalStates";
-import { IUserPreferences } from "@/utils/types";
-import { audioConstraints, videoConstraints } from "@/utils/config";
+import {localAudioTrack, localVideoTrack} from "@/webrtc/tracks";
+import {isMeetJoined, meet} from "@/utils/globalStates";
+import {IUserPreferences} from "@/utils/types";
+import {audioConstraints, videoConstraints} from "@/utils/config";
+import {MicButton} from "@/components/vartalaap-elements/MicButton";
+import {CameraButton} from "@/components/vartalaap-elements/CameraButton";
+
 
 export default function JoinMeet({
-    meetCode,
-    userPreferences,
-    updateUserPreferences,
-}: {
+                                     meetCode,
+                                     userPreferences,
+                                     updateUserPreferences,
+                                 }: {
     meetCode: string;
     userPreferences: IUserPreferences;
     updateUserPreferences: Function;
 }) {
     const videoRef = useRef<HTMLVideoElement>(null);
-
     const [localAudioTrackState, setLocalAudioTrack] = useRecoilState(localAudioTrack);
     const [localVideoTrackState, setLocalVideoTrack] = useRecoilState(localVideoTrack);
-    const [currentPeerState, setCurrentPeer] = useRecoilState(currentPeer);
 
     const [videoDimensions, dispatchVideoDimensions] = useReducer(videoDimensionReducer, {width: 740, height: 416});
-
-    const [isMeetjoinedState, setIsMeetJoined] = useRecoilState(isMeetJoined);
-
-    
+    const [, setIsMeetJoined] = useRecoilState(isMeetJoined);
 
     const init = useCallback(() => {
         let mediaConstraints: MediaStreamConstraints = {};
 
-        if(!localVideoTrackState) {
+        if (!localVideoTrackState) {
             mediaConstraints.video = videoConstraints;
         }
 
-        if(!localAudioTrackState) {
+        if (!localAudioTrackState) {
             mediaConstraints.audio = audioConstraints;
         }
 
-        if(Object.keys(mediaConstraints).length <= 0) {
+        if (Object.keys(mediaConstraints).length <= 0) {
             return;
         }
 
@@ -63,22 +55,22 @@ export default function JoinMeet({
             .then((localStream) => {
                 const videoStreamTracks = localStream.getVideoTracks();
 
-                if(videoStreamTracks.length >= 1) {
+                if (videoStreamTracks.length >= 1) {
                     const videoTrack = localStream.getVideoTracks()[0];
 
                     const videoStream = new MediaStream([videoTrack]);
-                    if(videoRef.current) {
+                    if (videoRef.current) {
                         const prevStream = videoRef.current.srcObject as MediaStream;
                         releaseMediaStream(prevStream);
                         videoRef.current.srcObject = videoStream;
                     }
-    
+
                     setLocalVideoTrack(videoTrack);
                     videoStreamTrackMap.set(videoTrack.id, videoTrack);
                 }
-                
+
                 const audiStreamTracks = localStream.getAudioTracks();
-                if(audiStreamTracks.length >= 1) {
+                if (audiStreamTracks.length >= 1) {
                     const audioTrack = localStream.getAudioTracks()[0];
 
                     setLocalAudioTrack(audioTrack);
@@ -86,16 +78,16 @@ export default function JoinMeet({
                 }
             })
             .catch((err) => {
-                console.error("Error occured when initializing media: ", err);
+                console.error("Error occurred when initializing media: ", err);
             });
-    }, []);
+    }, [meetCode]);
 
     useEffect(() => {
         init();
     }, [init]);
 
     useEffect(() => {
-        const handleResize= () => {
+        const handleResize = () => {
             const screenWidth = window.innerWidth;
 
             dispatchVideoDimensions({type: "width", value: screenWidth / 2});
@@ -120,23 +112,23 @@ export default function JoinMeet({
                 .then((localVideoStream) => {
                     const videoTrack = localVideoStream.getVideoTracks()[0];
 
-                    if(videoRef.current) {
+                    if (videoRef.current) {
                         const prevStream = videoRef.current.srcObject as MediaStream;
                         releaseMediaStream(prevStream);
-                        
+
                         videoRef.current.srcObject = localVideoStream;
                     }
 
                     setLocalVideoTrack(videoTrack);
                     videoStreamTrackMap.set(videoTrack.id, videoTrack);
 
-                    updateUserPreferences({ cameraStatus: true });
+                    updateUserPreferences({cameraStatus: true});
                 });
         } else {
             setLocalVideoTrack(null);
             turnOffCamera();
 
-            updateUserPreferences({ cameraStatus: false });
+            updateUserPreferences({cameraStatus: false});
         }
     };
 
@@ -152,7 +144,7 @@ export default function JoinMeet({
                     setLocalAudioTrack(audioTrack);
                     audioStreamTrackMap.set(audioTrack.id, audioTrack);
 
-                    updateUserPreferences({ micStatus: true });
+                    updateUserPreferences({micStatus: true});
                     releaseMediaStream(localAudioStream);
                 })
                 .catch((err) => {
@@ -165,41 +157,9 @@ export default function JoinMeet({
             setLocalAudioTrack(null);
             turnOffMic();
 
-            updateUserPreferences({ micStatus: false });
+            updateUserPreferences({micStatus: false});
         }
     };
-
-    const cameraButton = userPreferences.cameraStatus ? (
-        <div
-            onClick={() => toggleCameraButton(!userPreferences.cameraStatus)}
-            className='rounded-full w-[46px] h-[46px] border border-white flex justify-center items-center hover:cursor-pointer hover:bg-slate-400 transition duration-300'
-        >
-            <VideoCameraIcon className='w-[23px] h-[23px]' />
-        </div>
-    ) : (
-        <div
-            onClick={() => toggleCameraButton(!userPreferences.cameraStatus)}
-            className='rounded-full w-[46px] h-[46px] bg-red-600 flex justify-center items-center hover:cursor-pointer hover:bg-red-700 transition duration-300'
-        >
-            <VideoCameraSlashIcon className='w-[23px] h-[23px]' />
-        </div>
-    );
-
-    const micButton = userPreferences.micStatus ? (
-        <div
-            onClick={() => toggleMicButton(!userPreferences.micStatus)}
-            className='rounded-full w-[46px] h-[46px] border border-white flex justify-center items-center hover:cursor-pointer hover:bg-slate-400 transition duration-300'
-        >
-            <MicrophoneIcon className='w-[23px] h-[23px]' />
-        </div>
-    ) : (
-        <div
-            onClick={() => toggleMicButton(!userPreferences.micStatus)}
-            className='rounded-full w-[46px] h-[46px] bg-red-600 flex justify-center items-center hover:cursor-pointer hover:bg-red-700 transition duration-300'
-        >
-            <MicrophoneSlashIcon className='w-[23px] h-[23px]' />
-        </div>
-    );
 
     const onJoinButtonClick = () => {
         if (videoRef.current) {
@@ -214,34 +174,14 @@ export default function JoinMeet({
         }
     };
 
-    const onStartMeetButtonClick = () => {
-        if(videoRef.current) {
-            const stream = videoRef.current.srcObject as MediaStream;
-            stream.getTracks().forEach((track) => {
-                if (track.id !== localVideoTrackState?.id) {
-                    if (track.id !== localVideoTrackState?.id) {
-                        track.stop();
-                    }
-                }
-            });
-
-            setCurrentPeer({
-                name: "Meet Starter",
-                peerId: 1,
-                owner: true,
-            });
-            setIsMeetJoined(true);
-        }
-    }
-
     return (
         <div>
-            <Navbar />
+            <Navbar/>
             <main className='mt-[82px]'>
                 <div className='container mx-auto h-full'>
                     <div className='grid grid-cols-2 md:grid-cols-3 gap-4 h-full'>
                         <div className='col-span-2 flex flex-col items-center justify-center text-white h-full'>
-                            <div 
+                            <div
                                 className='relative bg-gray-900 rounded-xl p-6'
                                 style={{width: videoDimensions.width, height: videoDimensions.height}}
                             >
@@ -256,9 +196,17 @@ export default function JoinMeet({
                                     Camera is off
                                 </span>
 
-                                <div className='absolute bottom-6 left-1/2 transform -translate-x-1/2 flex gap-4 justify-center items-center z-10'>
-                                    {micButton}
-                                    {cameraButton}
+                                <div
+                                    className='absolute bottom-6 left-1/2 transform -translate-x-1/2 flex gap-4 justify-center items-center z-10'
+                                >
+                                    <MicButton
+                                        onClickFn={toggleMicButton}
+                                        action={userPreferences.micStatus ? "open" : "close"}
+                                    />
+                                    <CameraButton
+                                        onClickFn={toggleCameraButton}
+                                        action={userPreferences.cameraStatus ? "open" : "close"}
+                                    />
                                 </div>
 
                                 <video

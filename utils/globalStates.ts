@@ -18,13 +18,13 @@ export const userPreferences = atom({
 export const currentPeer = atom<IPeer>({
     key: "peerState",
     default: {
-        peerId: null,
+        sessionId: null,
         name: "Vaishnav",
         owner: false,
     }
 });
 
-export const meet = atom<Meet>({
+export const meet = atom<Meet | null>({
     key: "meet",
-    default: new Meet(),
-});
+    default: null,
+})
