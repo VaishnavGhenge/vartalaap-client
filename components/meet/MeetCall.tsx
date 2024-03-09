@@ -7,10 +7,10 @@ import {
     VideoCameraSlashIcon,
     PhoneXMarkIcon,
 } from "@heroicons/react/24/outline";
-import {MicrophoneSlashIcon} from "@/cutom_icons/MicrophoneSlashIcon";
+import {MicrophoneSlashIcon} from "@/components/cutom-icons/MicrophoneSlashIcon";
 import {IUserPreferences} from "@/utils/types";
 import {useRecoilState} from "recoil";
-import {localAudioTrack, localVideoTrack} from "@/webrtc/tracks";
+import {localAudioTrack, localVideoTrack} from "@/webrtc/recoilStates";
 import {
     audioStreamTrackMap,
     getLocalVideoStreamTrack,
@@ -20,7 +20,7 @@ import {
     videoStreamTrackMap,
 } from "@/webrtc/utils";
 import {videoConstraints, audioConstraints} from "@/utils/config";
-import {isMeetJoined, currentPeer} from "@/utils/globalStates";
+import {isMeetJoined, currentPeer} from "@/recoil/global";
 import {Meet} from "@/webrtc/webrtc";
 import {MicButton} from "@/components/vartalaap-elements/MicButton";
 import {CameraButton} from "@/components/vartalaap-elements/CameraButton";

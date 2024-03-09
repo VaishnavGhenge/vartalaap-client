@@ -1,6 +1,6 @@
 "use client";
 
-import Navbar from "@/components/Navbar";
+import Navbar from "@/components/vartalaap-elements/Navbar";
 import {useRef, useEffect, useCallback, useReducer} from "react";
 import {useRecoilState} from "recoil";
 import {
@@ -11,8 +11,8 @@ import {
     turnOffCamera,
     videoDimensionReducer,
 } from "@/webrtc/utils";
-import {localAudioTrack, localVideoTrack} from "@/webrtc/tracks";
-import {isMeetJoined, meet} from "@/utils/globalStates";
+import {localAudioTrack, localVideoTrack} from "@/webrtc/recoilStates";
+import {isMeetJoined} from "@/recoil/global";
 import {IUserPreferences} from "@/utils/types";
 import {audioConstraints, videoConstraints} from "@/utils/config";
 import {MicButton} from "@/components/vartalaap-elements/MicButton";
@@ -82,10 +82,12 @@ export default function JoinMeet({
             });
     }, [meetCode]);
 
+    // Initialize video and audio streams
     useEffect(() => {
         init();
     }, [init]);
 
+    // Resize video tag on screen size changes
     useEffect(() => {
         const handleResize = () => {
             const screenWidth = window.innerWidth;

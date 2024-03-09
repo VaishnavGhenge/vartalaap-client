@@ -1,6 +1,10 @@
-import { atom } from "recoil";
-import { IPeer } from "./types";
-import { Meet } from "@/webrtc/webrtc";
+import {atom, RecoilState} from "recoil";
+import { IPeer } from "@/utils/types";
+
+export const isBackendLive: RecoilState<boolean> = atom({
+    key: "isBackendLive",
+    default: false,
+});
 
 export const isMeetJoined = atom({
     key: "isMeetJoined",
@@ -23,8 +27,3 @@ export const currentPeer = atom<IPeer>({
         owner: false,
     }
 });
-
-export const meet = atom<Meet | null>({
-    key: "meet",
-    default: null,
-})

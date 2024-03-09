@@ -1,11 +1,11 @@
 "use client";
 
-import Navbar from "../components/Navbar";
+import Navbar from "../components/vartalaap-elements/Navbar";
 import {IBM_Plex_Sans_Devanagari} from "next/font/google";
 import Image from "next/image";
 import {ChangeEvent, useState} from "react";
-import {NewMeetingButton} from "@/components/NewMeetButton";
-import {JoinMeetButton} from "@/components/JoinMeetButton";
+import {NewMeetingButton} from "@/components/vartalaap-elements/NewMeetButton";
+import {JoinMeetButton} from "@/components/vartalaap-elements/JoinMeetButton";
 
 const ibmPlexSansDevanagari = IBM_Plex_Sans_Devanagari({
     weight: "500",
@@ -56,7 +56,7 @@ export default function Home() {
                             </p>
 
                             <div className='flex gap-4'>
-                                <NewMeetingButton meetId={meetCode}/>
+                                <NewMeetingButton />
                                 <div className='flex gap-2'>
                                     <input
                                         value={meetCode}

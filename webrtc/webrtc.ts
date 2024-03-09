@@ -31,36 +31,13 @@ export class Meet {
         // Handle signaling data received from the signaling server
 
         switch (data.type) {
-            case MeetEvents.SESSION_RESPONSE:
-                this.onSession(data);
 
-                break;
             case "peer-joined":
                 this.onPeerJoined(data);
 
                 break;
             default:
                 console.log(`Invalid message from websocket server: ${data.type}`);
-        }
-    }
-
-    requestSession(isCreator = false) {
-        this.isCreator = isCreator;
-
-        const message = {
-            type: MeetEvents.REQUEST_SESSION
-        };
-
-        this.signalingChannel.send(JSON.stringify(message));
-    }
-
-    onSession(data: ISignalingMessage) {
-        this.sessionId = data.sessionId;
-
-        console.log("session id: ", data.sessionId);
-
-        if(window !== undefined) {
-            localStorage.setItem("sessionId", data.sessionId || "");
         }
     }
 
