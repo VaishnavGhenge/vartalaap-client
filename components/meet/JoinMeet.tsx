@@ -2,7 +2,7 @@
 
 import Navbar from "@/components/vartalaap-elements/Navbar";
 import {useRef, useEffect, useCallback, useReducer} from "react";
-import {useRecoilState} from "recoil";
+import {useRecoilState, useRecoilValue} from "recoil";
 import {
     releaseMediaStream,
     audioStreamTrackMap,
@@ -12,12 +12,13 @@ import {
     videoDimensionReducer,
 } from "@/webrtc/utils";
 import {localAudioTrack, localVideoTrack} from "@/webrtc/recoilStates";
-import {isMeetJoined} from "@/recoil/global";
-import {IUserPreferences} from "@/utils/types";
+import {isMeetJoined, joinedPeers} from "@/recoil/global";
+import {ISignalingMessage, IUserPreferences} from "@/utils/types";
 import {audioConstraints, videoConstraints} from "@/utils/config";
 import {MicButton} from "@/components/vartalaap-elements/MicButton";
 import {CameraButton} from "@/components/vartalaap-elements/CameraButton";
-
+import {Meet} from "@/webrtc/webrtc";
+import {MeetEvent} from "@/webrtc/config";
 
 export default function JoinMeet({
                                      meetCode,
@@ -34,6 +35,9 @@ export default function JoinMeet({
 
     const [videoDimensions, dispatchVideoDimensions] = useReducer(videoDimensionReducer, {width: 740, height: 416});
     const [, setIsMeetJoined] = useRecoilState(isMeetJoined);
+    const [joinedPeersState, setJoinedPeers] = useRecoilState(joinedPeers);
+
+    const meetRef = useRef<Meet | null>(null);
 
     const init = useCallback(() => {
         let mediaConstraints: MediaStreamConstraints = {};
@@ -82,10 +86,36 @@ export default function JoinMeet({
             });
     }, [meetCode]);
 
+    const joinMeetLobby = useCallback(() => {
+        const meetId = window.localStorage.getItem("meetId");
+        const sessionId = window.localStorage.getItem("sessionId");
+
+        if (!meetId || !sessionId) {
+            console.log("No meetId or sessionId available in localStorage");
+            return;
+        }
+
+        meetRef.current = Meet.getInstance(meetId, sessionId);
+        meetRef.current!.signalingServer.onopen = () => {
+            console.log("connection open");
+
+            meetRef.current!.joinMeetLobby();
+
+            meetRef.current!.on(MeetEvent.PEER_JOINED_LOBBY, (data: ISignalingMessage) => {
+                setJoinedPeers(data.sessionIdList);
+            });
+        };
+    }, []);
+
     // Initialize video and audio streams
     useEffect(() => {
         init();
+
     }, [init]);
+
+    useEffect(() => {
+        joinMeetLobby();
+    }, [joinMeetLobby]);
 
     // Resize video tag on screen size changes
     useEffect(() => {
@@ -227,7 +257,7 @@ export default function JoinMeet({
                                     </h2>
 
                                     <p className='text-xs'>
-                                        No one else is here
+                                        {joinedPeersState.length === 0 ? "No one else is here" : String(joinedPeersState)}
                                     </p>
                                 </div>
 

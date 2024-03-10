@@ -1,5 +1,6 @@
 import {useCallback} from "react"
 import {useRouter} from "next/navigation";
+import {httpServerUri} from "@/utils/config";
 
 interface IProps {
     meetId: string;
@@ -9,8 +10,21 @@ export const JoinMeetButton = ({meetId}: IProps) => {
     const router = useRouter();
 
     const onJoinButtonClick = useCallback(() => {
-        router.push(`/${meetId}?role=joining`);
-    }, []);
+        fetch(`${httpServerUri}/join-meet?meetId=${meetId}`, {
+            method: "GET",
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        })
+            .then((response) => response.json())
+            .then((data) => {
+                window.localStorage.setItem("sessionId", data.sessionId);
+                window.localStorage.setItem("meetId", data.meetId);
+
+                const meetId = data.meetId;
+                router.push(`/${meetId}?role=joining`);
+            });
+    }, [meetId]);
 
     return (
         <button

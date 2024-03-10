@@ -6,7 +6,7 @@ export const NewMeetingButton = () => {
     const router = useRouter();
 
     const onNewMeetButtonClick = useCallback(() => {
-        fetch(`${httpServerUri}/get-meetId`, {
+        fetch(`${httpServerUri}/create-meet`, {
             method: "POST",
             headers: {
                 'Content-Type': 'application/json',
@@ -14,6 +14,9 @@ export const NewMeetingButton = () => {
         })
             .then((response) => response.json())
             .then((data) => {
+                window.localStorage.setItem("sessionId", data.sessionId);
+                window.localStorage.setItem("meetId", data.meetId);
+
                 const meetId = data.meetId;
                 router.push(`/${meetId}?role=creating`);
             });

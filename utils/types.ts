@@ -13,12 +13,17 @@ export interface IVideoDimensionAction {
     value: number;
 }
 
-export interface ISignalingMessage {
+export interface IRawSignalingMessage {
     type: string;
-    meetId?: string;
+}
+
+export interface ISignalingMessage extends IRawSignalingMessage{
+    meetId: string;
     sessionId: string;
+    data?: any;
     offer?: any;
     answer?: any;
+    sessionIdList: string[];
 }
 
 export interface IPeer {

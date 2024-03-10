@@ -1,14 +1,10 @@
 "use client";
 
-import {useCallback, useEffect, useRef, useState} from "react";
+import {useCallback, useEffect, useRef} from "react";
 import {
-    MicrophoneIcon,
-    VideoCameraIcon,
-    VideoCameraSlashIcon,
     PhoneXMarkIcon,
 } from "@heroicons/react/24/outline";
-import {MicrophoneSlashIcon} from "@/components/cutom-icons/MicrophoneSlashIcon";
-import {IUserPreferences} from "@/utils/types";
+import {ISignalingMessage, IUserPreferences} from "@/utils/types";
 import {useRecoilState} from "recoil";
 import {localAudioTrack, localVideoTrack} from "@/webrtc/recoilStates";
 import {
@@ -20,7 +16,6 @@ import {
     videoStreamTrackMap,
 } from "@/webrtc/utils";
 import {videoConstraints, audioConstraints} from "@/utils/config";
-import {isMeetJoined, currentPeer} from "@/recoil/global";
 import {Meet} from "@/webrtc/webrtc";
 import {MicButton} from "@/components/vartalaap-elements/MicButton";
 import {CameraButton} from "@/components/vartalaap-elements/CameraButton";
@@ -39,7 +34,7 @@ export default function MeetCall({
 
     const [localVideoTrackState, setLocalVideoTrack] = useRecoilState(localVideoTrack);
     const [localAudioTrackState, setLocalAudioTrack] = useRecoilState(localAudioTrack);
-    const [meet, setMeet] = useState<Meet | null>(null);
+    const meetRef = useRef<Meet | null>(null)
 
     const init = useCallback(() => {
         const localVideoTrackFromMap = getLocalVideoStreamTrack();
@@ -104,6 +99,21 @@ export default function MeetCall({
 
     }, [init]);
 
+    useEffect(() => {
+        const meetId = window.localStorage.getItem("meetId");
+        const sessionId = window.localStorage.getItem("sessionId");
+
+        if (!meetId || !sessionId) {
+            console.log("No meetId or sessionId available in localStorage");
+            return;
+        }
+
+        meetRef.current = Meet.getInstance(meetId, sessionId);
+
+        meetRef.current!.joinMeet();
+
+    }, []);
+
     const toggleCameraButton = (updatedCameraStatus: boolean) => {
         if (updatedCameraStatus && !localVideoTrackState) {
             window.navigator.mediaDevices
@@ -161,38 +171,6 @@ export default function MeetCall({
             updateUserPreferences({micStatus: false});
         }
     };
-
-    const cameraButton = userPreferences.cameraStatus ? (
-        <div
-            onClick={() => toggleCameraButton(!userPreferences.cameraStatus)}
-            className='rounded-full w-[46px] h-[46px] border border-white flex justify-center items-center hover:cursor-pointer hover:bg-slate-400 transition duration-300'
-        >
-            <VideoCameraIcon className='w-[23px] h-[23px]'/>
-        </div>
-    ) : (
-        <div
-            onClick={() => toggleCameraButton(!userPreferences.cameraStatus)}
-            className='rounded-full w-[46px] h-[46px] bg-red-600 flex justify-center items-center hover:cursor-pointer hover:bg-red-700 transition duration-300'
-        >
-            <VideoCameraSlashIcon className='w-[23px] h-[23px]'/>
-        </div>
-    );
-
-    const micButton = userPreferences.micStatus ? (
-        <div
-            onClick={() => toggleMicButton(!userPreferences.micStatus)}
-            className='rounded-full w-[46px] h-[46px] border border-white flex justify-center items-center hover:cursor-pointer hover:bg-slate-400 transition duration-300'
-        >
-            <MicrophoneIcon className='w-[23px] h-[23px]'/>
-        </div>
-    ) : (
-        <div
-            onClick={() => toggleMicButton(!userPreferences.micStatus)}
-            className='rounded-full w-[46px] h-[46px] bg-red-600 flex justify-center items-center hover:cursor-pointer hover:bg-red-700 transition duration-300'
-        >
-            <MicrophoneSlashIcon className='w-[23px] h-[23px]'/>
-        </div>
-    );
 
     return (
         <div className='bg-slate-900'>

@@ -1,7 +1,9 @@
-import {Meet} from "@/webrtc/webrtc";
+export enum MeetEvent {
+    NOT_FOUND = "not-found",
+    BAD_REQUEST = "bad-request",
 
-export enum MeetEvents {
     JOIN_MEET_LOBBY = 'join-meet-lobby',
+    PEER_JOINED_LOBBY = "peer-joined-lobby",
 
     CREATE_MEET = "create-meet",
     CREATE_MEET_RESPONSE = "create-meet-response",
