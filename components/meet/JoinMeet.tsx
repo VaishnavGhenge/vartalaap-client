@@ -20,15 +20,18 @@ import {CameraButton} from "@/components/vartalaap-elements/CameraButton";
 import {Meet} from "@/webrtc/webrtc";
 import {MeetEvent} from "@/webrtc/config";
 
-export default function JoinMeet({
-                                     meetCode,
-                                     userPreferences,
-                                     updateUserPreferences,
-                                 }: {
-    meetCode: string;
-    userPreferences: IUserPreferences;
-    updateUserPreferences: Function;
-}) {
+export default function JoinMeet(
+    {
+        meetCode,
+        userPreferences,
+        updateUserPreferences,
+        meet,
+    }: {
+        meetCode: string;
+        userPreferences: IUserPreferences;
+        updateUserPreferences: Function;
+        meet: Meet | null
+    }) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const [localAudioTrackState, setLocalAudioTrack] = useRecoilState(localAudioTrack);
     const [localVideoTrackState, setLocalVideoTrack] = useRecoilState(localVideoTrack);
@@ -36,8 +39,6 @@ export default function JoinMeet({
     const [videoDimensions, dispatchVideoDimensions] = useReducer(videoDimensionReducer, {width: 740, height: 416});
     const [, setIsMeetJoined] = useRecoilState(isMeetJoined);
     const [joinedPeersState, setJoinedPeers] = useRecoilState(joinedPeers);
-
-    const meetRef = useRef<Meet | null>(null);
 
     const init = useCallback(() => {
         let mediaConstraints: MediaStreamConstraints = {};
@@ -87,25 +88,29 @@ export default function JoinMeet({
     }, [meetCode]);
 
     const joinMeetLobby = useCallback(() => {
-        const meetId = window.localStorage.getItem("meetId");
-        const sessionId = window.localStorage.getItem("sessionId");
+        const meetId = window.sessionStorage.getItem("meetId");
+        const sessionId = window.sessionStorage.getItem("sessionId");
+        let peerJoinedListener: ((this: WebSocket, ev: MessageEvent<any>) => any) | null = null;
 
         if (!meetId || !sessionId) {
-            console.log("No meetId or sessionId available in localStorage");
+            console.log("No meetId or sessionId available in sessionStorage");
             return;
         }
 
-        meetRef.current = Meet.getInstance(meetId, sessionId);
-        meetRef.current!.signalingServer.onopen = () => {
-            console.log("connection open");
+        if (meet === null) {
+            return;
+        }
 
-            meetRef.current!.joinMeetLobby();
+        console.log("here join meet");
+        meet.signalingServer.addEventListener("open", () => {
+            console.log("join lobby called on open")
+            meet.joinMeetLobby();
 
-            meetRef.current!.on(MeetEvent.PEER_JOINED_LOBBY, (data: ISignalingMessage) => {
+            peerJoinedListener = meet.on(MeetEvent.PEER_JOINED, (data: ISignalingMessage) => {
                 setJoinedPeers(data.sessionIdList);
             });
-        };
-    }, []);
+        });
+    }, [meet]);
 
     // Initialize video and audio streams
     useEffect(() => {
@@ -115,6 +120,7 @@ export default function JoinMeet({
 
     useEffect(() => {
         joinMeetLobby();
+
     }, [joinMeetLobby]);
 
     // Resize video tag on screen size changes

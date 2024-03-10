@@ -18,8 +18,8 @@ export const JoinMeetButton = ({meetId}: IProps) => {
         })
             .then((response) => response.json())
             .then((data) => {
-                window.localStorage.setItem("sessionId", data.sessionId);
-                window.localStorage.setItem("meetId", data.meetId);
+                window.sessionStorage.setItem("sessionId", data.sessionId);
+                window.sessionStorage.setItem("meetId", data.meetId);
 
                 const meetId = data.meetId;
                 router.push(`/${meetId}?role=joining`);

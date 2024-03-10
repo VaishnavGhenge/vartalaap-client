@@ -6,10 +6,13 @@ import {isMeetJoined, userPreferences} from "@/recoil/global";
 import JoinMeet from "@/components/meet/JoinMeet";
 import MeetCall from "@/components/meet/MeetCall";
 import {IUserPreferences} from "@/utils/types";
+import {useEffect, useState} from "react";
+import {Meet} from "@/webrtc/webrtc";
 
-export default function Meet({params}: { params: { meetCode: string } }) {
+export default function MeetManager({params}: { params: { meetCode: string } }) {
     const [isMeetJoinedState, setIsMeetJoinedState] = useRecoilState(isMeetJoined);
     const [userPreferencesState, setUserPreferences] = useRecoilState<IUserPreferences>(userPreferences);
+    const [meetState, setMeet] = useState<Meet | null>(null);
 
     const updateUserPreferences = (preferences: { micStatus?: boolean; cameraStatus?: boolean; }) => {
         const updatedPreferences = {
@@ -20,12 +23,32 @@ export default function Meet({params}: { params: { meetCode: string } }) {
         setUserPreferences(updatedPreferences);
     };
 
+    useEffect(() => {
+        const meetId = window.sessionStorage.getItem("meetId");
+        const sessionId = window.sessionStorage.getItem("sessionId");
+
+        if (!meetId || !sessionId) {
+            console.log("No meetId or sessionId available in sessionStorage while leaving meet");
+            return;
+        }
+
+        const meet = Meet.getInstance(meetId, sessionId);
+        setMeet(meet);
+
+        return () => {
+            meet.signalingServer.addEventListener("open", () => {
+                meet.leaveMeet();
+            });
+        }
+    }, []);
+
     if (isMeetJoinedState) {
         return (
             <MeetCall
                 meetCode={params.meetCode}
                 userPreferences={userPreferencesState}
                 updateUserPreferences={updateUserPreferences}
+                meet={meetState}
             />
         );
     } else {
@@ -34,6 +57,7 @@ export default function Meet({params}: { params: { meetCode: string } }) {
                 meetCode={params.meetCode}
                 userPreferences={userPreferencesState}
                 updateUserPreferences={updateUserPreferences}
+                meet={meetState}
             />
         );
     }

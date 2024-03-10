@@ -20,21 +20,23 @@ import {Meet} from "@/webrtc/webrtc";
 import {MicButton} from "@/components/vartalaap-elements/MicButton";
 import {CameraButton} from "@/components/vartalaap-elements/CameraButton";
 
-export default function MeetCall({
-                                     meetCode,
-                                     userPreferences,
-                                     updateUserPreferences
-                                 }: {
-    meetCode: string;
-    userPreferences: IUserPreferences;
-    updateUserPreferences: Function;
-}) {
+export default function MeetCall(
+    {
+        meetCode,
+        userPreferences,
+        updateUserPreferences,
+        meet,
+    }: {
+        meetCode: string;
+        userPreferences: IUserPreferences;
+        updateUserPreferences: Function;
+        meet: Meet | null;
+    }) {
     const localVideoRef = useRef<HTMLVideoElement | null>(null);
     const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
 
     const [localVideoTrackState, setLocalVideoTrack] = useRecoilState(localVideoTrack);
     const [localAudioTrackState, setLocalAudioTrack] = useRecoilState(localAudioTrack);
-    const meetRef = useRef<Meet | null>(null)
 
     const init = useCallback(() => {
         const localVideoTrackFromMap = getLocalVideoStreamTrack();
@@ -100,19 +102,26 @@ export default function MeetCall({
     }, [init]);
 
     useEffect(() => {
-        const meetId = window.localStorage.getItem("meetId");
-        const sessionId = window.localStorage.getItem("sessionId");
+        const meetId = window.sessionStorage.getItem("meetId");
+        const sessionId = window.sessionStorage.getItem("sessionId");
 
         if (!meetId || !sessionId) {
-            console.log("No meetId or sessionId available in localStorage");
+            console.log("No meetId or sessionId available in sessionStorage");
             return;
         }
 
-        meetRef.current = Meet.getInstance(meetId, sessionId);
+        if (meet === null) {
+            return;
+        }
 
-        meetRef.current!.joinMeet();
-
-    }, []);
+        if(meet.signalingServer.readyState !== WebSocket.OPEN) {
+            meet.signalingServer.addEventListener("open", () => {
+                meet.joinMeet();
+            });
+        } else {
+            meet.joinMeet();
+        }
+    }, [meet]);
 
     const toggleCameraButton = (updatedCameraStatus: boolean) => {
         if (updatedCameraStatus && !localVideoTrackState) {

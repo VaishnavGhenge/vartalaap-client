@@ -25,7 +25,7 @@ export class SignalingServer extends WebSocket {
         if (this.readyState == WebSocket.OPEN) {
             this.send(JSON.stringify(messageObj));
         } else {
-            console.error("WebSocket is not open. Unable to send message.");
+            console.error("WebSocket is not open. Unable to send message: " + messageObj.type);
         }
     }
 }

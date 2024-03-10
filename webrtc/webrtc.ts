@@ -42,12 +42,23 @@ export class Meet {
 
     // Handle signaling data received from the signaling server
     private handleSignalingData(data: ISignalingMessage) {
-        console.log("New message: ", data);
+        switch (data.type) {
+            case MeetEvent.PEER_LEFT:
+                console.log(`${data.sessionId} left meet`);
+
+                break;
+            case MeetEvent.INITIATE_MEET_REQUEST:
+
+
+                break;
+            default:
+                console.log("Unknown message: ", data);
+        }
     }
 
-    on(meetEvent: string, functionToBind: (event: ISignalingMessage) => void) {
+    on(meetEvent: string, functionToBind: (event: ISignalingMessage) => void): ((this: WebSocket, ev: MessageEvent<any>) => any) | null {
         if (this.signalingServer.readyState === this.signalingServer.OPEN) {
-            const boundFunction = (socketEvent: MessageEvent<any>) => {
+            const boundFunction: (this: WebSocket, ev: MessageEvent<any>) => any = (socketEvent) => {
                 const parsedEventData = JSON.parse(socketEvent.data);
 
                 if (parsedEventData.type === meetEvent) {
@@ -61,7 +72,17 @@ export class Meet {
             // Return the bound function if you want to later remove the listener
             return boundFunction;
         } else {
-            console.warn("Connection not opened yet");
+            console.warn("Connection not opened yet to register event: " + meetEvent);
+            return null;
+        }
+    }
+
+    off(meetEvent: string, boundFunction: (this: WebSocket, ev: MessageEvent<any>) => any) {
+        // Check if the signaling server is open before attempting to remove the listener
+        if (this.signalingServer.readyState === this.signalingServer.OPEN) {
+            this.signalingServer.removeEventListener('message', boundFunction);
+        } else {
+            console.warn("Connection not opened yet to remove event listener: ", meetEvent);
         }
     }
 
@@ -77,6 +98,7 @@ export class Meet {
 
     joinMeetLobby() {
         if(this.signalingServer.readyState === WebSocket.OPEN) {
+            console.log("Join meet lobby message sent");
             this.sendServerMessageWithPeerContext({
                 type: MeetEvent.JOIN_MEET_LOBBY
             });
@@ -87,6 +109,7 @@ export class Meet {
 
     joinMeet() {
         if(this.signalingServer.readyState === WebSocket.OPEN) {
+            console.log("join meet");
             this.sendServerMessageWithPeerContext({
                 type: MeetEvent.JOIN_MEET
             });
@@ -95,15 +118,16 @@ export class Meet {
         }
     }
 
-    // async createOffer() {
-    //     console.log("Creating offer");
+    async createOffer() {
+        console.log("Creating offer");
 
-    //     // Create offer to connect to user
-    //     const offer = await createOffer(this.localConnection);
-    //     const offerMessage = {type: "offer", offer: offer};
+        // Create offer to connect to user
+        const offer = await this.localConnection.createOffer();
+        await this.localConnection.setLocalDescription(new RTCSessionDescription(offer));
 
-    //     this.signalingChannel.sendMessage(offerMessage);
-    // }
+        const offerMessage = {type: "offer", offer: offer};
+        this.sendServerMessageWithPeerContext(offerMessage);
+    }
 
     // async onOffer(offer: any) {
     //     console.log("Received offer", offer);
@@ -121,8 +145,8 @@ export class Meet {
     //     await this.localConnection.setRemoteDescription(new RTCSessionDescription(answer));
     // }
 
-    // async leaveMeet() {
-    //     this.signalingChannel.sendMessage({type: "leave-meet"});
-    //     this.signalingChannel.close();
-    // }
+    leaveMeet() {
+        console.log("Left meet");
+        this.sendServerMessageWithPeerContext({type: MeetEvent.LEAVE_MEET});
+    }
 }

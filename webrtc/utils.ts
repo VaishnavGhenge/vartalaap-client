@@ -62,13 +62,6 @@ export function videoDimensionReducer(state: IVideoDimensionState, action: IVide
     return state;
 }
 
-export async function createOffer(localConnection: RTCPeerConnection) {
-    const offer = await localConnection.createOffer();
-    await localConnection.setLocalDescription(new RTCSessionDescription(offer));
-
-    return offer;
-}
-
 export async function createAnswer(localConnection: RTCPeerConnection, offer: any) {
     await localConnection.setRemoteDescription(offer);
     const answer = await localConnection.createAnswer();

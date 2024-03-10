@@ -3,12 +3,14 @@ export enum MeetEvent {
     BAD_REQUEST = "bad-request",
 
     JOIN_MEET_LOBBY = 'join-meet-lobby',
-    PEER_JOINED_LOBBY = "peer-joined-lobby",
 
-    CREATE_MEET = "create-meet",
-    CREATE_MEET_RESPONSE = "create-meet-response",
     JOIN_MEET = "join-meet",
-    JOIN_MEET_RESPONSE = "join-meet-response",
+    PEER_JOINED = "peer-joined",
+
+    LEAVE_MEET = "leave-meet",
+    PEER_LEFT = "peer-left",
+
+    INITIATE_MEET_REQUEST = "init-meet-request",
 
     CREATE_OFFER = "create-offer",
     CREATE_OFFER_RESPONSE = "create-offer-response",
