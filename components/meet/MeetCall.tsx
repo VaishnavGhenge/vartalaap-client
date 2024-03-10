@@ -4,7 +4,7 @@ import {useCallback, useEffect, useRef} from "react";
 import {
     PhoneXMarkIcon,
 } from "@heroicons/react/24/outline";
-import {ISignalingMessage, IUserPreferences} from "@/utils/types";
+import {IUserPreferences} from "@/utils/types";
 import {useRecoilState} from "recoil";
 import {localAudioTrack, localVideoTrack} from "@/webrtc/recoilStates";
 import {
@@ -90,7 +90,7 @@ export default function MeetCall({
                 }
             })
             .catch((err) => {
-                console.error("Error occured when initializinf media: ", err);
+                console.error("Error occurred when initializing media: ", err);
             });
     }, [meetCode]);
 

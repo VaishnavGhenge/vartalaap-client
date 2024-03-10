@@ -2,7 +2,7 @@
 
 import Navbar from "@/components/vartalaap-elements/Navbar";
 import {useRef, useEffect, useCallback, useReducer} from "react";
-import {useRecoilState, useRecoilValue} from "recoil";
+import {useRecoilState} from "recoil";
 import {
     releaseMediaStream,
     audioStreamTrackMap,
