@@ -1,6 +1,4 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {
-    target: "server",
-}
+const nextConfig = {}
 
 module.exports = nextConfig
