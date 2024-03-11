@@ -1,5 +1,5 @@
-const serverDomain = "https://vartalaap-server-nine.vercel.app/";
-export const httpServerUri = process.env.PROD_SERVER ? `https://${serverDomain}`: `http://${serverDomain}`;
+const serverDomain = "vartalaap-server-nine.vercel.app";
+export const httpServerUri = `https://${serverDomain}`;
 export const socketServerUri = `ws://${serverDomain}`;
 
 export const videoConstraints = {
