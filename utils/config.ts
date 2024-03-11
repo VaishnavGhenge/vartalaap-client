@@ -1,5 +1,5 @@
-const serverDomain = "localhost:8080";
-export const httpServerUri = `http://${serverDomain}`;
+const serverDomain = process.env.PROD_SERVER || "localhost:8080";
+export const httpServerUri = process.env.PROD_SERVER ? `https://${serverDomain}`: `http://${serverDomain}`;
 export const socketServerUri = `ws://${serverDomain}`;
 
 export const videoConstraints = {

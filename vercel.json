@@ -1,0 +1,11 @@
+{
+  "builds": [
+    {
+      "src": "next.config.js",
+      "use": "@now/next"
+    }
+  ],
+  "env": {
+    "PROD_SERVER": "vartalaap-server-nine.vercel.app"
+  }
+}

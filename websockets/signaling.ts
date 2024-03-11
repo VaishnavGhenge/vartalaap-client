@@ -1,8 +1,9 @@
 import {ISignalingMessage} from "@/utils/types";
+import {socketServerUri} from "@/utils/config";
 
 export class SignalingServer extends WebSocket {
     constructor() {
-        super(process.env.SOCKET_URL || "ws://localhost:8080");
+        super(socketServerUri);
 
         this.addEventListener("open", this.handleOpen.bind(this));
         this.addEventListener("close", this.handleClose.bind(this));
