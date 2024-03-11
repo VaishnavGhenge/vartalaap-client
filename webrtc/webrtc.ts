@@ -6,12 +6,14 @@ import {MeetEvent} from "./config";
 export class Meet {
     private static instance: Meet | null = null;
 
-    private localConnection: RTCPeerConnection;
-    private dataChannel: RTCDataChannel
+    public localConnection: RTCPeerConnection;
+    private dataChannel: RTCDataChannel;
     public signalingServer: SignalingServer;
 
     readonly meetId: string;
     readonly sessionId: string;
+
+    private isOfferCreated = false;
 
     constructor(meetId: string, sessionId: string) {
         this.meetId = meetId;
@@ -26,14 +28,26 @@ export class Meet {
 
             this.handleSignalingData(messageObj);
         };
+
+        this.localConnection.addEventListener("iceconnectionstatechange", () => {
+            console.warn("ICE Connection State Changed:", this.localConnection.iceConnectionState);
+        });
+
+        this.localConnection.addEventListener("icegatheringstatechange", () => {
+            console.warn("Connection State Changed:", this.localConnection.connectionState);
+        });
+
+        this.localConnection.addEventListener("negotiationneeded", () => {
+            console.warn("Nego ended");
+        })
     }
 
     public static getInstance(meetId: string, sessionId: string): Meet {
-        if(!Meet.instance) {
+        if (!Meet.instance) {
             Meet.instance = new Meet(meetId, sessionId);
         }
 
-        if(Meet.instance.meetId !== meetId && Meet.instance.sessionId !== sessionId) {
+        if (Meet.instance.meetId !== meetId && Meet.instance.sessionId !== sessionId) {
             Meet.instance = new Meet(meetId, sessionId);
         }
 
@@ -48,7 +62,15 @@ export class Meet {
 
                 break;
             case MeetEvent.INITIATE_MEET_REQUEST:
+                this.createOffer();
 
+                break;
+            case MeetEvent.OFFER:
+                this.createAnswer(data.offer);
+
+                break;
+            case MeetEvent.ANSWER:
+                this.onAnswer(data.answer);
 
                 break;
             default:
@@ -57,24 +79,19 @@ export class Meet {
     }
 
     on(meetEvent: string, functionToBind: (event: ISignalingMessage) => void): ((this: WebSocket, ev: MessageEvent<any>) => any) | null {
-        if (this.signalingServer.readyState === this.signalingServer.OPEN) {
-            const boundFunction: (this: WebSocket, ev: MessageEvent<any>) => any = (socketEvent) => {
-                const parsedEventData = JSON.parse(socketEvent.data);
+        const boundFunction: (this: WebSocket, ev: MessageEvent<any>) => any = (socketEvent) => {
+            const parsedEventData = JSON.parse(socketEvent.data);
 
-                if (parsedEventData.type === meetEvent) {
-                    functionToBind(parsedEventData);
-                }
-            };
+            if (parsedEventData.type === meetEvent) {
+                functionToBind(parsedEventData);
+            }
+        };
 
-            // Add the event listener
-            this.signalingServer.addEventListener('message', boundFunction);
+        // Add the event listener
+        this.signalingServer.addEventListener('message', boundFunction);
 
-            // Return the bound function if you want to later remove the listener
-            return boundFunction;
-        } else {
-            console.warn("Connection not opened yet to register event: " + meetEvent);
-            return null;
-        }
+        // Return the bound function if you want to later remove the listener
+        return boundFunction;
     }
 
     off(meetEvent: string, boundFunction: (this: WebSocket, ev: MessageEvent<any>) => any) {
@@ -97,7 +114,7 @@ export class Meet {
     }
 
     joinMeetLobby() {
-        if(this.signalingServer.readyState === WebSocket.OPEN) {
+        if (this.signalingServer.readyState === WebSocket.OPEN) {
             console.log("Join meet lobby message sent");
             this.sendServerMessageWithPeerContext({
                 type: MeetEvent.JOIN_MEET_LOBBY
@@ -108,7 +125,7 @@ export class Meet {
     }
 
     joinMeet() {
-        if(this.signalingServer.readyState === WebSocket.OPEN) {
+        if (this.signalingServer.readyState === WebSocket.OPEN) {
             console.log("join meet");
             this.sendServerMessageWithPeerContext({
                 type: MeetEvent.JOIN_MEET
@@ -119,34 +136,83 @@ export class Meet {
     }
 
     async createOffer() {
-        console.log("Creating offer");
+        if(!this.isOfferCreated) {
+            this.isOfferCreated = true;
+            console.log("Creating offer");
 
-        // Create offer to connect to user
-        const offer = await this.localConnection.createOffer();
-        await this.localConnection.setLocalDescription(new RTCSessionDescription(offer));
+            // Create offer to connect to user
+            const offer = await this.localConnection.createOffer();
 
-        const offerMessage = {type: "offer", offer: offer};
-        this.sendServerMessageWithPeerContext(offerMessage);
+            // Set the local description immediately
+            await this.localConnection.setLocalDescription(new RTCSessionDescription(offer));
+
+            console.log("state: ", this.localConnection.iceConnectionState);
+
+            // Wait for the first ICE candidate
+            await new Promise((resolve: any) => {
+                this.localConnection.addEventListener("icecandidate", (event) => {
+                    console.warn("ICE candidate event");
+
+                    if (event.candidate === null) {
+                        resolve();
+                        this.localConnection.onicecandidate = null; // Remove the event listener after the first candidate
+                    }
+                });
+            });
+
+            // Now, the ICE candidate gathering is complete
+            console.log("Offer generated: ", this.localConnection.localDescription);
+
+            // Send the offer to the server
+            const offerMessage = { type: MeetEvent.CREATE_OFFER, offer: this.localConnection.localDescription };
+            this.sendServerMessageWithPeerContext(offerMessage);
+        }
     }
 
-    // async onOffer(offer: any) {
-    //     console.log("Received offer", offer);
+    async createAnswer(offer: RTCSessionDescriptionInit) {
+        console.log("Received offer", offer);
 
-    //     // Accept offer and create an answer in response
-    //     const answer = await createAnswer(this.localConnection, offer);
+        // Accept offer and set remote description
+        await this.localConnection.setRemoteDescription(offer);
 
-    //     const answerMessage = {type: "answer", answer: answer};
-    //     this.signalingChannel.sendMessage(answerMessage);
-    // }
+        console.log("Before ice candidate");
 
-    // async onAnswer(answer: any) {
-    //     console.log("Received answer", answer);
+        // Wait for ICE candidate gathering to complete
+        // await new Promise((resolve: any) => {
+        //     this.localConnection.addEventListener("icecandidate", (event) => {
+        //         console.warn("ICE candidate event");
+        //
+        //         if (event.candidate === null) {
+        //             resolve();
+        //             this.localConnection.onicecandidate = null; // Remove the event listener after the first candidate
+        //         }
+        //     });
+        // });
 
-    //     await this.localConnection.setRemoteDescription(new RTCSessionDescription(answer));
-    // }
+        console.log("After ice candidate");
+
+        // Create an answer
+        const answer = await this.localConnection.createAnswer();
+
+        // Set the local description with the answer
+        await this.localConnection.setLocalDescription(new RTCSessionDescription(answer));
+
+        console.log("Answer generated: ", this.localConnection.localDescription);
+
+        // Send the answer to the server
+        const answerMessage = { type: MeetEvent.CREATE_ANSWER, answer: this.localConnection.localDescription };
+        this.sendServerMessageWithPeerContext(answerMessage);
+    }
+
+    async onAnswer(answer: any) {
+        console.log("Received answer", answer);
+
+        await this.localConnection.setRemoteDescription(new RTCSessionDescription(answer));
+    }
 
     leaveMeet() {
         console.log("Left meet");
+
         this.sendServerMessageWithPeerContext({type: MeetEvent.LEAVE_MEET});
     }
 }

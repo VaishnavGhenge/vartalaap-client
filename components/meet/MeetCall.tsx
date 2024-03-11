@@ -96,6 +96,49 @@ export default function MeetCall(
             });
     }, [meetCode]);
 
+    const addAndListenForTracks = useCallback(() => {
+        if (localVideoTrackState) {
+            // Check if a sender for the track already exists
+            const sender = meet?.localConnection.getSenders().find(s => s.track === localVideoTrackState);
+
+            if (sender) {
+                // If a sender exists, replace the track
+                console.log("track replaced", localVideoTrackState.id, localVideoTrackState.muted);
+                sender.replaceTrack(localVideoTrackState);
+            } else {
+                if(localVideoRef.current && meet) {
+                    // If no sender exists, add the track
+                    console.log("track added", localVideoTrackState.id, localVideoTrackState.muted);
+                    meet.localConnection.addTrack(localVideoTrackState, localVideoRef.current.srcObject as MediaStream);
+                }
+            }
+        }
+
+        console.log(meet);
+        if(!meet) return;
+        meet.localConnection.ontrack = (event: any) => {
+            console.log("track received");
+            if (remoteVideoRef.current) {
+                // Create a new MediaStream and append the received track
+
+                    console.log("track received");
+                    console.log(event.track);
+
+                    const remoteStream = new MediaStream();
+
+                    remoteStream.addTrack(event.track);
+
+                    // Set the srcObject of the video element
+                    remoteVideoRef.current.srcObject = remoteStream;
+
+                    console.log(remoteVideoRef.current?.srcObject);
+
+            } else {
+                console.warn("remote ref null");
+            }
+        };
+    }, [localVideoTrackState]);
+
     useEffect(() => {
         init();
 
@@ -122,6 +165,10 @@ export default function MeetCall(
             meet.joinMeet();
         }
     }, [meet]);
+
+    useEffect(() => {
+        addAndListenForTracks();
+    }, [addAndListenForTracks]);
 
     const toggleCameraButton = (updatedCameraStatus: boolean) => {
         if (updatedCameraStatus && !localVideoTrackState) {
@@ -214,14 +261,6 @@ export default function MeetCall(
                                 className='absolute top-0 left-0 w-full h-full rounded-xl'
                                 autoPlay
                             ></video>
-                        </div>
-
-                        <div className='relative bg-gray-900 rounded-xl w-[350px] h-[198px] p-4'>
-                            <span className='absolute top-4 left-4 z-10 text-sm text-white'>
-                                Vaishnav Ghenge
-                            </span>
-
-                            <div className='absolute top-0 left-0 w-full h-full rounded-xl bg-gray-600'></div>
                         </div>
                     </div>
                 </div>

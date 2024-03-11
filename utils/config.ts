@@ -19,7 +19,6 @@ export const MEET_CONFIG = {
         {
             urls: [
                 "stun:stun.l.google.com:19302",
-                "stun:global.stun.twilio.com:3478",
             ],
         },
     ],

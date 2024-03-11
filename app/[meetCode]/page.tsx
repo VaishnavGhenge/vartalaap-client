@@ -36,9 +36,7 @@ export default function MeetManager({params}: { params: { meetCode: string } }) 
         setMeet(meet);
 
         return () => {
-            meet.signalingServer.addEventListener("open", () => {
-                meet.leaveMeet();
-            });
+            meet.leaveMeet();
         }
     }, []);
 

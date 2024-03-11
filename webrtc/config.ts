@@ -13,10 +13,8 @@ export enum MeetEvent {
     INITIATE_MEET_REQUEST = "init-meet-request",
 
     CREATE_OFFER = "create-offer",
-    CREATE_OFFER_RESPONSE = "create-offer-response",
-    RECEIVED_OFFER = "received-offer",
+    OFFER = "offer",
 
     CREATE_ANSWER = "create-answer",
-    CREATE_ANSWER_RESPONSE = "create-answer-response",
-    RECEIVED_ANSWER ="received-answer",
+    ANSWER = "answer",
 }

@@ -90,7 +90,6 @@ export default function JoinMeet(
     const joinMeetLobby = useCallback(() => {
         const meetId = window.sessionStorage.getItem("meetId");
         const sessionId = window.sessionStorage.getItem("sessionId");
-        let peerJoinedListener: ((this: WebSocket, ev: MessageEvent<any>) => any) | null = null;
 
         if (!meetId || !sessionId) {
             console.log("No meetId or sessionId available in sessionStorage");
@@ -101,15 +100,15 @@ export default function JoinMeet(
             return;
         }
 
-        console.log("here join meet");
+        console.log("join lobby called on open");
         meet.signalingServer.addEventListener("open", () => {
-            console.log("join lobby called on open")
             meet.joinMeetLobby();
-
-            peerJoinedListener = meet.on(MeetEvent.PEER_JOINED, (data: ISignalingMessage) => {
-                setJoinedPeers(data.sessionIdList);
-            });
         });
+
+        meet.on(MeetEvent.PEER_JOINED, (data: ISignalingMessage) => {
+            setJoinedPeers(data.sessionIdList);
+        });
+
     }, [meet]);
 
     // Initialize video and audio streams
