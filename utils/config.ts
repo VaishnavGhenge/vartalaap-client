@@ -1,4 +1,4 @@
-const serverDomain = process.env.PROD_SERVER || "localhost:8080";
+const serverDomain = "https://vartalaap-server-nine.vercel.app/";
 export const httpServerUri = process.env.PROD_SERVER ? `https://${serverDomain}`: `http://${serverDomain}`;
 export const socketServerUri = `ws://${serverDomain}`;
 
