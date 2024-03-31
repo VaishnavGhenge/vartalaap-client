@@ -1,5 +1,5 @@
-const serverDomain = "vartalaap-server-nine.vercel.app";
-export const httpServerUri = `https://${serverDomain}`;
+const serverDomain = "localhost:8080";
+export const httpServerUri = `http://${serverDomain}`;
 export const socketServerUri = `ws://${serverDomain}`;
 
 export const videoConstraints = {

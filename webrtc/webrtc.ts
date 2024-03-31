@@ -29,17 +29,17 @@ export class Meet {
             this.handleSignalingData(messageObj);
         };
 
-        this.localConnection.addEventListener("iceconnectionstatechange", () => {
-            console.warn("ICE Connection State Changed:", this.localConnection.iceConnectionState);
-        });
-
-        this.localConnection.addEventListener("icegatheringstatechange", () => {
-            console.warn("Connection State Changed:", this.localConnection.connectionState);
-        });
-
-        this.localConnection.addEventListener("negotiationneeded", () => {
-            console.warn("Nego ended");
-        })
+        // this.localConnection.addEventListener("iceconnectionstatechange", () => {
+        //     console.warn("ICE Connection State Changed:", this.localConnection.iceConnectionState);
+        // });
+        //
+        // this.localConnection.addEventListener("icegatheringstatechange", () => {
+        //     console.warn("Connection State Changed:", this.localConnection.connectionState);
+        // });
+        //
+        // this.localConnection.addEventListener("negotiationneeded", () => {
+        //     console.warn("Negotiation ended");
+        // });
     }
 
     public static getInstance(meetId: string, sessionId: string): Meet {
@@ -62,16 +62,18 @@ export class Meet {
 
                 break;
             case MeetEvent.INITIATE_MEET_REQUEST:
-                this.createOffer();
+                void this.createOffer();
 
                 break;
             case MeetEvent.OFFER:
-                this.createAnswer(data.offer);
+                void this.createAnswer(data.offer);
 
                 break;
             case MeetEvent.ANSWER:
-                this.onAnswer(data.answer);
+                void this.onAnswer(data.answer);
 
+                break;
+            case MeetEvent.PEER_JOINED:
                 break;
             default:
                 console.log("Unknown message: ", data);
@@ -115,7 +117,6 @@ export class Meet {
 
     joinMeetLobby() {
         if (this.signalingServer.readyState === WebSocket.OPEN) {
-            console.log("Join meet lobby message sent");
             this.sendServerMessageWithPeerContext({
                 type: MeetEvent.JOIN_MEET_LOBBY
             });
@@ -126,7 +127,6 @@ export class Meet {
 
     joinMeet() {
         if (this.signalingServer.readyState === WebSocket.OPEN) {
-            console.log("join meet");
             this.sendServerMessageWithPeerContext({
                 type: MeetEvent.JOIN_MEET
             });
@@ -138,7 +138,6 @@ export class Meet {
     async createOffer() {
         if(!this.isOfferCreated) {
             this.isOfferCreated = true;
-            console.log("Creating offer");
 
             // Create offer to connect to user
             const offer = await this.localConnection.createOffer();
@@ -146,22 +145,15 @@ export class Meet {
             // Set the local description immediately
             await this.localConnection.setLocalDescription(new RTCSessionDescription(offer));
 
-            console.log("state: ", this.localConnection.iceConnectionState);
-
             // Wait for the first ICE candidate
             await new Promise((resolve: any) => {
                 this.localConnection.addEventListener("icecandidate", (event) => {
-                    console.warn("ICE candidate event");
-
                     if (event.candidate === null) {
                         resolve();
                         this.localConnection.onicecandidate = null; // Remove the event listener after the first candidate
                     }
                 });
             });
-
-            // Now, the ICE candidate gathering is complete
-            console.log("Offer generated: ", this.localConnection.localDescription);
 
             // Send the offer to the server
             const offerMessage = { type: MeetEvent.CREATE_OFFER, offer: this.localConnection.localDescription };
@@ -170,26 +162,8 @@ export class Meet {
     }
 
     async createAnswer(offer: RTCSessionDescriptionInit) {
-        console.log("Received offer", offer);
-
         // Accept offer and set remote description
         await this.localConnection.setRemoteDescription(offer);
-
-        console.log("Before ice candidate");
-
-        // Wait for ICE candidate gathering to complete
-        // await new Promise((resolve: any) => {
-        //     this.localConnection.addEventListener("icecandidate", (event) => {
-        //         console.warn("ICE candidate event");
-        //
-        //         if (event.candidate === null) {
-        //             resolve();
-        //             this.localConnection.onicecandidate = null; // Remove the event listener after the first candidate
-        //         }
-        //     });
-        // });
-
-        console.log("After ice candidate");
 
         // Create an answer
         const answer = await this.localConnection.createAnswer();
@@ -197,22 +171,16 @@ export class Meet {
         // Set the local description with the answer
         await this.localConnection.setLocalDescription(new RTCSessionDescription(answer));
 
-        console.log("Answer generated: ", this.localConnection.localDescription);
-
         // Send the answer to the server
         const answerMessage = { type: MeetEvent.CREATE_ANSWER, answer: this.localConnection.localDescription };
         this.sendServerMessageWithPeerContext(answerMessage);
     }
 
     async onAnswer(answer: any) {
-        console.log("Received answer", answer);
-
         await this.localConnection.setRemoteDescription(new RTCSessionDescription(answer));
     }
 
     leaveMeet() {
-        console.log("Left meet");
-
         this.sendServerMessageWithPeerContext({type: MeetEvent.LEAVE_MEET});
     }
 }

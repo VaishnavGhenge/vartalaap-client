@@ -28,7 +28,7 @@ export default function MeetManager({params}: { params: { meetCode: string } }) 
         const sessionId = window.sessionStorage.getItem("sessionId");
 
         if (!meetId || !sessionId) {
-            console.log("No meetId or sessionId available in sessionStorage while leaving meet");
+            console.log("No meetId or sessionId available in sessionStorage page.tsx");
             return;
         }
 
@@ -56,6 +56,7 @@ export default function MeetManager({params}: { params: { meetCode: string } }) 
                 userPreferences={userPreferencesState}
                 updateUserPreferences={updateUserPreferences}
                 meet={meetState}
+                setMeet={setMeet}
             />
         );
     }

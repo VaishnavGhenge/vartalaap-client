@@ -1,7 +1,7 @@
 "use client";
 
 import Navbar from "@/components/vartalaap-elements/Navbar";
-import {useRef, useEffect, useCallback, useReducer} from "react";
+import {useRef, useEffect, useCallback, useReducer, SetStateAction, Dispatch, useState} from "react";
 import {useRecoilState} from "recoil";
 import {
     releaseMediaStream,
@@ -14,11 +14,12 @@ import {
 import {localAudioTrack, localVideoTrack} from "@/webrtc/recoilStates";
 import {isMeetJoined, joinedPeers} from "@/recoil/global";
 import {ISignalingMessage, IUserPreferences} from "@/utils/types";
-import {audioConstraints, videoConstraints} from "@/utils/config";
+import {audioConstraints, httpServerUri, videoConstraints} from "@/utils/config";
 import {MicButton} from "@/components/vartalaap-elements/MicButton";
 import {CameraButton} from "@/components/vartalaap-elements/CameraButton";
 import {Meet} from "@/webrtc/webrtc";
 import {MeetEvent} from "@/webrtc/config";
+import {Tooltip, TooltipContent, TooltipProvider, TooltipTrigger} from "@/components/ui/tooltip";
 
 export default function JoinMeet(
     {
@@ -26,11 +27,13 @@ export default function JoinMeet(
         userPreferences,
         updateUserPreferences,
         meet,
+        setMeet,
     }: {
         meetCode: string;
         userPreferences: IUserPreferences;
         updateUserPreferences: Function;
-        meet: Meet | null
+        meet: Meet | null,
+        setMeet: Dispatch<SetStateAction<Meet | null>>,
     }) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const [localAudioTrackState, setLocalAudioTrack] = useRecoilState(localAudioTrack);
@@ -39,6 +42,7 @@ export default function JoinMeet(
     const [videoDimensions, dispatchVideoDimensions] = useReducer(videoDimensionReducer, {width: 740, height: 416});
     const [, setIsMeetJoined] = useRecoilState(isMeetJoined);
     const [joinedPeersState, setJoinedPeers] = useRecoilState(joinedPeers);
+    const [isCopy, setIsCopy] = useState(true);
 
     const init = useCallback(() => {
         let mediaConstraints: MediaStreamConstraints = {};
@@ -93,6 +97,26 @@ export default function JoinMeet(
 
         if (!meetId || !sessionId) {
             console.log("No meetId or sessionId available in sessionStorage");
+
+            fetch(`${httpServerUri}/join-meet?meetId=${meetId}`, {
+                method: "GET",
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            })
+                .then((response) => response.json())
+                .then((data) => {
+                    window.sessionStorage.setItem("sessionId", data.sessionId);
+                    window.sessionStorage.setItem("meetId", data.meetId);
+
+                    const meet = Meet.getInstance(data.meetId, data.sessionId);
+                    setMeet(meet);
+
+                    meet.signalingServer.addEventListener("open", () => {
+                        meet.joinMeetLobby();
+                    });
+                });
+
             return;
         }
 
@@ -100,14 +124,19 @@ export default function JoinMeet(
             return;
         }
 
-        console.log("join lobby called on open");
         meet.signalingServer.addEventListener("open", () => {
             meet.joinMeetLobby();
         });
 
-        meet.on(MeetEvent.PEER_JOINED, (data: ISignalingMessage) => {
+        const peerJoinedListener = meet.on(MeetEvent.PEER_JOINED, (data: ISignalingMessage) => {
             setJoinedPeers(data.sessionIdList);
         });
+
+        return () => {
+            if (peerJoinedListener) {
+                meet.off(MeetEvent.PEER_JOINED, peerJoinedListener);
+            }
+        }
 
     }, [meet]);
 
@@ -211,6 +240,21 @@ export default function JoinMeet(
         }
     };
 
+    const onClickCopyMeetCode = () => {
+        if(!isCopy) {
+            return;
+        }
+
+        navigator.clipboard.writeText(meetCode)
+            .then(() => {
+                setIsCopy(false);
+
+                setTimeout(() => {
+                    setIsCopy(true);
+                }, 1500);
+            });
+    }
+
     return (
         <div>
             <Navbar/>
@@ -266,8 +310,39 @@ export default function JoinMeet(
                                     </p>
                                 </div>
 
+                                <div
+                                    className="flex items-center justify-center bg-slate-200 text-slate-900 px-2 py-2 mb-4 rounded">
+                                    <p className="text-sm mr-2">{meetCode}</p>
+                                    <div className="flex items-center justify-center text-sky-700" onClick={onClickCopyMeetCode}>
+                                        <TooltipProvider>
+                                            <Tooltip>
+                                                <TooltipTrigger>
+                                                    {isCopy ?
+                                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none"
+                                                             viewBox="0 0 24 24"
+                                                             strokeWidth={1.3} stroke="currentColor"
+                                                             className="w-5 h-5">
+                                                            <path strokeLinecap="round" strokeLinejoin="round"
+                                                                  d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75"/>
+                                                        </svg> :
+                                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none"
+                                                             viewBox="0 0 24 24" strokeWidth={1.3} stroke="currentColor"
+                                                             className="w-5 h-5">
+                                                            <path strokeLinecap="round" strokeLinejoin="round"
+                                                                  d="m4.5 12.75 6 6 9-13.5"/>
+                                                        </svg>
+                                                    }
+                                                </TooltipTrigger>
+                                                <TooltipContent>
+                                                    <p>{isCopy ? "Copy to clipboard" : "Copied!"}</p>
+                                                </TooltipContent>
+                                            </Tooltip>
+                                        </TooltipProvider>
+                                    </div>
+                                </div>
+
                                 <button
-                                    className='bg-sky-700 rounded-full text-white px-6 py-3 hover:cursor-pointer hover:bg-sky-800 transition duration-300'
+                                    className='text-base bg-sky-700 rounded-full text-white px-6 py-3 hover:cursor-pointer hover:bg-sky-800 transition duration-300'
                                     type='button'
                                     onClick={onJoinButtonClick}
                                 >

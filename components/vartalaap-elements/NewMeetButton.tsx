@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useMemo} from "react";
+import {useCallback, useEffect } from "react";
 import {useRouter} from "next/navigation";
 import {httpServerUri} from "@/utils/config";
 
@@ -6,7 +6,7 @@ export const NewMeetingButton = () => {
     const router = useRouter();
 
     const onNewMeetButtonClick = useCallback(() => {
-        fetch(`${httpServerUri}/create-meet`, {
+        fetch(`${httpServerUri}/meet/create`, {
             method: "POST",
             headers: {
                 'Content-Type': 'application/json',
@@ -28,7 +28,7 @@ export const NewMeetingButton = () => {
 
     return (
         <button
-            className='bg-sky-700 px-4 py-2 rounded text-white hover:bg-sky-800 transition duration-300'
+            className='bg-sky-700 px-4 py-2 text-base rounded text-white hover:bg-sky-800 transition duration-300'
             type='button'
             onClick={onNewMeetButtonClick}
         >

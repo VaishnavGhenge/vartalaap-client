@@ -38,6 +38,45 @@ export default function MeetCall(
     const [localVideoTrackState, setLocalVideoTrack] = useRecoilState(localVideoTrack);
     const [localAudioTrackState, setLocalAudioTrack] = useRecoilState(localAudioTrack);
 
+    const addAndListenForTracks = useCallback(() => {
+        if(!meet) return;
+        meet.localConnection.ontrack = (event: any) => {
+            console.log("track received out");
+            if (remoteVideoRef.current && event.track) {
+                console.log("track received");
+
+                const remoteStream = new MediaStream();
+
+                remoteStream.addTrack(event.track);
+
+                // Set the srcObject of the video element
+                remoteVideoRef.current.srcObject = remoteStream;
+            } else {
+                console.warn("remote ref null");
+            }
+        };
+    }, [meet]);
+
+    const sendStreamToRemote = useCallback(() => {
+        if (localVideoTrackState) {
+            // Check if a sender for the track already exists
+            const sender = meet?.localConnection.getSenders().find(s => s.track === localVideoTrackState);
+
+            console.log(sender);
+            if (sender) {
+                // If a sender exists, replace the track
+                void sender.replaceTrack(localVideoTrackState);
+                console.log("Track has been replaced");
+            } else {
+                if(localVideoRef.current && meet) {
+                    // If no sender exists, add the track
+                    meet.localConnection.addTrack(localVideoTrackState);
+                    console.log("first time kata tracks");
+                }
+            }
+        }
+    }, [localVideoTrackState]);
+
     const init = useCallback(() => {
         const localVideoTrackFromMap = getLocalVideoStreamTrack();
 
@@ -96,65 +135,25 @@ export default function MeetCall(
             });
     }, [meetCode]);
 
-    const addAndListenForTracks = useCallback(() => {
-        if (localVideoTrackState) {
-            // Check if a sender for the track already exists
-            const sender = meet?.localConnection.getSenders().find(s => s.track === localVideoTrackState);
-
-            if (sender) {
-                // If a sender exists, replace the track
-                console.log("track replaced", localVideoTrackState.id, localVideoTrackState.muted);
-                sender.replaceTrack(localVideoTrackState);
-            } else {
-                if(localVideoRef.current && meet) {
-                    // If no sender exists, add the track
-                    console.log("track added", localVideoTrackState.id, localVideoTrackState.muted);
-                    meet.localConnection.addTrack(localVideoTrackState, localVideoRef.current.srcObject as MediaStream);
-                }
-            }
-        }
-
-        console.log(meet);
-        if(!meet) return;
-        meet.localConnection.ontrack = (event: any) => {
-            console.log("track received");
-            if (remoteVideoRef.current) {
-                // Create a new MediaStream and append the received track
-
-                    console.log("track received");
-                    console.log(event.track);
-
-                    const remoteStream = new MediaStream();
-
-                    remoteStream.addTrack(event.track);
-
-                    // Set the srcObject of the video element
-                    remoteVideoRef.current.srcObject = remoteStream;
-
-                    console.log(remoteVideoRef.current?.srcObject);
-
-            } else {
-                console.warn("remote ref null");
-            }
-        };
-    }, [localVideoTrackState]);
-
     useEffect(() => {
         init();
 
     }, [init]);
 
     useEffect(() => {
+        addAndListenForTracks();
+    }, [addAndListenForTracks]);
+
+    useEffect(() => {
         const meetId = window.sessionStorage.getItem("meetId");
         const sessionId = window.sessionStorage.getItem("sessionId");
 
-        if (!meetId || !sessionId) {
-            console.log("No meetId or sessionId available in sessionStorage");
+        if (meet === null) {
             return;
         }
 
-        if (meet === null) {
-            return;
+        if (!meetId || !sessionId) {
+            console.log("No meetId or sessionId available in sessionStorage");
         }
 
         if(meet.signalingServer.readyState !== WebSocket.OPEN) {
@@ -167,8 +166,8 @@ export default function MeetCall(
     }, [meet]);
 
     useEffect(() => {
-        addAndListenForTracks();
-    }, [addAndListenForTracks]);
+        sendStreamToRemote()
+    }, [sendStreamToRemote]);
 
     const toggleCameraButton = (updatedCameraStatus: boolean) => {
         if (updatedCameraStatus && !localVideoTrackState) {
@@ -188,6 +187,7 @@ export default function MeetCall(
                         releaseMediaStream(prevVideoStream);
 
                         localVideoRef.current.srcObject = localVideoStream;
+                        // sendStreamToRemote();
                     }
 
                     updateUserPreferences({cameraStatus: true});
@@ -256,7 +256,6 @@ export default function MeetCall(
                             <div className='absolute top-0 left-0 w-full h-full rounded-xl bg-gray-600'></div>
 
                             <video
-                                hidden={!userPreferences.cameraStatus}
                                 ref={remoteVideoRef}
                                 className='absolute top-0 left-0 w-full h-full rounded-xl'
                                 autoPlay

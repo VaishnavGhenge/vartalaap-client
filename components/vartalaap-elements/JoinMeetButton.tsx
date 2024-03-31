@@ -10,7 +10,7 @@ export const JoinMeetButton = ({meetId}: IProps) => {
     const router = useRouter();
 
     const onJoinButtonClick = useCallback(() => {
-        fetch(`${httpServerUri}/join-meet?meetId=${meetId}`, {
+        fetch(`${httpServerUri}/meet/join?meetId=${meetId}`, {
             method: "GET",
             headers: {
                 'Content-Type': 'application/json',
@@ -29,7 +29,7 @@ export const JoinMeetButton = ({meetId}: IProps) => {
     return (
         <button
             type='button'
-            className='text-sky-700 px-3 py-2 rounded hover:bg-sky-100 hover:cursor-pointer disabled:text-gray-400'
+            className='text-base text-sky-700 px-3 py-2 rounded hover:bg-sky-100 hover:cursor-pointer disabled:text-gray-400'
             onClick={onJoinButtonClick}
         >
             Join
