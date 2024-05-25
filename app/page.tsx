@@ -40,7 +40,7 @@ export default function Home() {
 
     return (
         <div>
-            {isBackendHealthyState && <SideWideAlert color="red" message="Server seems offline, check after some time :)"/>}
+            {!isBackendHealthyState && <SideWideAlert color="red" message="Server seems offline, check after some time :)"/>}
             <Navbar></Navbar>
             <main className='h-full'>
                 <div className='container mx-auto'>
@@ -70,7 +70,7 @@ export default function Home() {
                             </p>
 
                             <div className='flex gap-4'>
-                                <NewMeetingButton/>
+                                <NewMeetingButton isBackendHealthy={isBackendHealthyState}/>
                                 <div className='flex gap-2'>
                                     <input
                                         value={meetCode}
@@ -80,7 +80,7 @@ export default function Home() {
                                         name='meet-code'
                                         placeholder='Enter meeting code or link'
                                     />
-                                    <JoinMeetButton meetId={meetCode}/>
+                                    <JoinMeetButton isBackendHealthy={isBackendHealthyState} joinButtonDisabled={joinButtonDisabled} meetId={meetCode}/>
                                 </div>
                             </div>
                         </div>

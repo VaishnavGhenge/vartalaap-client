@@ -1,11 +1,5 @@
-import {atom, RecoilState} from "recoil";
+import {atom} from "recoil";
 import { IPeer } from "@/utils/types";
-import {Meet} from "@/webrtc/webrtc";
-
-export const isBackendLive: RecoilState<boolean> = atom({
-    key: "isBackendLive",
-    default: false,
-});
 
 export const isMeetJoined = atom({
     key: "isMeetJoined",

@@ -1,8 +1,12 @@
-import {useCallback, useEffect } from "react";
+import {useCallback, useEffect} from "react";
 import {useRouter} from "next/navigation";
 import {httpServerUri} from "@/utils/config";
 
-export const NewMeetingButton = () => {
+interface Props {
+    isBackendHealthy: boolean;
+}
+
+export const NewMeetingButton = ({isBackendHealthy}: Props) => {
     const router = useRouter();
 
     const onNewMeetButtonClick = useCallback(() => {
@@ -28,11 +32,12 @@ export const NewMeetingButton = () => {
 
     return (
         <button
-            className='bg-sky-700 px-4 py-2 text-base rounded text-white hover:bg-sky-800 transition duration-300'
+            className="btn-vartalaap"
             type='button'
             onClick={onNewMeetButtonClick}
+            disabled={!isBackendHealthy}
         >
-            <span>New meeting</span>
+            New meeting
         </button>
     )
 }
