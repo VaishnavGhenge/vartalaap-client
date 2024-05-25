@@ -17,8 +17,8 @@ import {
 } from "@/webrtc/utils";
 import {videoConstraints, audioConstraints} from "@/utils/config";
 import {Meet} from "@/webrtc/webrtc";
-import {MicButton} from "@/components/vartalaap-elements/MicButton";
-import {CameraButton} from "@/components/vartalaap-elements/CameraButton";
+import {MicButton} from "@/components/layout/MicButton";
+import {CameraButton} from "@/components/layout/CameraButton";
 
 export default function MeetCall(
     {

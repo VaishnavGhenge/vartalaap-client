@@ -1,6 +1,6 @@
 "use client";
 
-import Navbar from "@/components/vartalaap-elements/Navbar";
+import Navbar from "@/components/layout/Navbar";
 import {useRef, useEffect, useCallback, useReducer, SetStateAction, Dispatch, useState} from "react";
 import {useRecoilState} from "recoil";
 import {
@@ -15,8 +15,8 @@ import {localAudioTrack, localVideoTrack} from "@/webrtc/recoilStates";
 import {isMeetJoined, joinedPeers} from "@/recoil/global";
 import {ISignalingMessage, IUserPreferences} from "@/utils/types";
 import {audioConstraints, httpServerUri, videoConstraints} from "@/utils/config";
-import {MicButton} from "@/components/vartalaap-elements/MicButton";
-import {CameraButton} from "@/components/vartalaap-elements/CameraButton";
+import {MicButton} from "@/components/layout/MicButton";
+import {CameraButton} from "@/components/layout/CameraButton";
 import {Meet} from "@/webrtc/webrtc";
 import {MeetEvent} from "@/webrtc/config";
 import {Tooltip, TooltipContent, TooltipProvider, TooltipTrigger} from "@/components/ui/tooltip";

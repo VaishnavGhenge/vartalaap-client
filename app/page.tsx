@@ -1,11 +1,13 @@
 "use client";
 
-import Navbar from "../components/vartalaap-elements/Navbar";
+import Navbar from "@/components/layout/Navbar";
 import {IBM_Plex_Sans_Devanagari} from "next/font/google";
 import Image from "next/image";
-import {ChangeEvent, useState} from "react";
-import {NewMeetingButton} from "@/components/vartalaap-elements/NewMeetButton";
-import {JoinMeetButton} from "@/components/vartalaap-elements/JoinMeetButton";
+import {ChangeEvent, useEffect, useState} from "react";
+import {NewMeetingButton} from "@/components/layout/NewMeetButton";
+import {JoinMeetButton} from "@/components/layout/JoinMeetButton";
+import {checkBackendHealthy} from "@/utils/common";
+import {SideWideAlert} from "@/components/layout/SiteWideAlert";
 
 const ibmPlexSansDevanagari = IBM_Plex_Sans_Devanagari({
     weight: "500",
@@ -15,6 +17,17 @@ const ibmPlexSansDevanagari = IBM_Plex_Sans_Devanagari({
 export default function Home() {
     const [joinButtonDisabled, setJoinButtonDisabled] = useState(true);
     const [meetCode, setMeetCode] = useState("");
+    const [isBackendHealthyState, setBackendHealthy] = useState(true);
+
+    useEffect(() => {
+        checkBackendHealthy()
+            .then((isHealthy) => {
+                setBackendHealthy(isHealthy);
+            })
+            .catch((error) => {
+                setBackendHealthy(false);
+            });
+    }, []);
 
     const onMeetCodeChange = (event: ChangeEvent<HTMLInputElement>) => {
         setMeetCode(event.target.value);
@@ -27,6 +40,7 @@ export default function Home() {
 
     return (
         <div>
+            {isBackendHealthyState && <SideWideAlert color="red" message="Server seems offline, check after some time :)"/>}
             <Navbar></Navbar>
             <main className='h-full'>
                 <div className='container mx-auto'>
@@ -56,7 +70,7 @@ export default function Home() {
                             </p>
 
                             <div className='flex gap-4'>
-                                <NewMeetingButton />
+                                <NewMeetingButton/>
                                 <div className='flex gap-2'>
                                     <input
                                         value={meetCode}
