@@ -12,7 +12,7 @@ export const JoinMeetButton = ({meetId, joinButtonDisabled, isBackendHealthy}: I
     const router = useRouter();
 
     const onJoinButtonClick = useCallback(() => {
-        fetch(`${httpServerUri}/meet/join?meetId=${meetId}`, {
+        fetch(`${httpServerUri}/meets/join?meetId=${meetId}`, {
             method: "GET",
             headers: {
                 'Content-Type': 'application/json',

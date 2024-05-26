@@ -10,7 +10,7 @@ export const NewMeetingButton = ({isBackendHealthy}: Props) => {
     const router = useRouter();
 
     const onNewMeetButtonClick = useCallback(() => {
-        fetch(`${httpServerUri}/meet/create`, {
+        fetch(`${httpServerUri}/meets/create`, {
             method: "POST",
             headers: {
                 'Content-Type': 'application/json',
