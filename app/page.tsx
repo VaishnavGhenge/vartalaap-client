@@ -75,7 +75,7 @@ export default function Home() {
                                     <input
                                         value={meetCode}
                                         onChange={onMeetCodeChange}
-                                        className='text-sm bg-slate-300 text-black rounded px-4 py-2 active:outline-sky-700 focus-visible:outline-sky-700'
+                                        className="input"
                                         type='text'
                                         name='meet-code'
                                         placeholder='Enter meeting code or link'
