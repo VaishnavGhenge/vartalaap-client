@@ -4,11 +4,10 @@ import {httpServerUri} from "@/utils/config";
 
 interface IProps {
     meetId: string;
-    joinButtonDisabled: boolean;
-    isBackendHealthy: boolean;
+    disabled: boolean
 }
 
-export const JoinMeetButton = ({meetId, joinButtonDisabled, isBackendHealthy}: IProps) => {
+export const JoinMeetButton = ({meetId, disabled}: IProps) => {
     const router = useRouter();
 
     const onJoinButtonClick = useCallback(() => {
@@ -33,7 +32,7 @@ export const JoinMeetButton = ({meetId, joinButtonDisabled, isBackendHealthy}: I
             type='button'
             className='text-sm text-sky-700 px-3 py-2 rounded hover:bg-sky-100 hover:cursor-pointer disabled:hover:cursor-not-allowed'
             onClick={onJoinButtonClick}
-            disabled={joinButtonDisabled || !isBackendHealthy}
+            disabled={disabled}
         >
             Join
         </button>

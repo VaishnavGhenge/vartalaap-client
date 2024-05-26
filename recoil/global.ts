@@ -14,15 +14,6 @@ export const userPreferences = atom({
     }
 });
 
-export const currentPeer = atom<IPeer>({
-    key: "peerState",
-    default: {
-        sessionId: null,
-        name: "Vaishnav",
-        owner: false,
-    }
-});
-
 export const joinedPeers = atom<string[]>({
     key: "joinedPeers",
     default: [],

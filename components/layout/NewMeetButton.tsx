@@ -3,10 +3,10 @@ import {useRouter} from "next/navigation";
 import {httpServerUri} from "@/utils/config";
 
 interface Props {
-    isBackendHealthy: boolean;
+    disabled: boolean;
 }
 
-export const NewMeetingButton = ({isBackendHealthy}: Props) => {
+export const NewMeetingButton = ({disabled}: Props) => {
     const router = useRouter();
 
     const onNewMeetButtonClick = useCallback(() => {
@@ -35,7 +35,7 @@ export const NewMeetingButton = ({isBackendHealthy}: Props) => {
             className="btn-vartalaap"
             type='button'
             onClick={onNewMeetButtonClick}
-            disabled={!isBackendHealthy}
+            disabled={disabled}
         >
             New meeting
         </button>

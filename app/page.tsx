@@ -8,6 +8,8 @@ import {NewMeetingButton} from "@/components/layout/NewMeetButton";
 import {JoinMeetButton} from "@/components/layout/JoinMeetButton";
 import {checkBackendHealthy} from "@/utils/common";
 import {SideWideAlert} from "@/components/layout/SiteWideAlert";
+import {useRecoilState} from "recoil";
+import {user} from "@/recoil/auth";
 
 const ibmPlexSansDevanagari = IBM_Plex_Sans_Devanagari({
     weight: "500",
@@ -18,11 +20,18 @@ export default function Home() {
     const [joinButtonDisabled, setJoinButtonDisabled] = useState(true);
     const [meetCode, setMeetCode] = useState("");
     const [isBackendHealthyState, setBackendHealthy] = useState(true);
+    const [loggedInUser, setUser] = useRecoilState(user);
 
     useEffect(() => {
         checkBackendHealthy()
             .then((isHealthy) => {
                 setBackendHealthy(isHealthy);
+
+                const userString = window.localStorage.getItem("user");
+
+                if(userString) {
+                    setUser(JSON.parse(userString));
+                }
             })
             .catch((error) => {
                 setBackendHealthy(false);
@@ -40,7 +49,7 @@ export default function Home() {
 
     return (
         <div>
-            {!isBackendHealthyState && <SideWideAlert color="red" message="Server seems offline, check after some time :)"/>}
+            {!isBackendHealthyState && <SideWideAlert color="red" message="Server seems offline, please check after some time :)"/>}
             <Navbar></Navbar>
             <main className='h-full'>
                 <div className='container mx-auto'>
@@ -70,7 +79,7 @@ export default function Home() {
                             </p>
 
                             <div className='flex gap-4'>
-                                <NewMeetingButton isBackendHealthy={isBackendHealthyState}/>
+                                <NewMeetingButton disabled={!isBackendHealthyState || !loggedInUser}/>
                                 <div className='flex gap-2'>
                                     <input
                                         value={meetCode}
@@ -80,7 +89,7 @@ export default function Home() {
                                         name='meet-code'
                                         placeholder='Enter meeting code or link'
                                     />
-                                    <JoinMeetButton isBackendHealthy={isBackendHealthyState} joinButtonDisabled={joinButtonDisabled} meetId={meetCode}/>
+                                    <JoinMeetButton disabled={joinButtonDisabled || !isBackendHealthyState || !loggedInUser} meetId={meetCode}/>
                                 </div>
                             </div>
                         </div>

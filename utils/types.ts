@@ -31,3 +31,10 @@ export interface IPeer {
     name: string;
     owner: boolean;
 }
+
+export interface IUser {
+    token: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+}
