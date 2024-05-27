@@ -14,11 +14,12 @@ interface ILogin {
 }
 
 function getJWTToken() {
-    return localStorage.getItem("token");
-}
+    const user = localStorage.getItem("user");
+    if (!user) {
+        return null;
+    }
 
-function setJWTToken(token: string) {
-    localStorage.setItem("token", token);
+    return JSON.parse(user).token as string;
 }
 
 function checkEmpty(data: any): Promise<boolean> {
@@ -33,7 +34,7 @@ function checkEmpty(data: any): Promise<boolean> {
     });
 }
 
-function get(url: string): Promise<Response> {
+export function get(url: string): Promise<Response> {
     const token = getJWTToken();
 
     if (token) {
@@ -47,7 +48,7 @@ function get(url: string): Promise<Response> {
     return fetch(url);
 }
 
-function post(url: string, data: any): Promise<Response> {
+export function post(url: string, data?: any): Promise<Response> {
     const token = getJWTToken();
 
     if (token) {

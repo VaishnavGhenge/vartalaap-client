@@ -23,7 +23,7 @@ export const JoinMeetButton = ({meetId, disabled}: IProps) => {
                 window.sessionStorage.setItem("meetId", data.meetId);
 
                 const meetId = data.meetId;
-                router.push(`/${meetId}?role=joining`);
+                router.push(`/${meetId}?type=member`);
             });
     }, [meetId]);
 
