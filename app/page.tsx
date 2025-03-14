@@ -53,10 +53,10 @@ export default function Home() {
             <Navbar></Navbar>
             <main className='h-full'>
                 <div className='container mx-auto'>
-                    <div className='grid grid-cols-2 gap-4'>
+                    <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
                         <div className='w-100 flex justify-center items-center'>
                             <Image
-                                className='w-full h-full'
+                                className='hidden w-full h-full md:block'
                                 src='/static/images/hero.svg'
                                 alt='Hero image'
                                 width={768}
@@ -78,7 +78,7 @@ export default function Home() {
                                 and organize meetings seamlessly
                             </p>
 
-                            <div className='flex gap-4'>
+                            <div className='flex flex-wrap gap-4'>
                                 <NewMeetingButton disabled={!isBackendHealthyState || !loggedInUser}/>
                                 <div className='flex gap-2'>
                                     <input

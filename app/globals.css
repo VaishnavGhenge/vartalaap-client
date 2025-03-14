@@ -81,7 +81,7 @@
 }
 
 .btn-faint-vartalaap {
-  @apply bg-slate-300 px-4 py-2 text-sm rounded text-slate-800 transition duration-300 hover:cursor-pointer
+  @apply text-sm text-sky-700 px-3 py-2 rounded hover:bg-sky-100 hover:cursor-pointer disabled:hover:cursor-not-allowed
 }
 
 .input {
