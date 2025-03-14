@@ -7,9 +7,9 @@ const ibmPlexSansDevanagari = IBM_Plex_Sans_Devanagari({
 
 const AppTitle = () => {
     return (
-        <div className={ibmPlexSansDevanagari.className}>
+        <a href="/" className={`${ibmPlexSansDevanagari.className}`}>
             <h2 className='text-xl'>वार्तालाप</h2>
-        </div>
+        </a>
     );
 };
 
