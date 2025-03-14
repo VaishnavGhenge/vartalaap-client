@@ -13,9 +13,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import Link from "next/link";
 import {Button} from "@/components/utility/Button";
+import {useRouter} from "next/navigation";
 
 const Navbar = () => {
-    const loggedInUser = useRecoilValue(user);
+    const router = useRouter();
 
     return (
         <nav className='bg-white w-screen'>
@@ -25,8 +26,8 @@ const Navbar = () => {
                 </div>
 
                 <div className="flex gap-2">
-                    <Button className="btn-vartalaap">Login</Button>
-                    <Button className="btn-faint-vartalaap">Signup</Button>
+                    <Button className="btn-vartalaap" onClick={() => router.push("/login")}>Login</Button>
+                    <Button className="btn-faint-vartalaap" onClick={() => router.push("/register")}>Signup</Button>
                 </div>
             </div>
         </nav>

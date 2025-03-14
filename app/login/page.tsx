@@ -68,7 +68,7 @@ export default function Login() {
             <div className='flex justify-center items-center'>
                 <div>
                     <h3 className='text-xl mb-6 text-center'>
-                        Login into Vartalaap
+                        Log into Vartalaap
                     </h3>
 
                     <form>

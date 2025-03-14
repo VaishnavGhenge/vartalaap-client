@@ -21,7 +21,7 @@ export const GlobalAlert: React.FC<GlobalAlertProps> = ({initialBackendStatus}: 
     });
 
     useEffect(() => {
-        setIsBackendOffline(!data ?? !initialBackendStatus);
+        setIsBackendOffline(!data || !initialBackendStatus);
     }, [data, initialBackendStatus, setIsBackendOffline]);
 
     if (!isBackendOffline) return null;
