@@ -1,7 +1,17 @@
-import {atom} from "recoil";
-import { IPeer } from "@/utils/types";
+import {atom, RecoilState} from "recoil";
+import {IPeer} from "@/utils/types";
 
-export const isMeetJoined = atom({
+export const backendOfflineStatus: RecoilState<boolean> = atom({
+    key: "isBackendOffline",
+    default: false
+});
+
+export const currentMeetCode: RecoilState<string> = atom({
+    key: "meetCode",
+    default: ""
+});
+
+export const isMeetJoined: RecoilState<boolean> = atom({
     key: "isMeetJoined",
     default: false,
 });

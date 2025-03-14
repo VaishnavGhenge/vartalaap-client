@@ -5,9 +5,9 @@ interface ValidationError {
     message: string;
 }
 
-export const checkBackendHealthy = async (): Promise<boolean> => {
+export const getBackendStatus = async (): Promise<boolean> => {
     try {
-        await fetch(httpServerUri);
+        await fetch(httpServerUri, {cache: "no-store"});
         return true;
     } catch(error) {
         return false;

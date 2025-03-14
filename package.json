@@ -22,6 +22,7 @@
     "react": "latest",
     "react-dom": "latest",
     "recoil": "^0.7.7",
+    "swr": "^2.3.3",
     "tailwind-merge": "^2.2.1",
     "tailwindcss-animate": "^1.0.7",
     "webm-to-wav-converter": "^1.1.0"

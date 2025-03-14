@@ -12,6 +12,7 @@ import {
     DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import Link from "next/link";
+import {Button} from "@/components/utility/Button";
 
 const Navbar = () => {
     const loggedInUser = useRecoilValue(user);
@@ -24,8 +25,8 @@ const Navbar = () => {
                 </div>
 
                 <div className="flex gap-2">
-                    <button className="btn-vartalaap" type="button">Login</button>
-                    <button className="btn-faint-vartalaap" type="button">Signup</button>
+                    <Button className="btn-vartalaap">Login</Button>
+                    <Button className="btn-faint-vartalaap">Signup</Button>
                 </div>
             </div>
         </nav>

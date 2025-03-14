@@ -3,13 +3,10 @@
 import Navbar from "@/components/layout/Navbar";
 import {IBM_Plex_Sans_Devanagari} from "next/font/google";
 import Image from "next/image";
-import {ChangeEvent, useEffect, useState} from "react";
 import {NewMeetingButton} from "@/components/layout/NewMeetButton";
 import {JoinMeetButton} from "@/components/layout/JoinMeetButton";
-import {checkBackendHealthy} from "@/utils/common";
-import {SideWideAlert} from "@/components/layout/SiteWideAlert";
 import {useRecoilState} from "recoil";
-import {user} from "@/recoil/auth";
+import {currentMeetCode} from "@/recoil/global";
 
 const ibmPlexSansDevanagari = IBM_Plex_Sans_Devanagari({
     weight: "500",
@@ -17,39 +14,10 @@ const ibmPlexSansDevanagari = IBM_Plex_Sans_Devanagari({
 });
 
 export default function Home() {
-    const [joinButtonDisabled, setJoinButtonDisabled] = useState(true);
-    const [meetCode, setMeetCode] = useState("");
-    const [isBackendHealthyState, setBackendHealthy] = useState(true);
-    const [loggedInUser, setUser] = useRecoilState(user);
-
-    useEffect(() => {
-        checkBackendHealthy()
-            .then((isHealthy) => {
-                setBackendHealthy(isHealthy);
-
-                const userString = window.localStorage.getItem("user");
-
-                if(userString) {
-                    setUser(JSON.parse(userString));
-                }
-            })
-            .catch((error) => {
-                setBackendHealthy(false);
-            });
-    }, []);
-
-    const onMeetCodeChange = (event: ChangeEvent<HTMLInputElement>) => {
-        setMeetCode(event.target.value);
-        if (event.target.value.length > 0) {
-            setJoinButtonDisabled(false);
-        } else {
-            setJoinButtonDisabled(true);
-        }
-    };
+    const [meetCodeInput, setMeetCode] = useRecoilState(currentMeetCode);
 
     return (
         <div>
-            {!isBackendHealthyState && <SideWideAlert color="red" message="Server seems offline, please check after some time :)"/>}
             <Navbar></Navbar>
             <main className='h-full'>
                 <div className='container mx-auto'>
@@ -79,17 +47,17 @@ export default function Home() {
                             </p>
 
                             <div className='flex flex-wrap gap-4'>
-                                <NewMeetingButton disabled={!isBackendHealthyState || !loggedInUser}/>
+                                <NewMeetingButton/>
                                 <div className='flex gap-2'>
                                     <input
-                                        value={meetCode}
-                                        onChange={onMeetCodeChange}
+                                        value={meetCodeInput}
+                                        onChange={e => setMeetCode(e.target.value)}
                                         className="input w-[200px]"
                                         type='text'
                                         name='meet-code'
                                         placeholder='meeting code or link here'
                                     />
-                                    <JoinMeetButton disabled={joinButtonDisabled || !isBackendHealthyState || !loggedInUser} meetId={meetCode}/>
+                                    <JoinMeetButton meetId={meetCodeInput}/>
                                 </div>
                             </div>
                         </div>

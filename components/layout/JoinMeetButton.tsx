@@ -1,17 +1,17 @@
-import {useCallback} from "react"
+import {useCallback, useState} from "react"
 import {useRouter} from "next/navigation";
 import {httpServerUri} from "@/utils/config";
+import {Button} from "@/components/utility/Button";
+import {useRecoilValue} from "recoil";
+import {currentMeetCode} from "@/recoil/global";
 
-interface IProps {
-    meetId: string;
-    disabled: boolean
-}
-
-export const JoinMeetButton = ({meetId, disabled}: IProps) => {
+export const JoinMeetButton = () => {
     const router = useRouter();
 
+    const meetCode = useRecoilValue(currentMeetCode);
+
     const onJoinButtonClick = useCallback(() => {
-        fetch(`${httpServerUri}/meets/join?meetId=${meetId}`, {
+        fetch(`${httpServerUri}/meets/join?meetId=${meetCode}`, {
             method: "GET",
             headers: {
                 'Content-Type': 'application/json',
@@ -25,16 +25,15 @@ export const JoinMeetButton = ({meetId, disabled}: IProps) => {
                 const meetId = data.meetId;
                 router.push(`/${meetId}?type=member`);
             });
-    }, [meetId]);
+    }, [meetCode, router]);
 
     return (
-        <button
-            type='button'
+        <Button
             className='text-sm text-sky-700 px-3 py-2 rounded hover:bg-sky-100 hover:cursor-pointer disabled:hover:cursor-not-allowed'
             onClick={onJoinButtonClick}
-            disabled={disabled}
+            disabled={!meetCode}
         >
             Join
-        </button>
+        </Button>
     )
 }

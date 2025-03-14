@@ -2,12 +2,10 @@ import {useCallback, useEffect} from "react";
 import {useRouter} from "next/navigation";
 import {httpServerUri} from "@/utils/config";
 import {post} from "@/utils/api";
+import {Button} from "@/components/utility/Button";
 
-interface Props {
-    disabled: boolean;
-}
 
-export const NewMeetingButton = ({disabled}: Props) => {
+export const NewMeetingButton = () => {
     const router = useRouter();
 
     const onNewMeetButtonClick = useCallback(() => {
@@ -27,13 +25,11 @@ export const NewMeetingButton = ({disabled}: Props) => {
     }, []);
 
     return (
-        <button
+        <Button
             className="btn-vartalaap"
-            type='button'
             onClick={onNewMeetButtonClick}
-            disabled={disabled}
         >
             New meeting
-        </button>
+        </Button>
     )
 }
