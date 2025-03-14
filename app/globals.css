@@ -85,7 +85,7 @@
 }
 
 .input {
-  @apply text-sm bg-slate-300 text-black rounded px-4 py-2 active:outline-sky-700 focus-visible:outline-sky-700
+  @apply text-sm bg-slate-100 text-black rounded px-2 py-2 active:outline-sky-700 focus-visible:outline-sky-700
 }
 
 .input-label {

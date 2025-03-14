@@ -84,10 +84,10 @@ export default function Home() {
                                     <input
                                         value={meetCode}
                                         onChange={onMeetCodeChange}
-                                        className="input"
+                                        className="input w-[200px]"
                                         type='text'
                                         name='meet-code'
-                                        placeholder='Enter meeting code or link'
+                                        placeholder='meeting code or link here'
                                     />
                                     <JoinMeetButton disabled={joinButtonDisabled || !isBackendHealthyState || !loggedInUser} meetId={meetCode}/>
                                 </div>
