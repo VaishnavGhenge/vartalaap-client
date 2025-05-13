@@ -18,7 +18,7 @@ export interface IRawSignalingMessage {
 }
 
 export interface ISignalingMessage extends IRawSignalingMessage{
-    meetId: string;
+    meetCode: string;
     sessionId: string;
     data?: any;
     offer?: any;

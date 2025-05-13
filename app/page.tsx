@@ -57,7 +57,7 @@ export default function Home() {
                                         name='meet-code'
                                         placeholder='meeting code or link here'
                                     />
-                                    <JoinMeetButton meetId={meetCodeInput}/>
+                                    <JoinMeetButton />
                                 </div>
                             </div>
                         </div>

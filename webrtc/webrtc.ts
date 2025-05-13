@@ -10,13 +10,13 @@ export class Meet {
     private dataChannel: RTCDataChannel;
     public signalingServer: SignalingServer;
 
-    readonly meetId: string;
+    readonly meetCode: string;
     readonly sessionId: string;
 
     private isOfferCreated = false;
 
-    constructor(meetId: string, sessionId: string) {
-        this.meetId = meetId;
+    constructor(meetCode: string, sessionId: string) {
+        this.meetCode = meetCode;
         this.sessionId = sessionId;
 
         this.localConnection = new RTCPeerConnection(MEET_CONFIG);
@@ -42,13 +42,13 @@ export class Meet {
         // });
     }
 
-    public static getInstance(meetId: string, sessionId: string): Meet {
+    public static getInstance(meetCode: string, sessionId: string): Meet {
         if (!Meet.instance) {
-            Meet.instance = new Meet(meetId, sessionId);
+            Meet.instance = new Meet(meetCode, sessionId);
         }
 
-        if (Meet.instance.meetId !== meetId && Meet.instance.sessionId !== sessionId) {
-            Meet.instance = new Meet(meetId, sessionId);
+        if (Meet.instance.meetCode !== meetCode && Meet.instance.sessionId !== sessionId) {
+            Meet.instance = new Meet(meetCode, sessionId);
         }
 
         return Meet.instance;
@@ -74,6 +74,9 @@ export class Meet {
 
                 break;
             case MeetEvent.PEER_JOINED:
+                break;
+            case MeetEvent.BAD_REQUEST:
+                console.warn("BAD REQUEST")
                 break;
             default:
                 console.log("Unknown message: ", data);
@@ -109,7 +112,7 @@ export class Meet {
         const message = {
             ...rawMessage,
             sessionId: this.sessionId,
-            meetId: this.meetId,
+            meetCode: this.meetCode,
         } as ISignalingMessage;
 
         this.signalingServer.sendJsonMessage(message);

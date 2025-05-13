@@ -51,13 +51,7 @@ export default function MeetManager({params}: { params: { meetCode: string } }) 
         );
     } else {
         return (
-            <JoinMeet
-                meetCode={params.meetCode}
-                userPreferences={userPreferencesState}
-                updateUserPreferences={updateUserPreferences}
-                meet={meetState}
-                setMeet={setMeet}
-            />
+            <JoinMeet/>
         );
     }
 }
