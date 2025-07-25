@@ -5,11 +5,13 @@ interface JoinMeetState {
   userName: string
   meetCode: string
   isReady: boolean
+  hasJoinedMeet: boolean
   
   // Actions
   setUserName: (name: string) => void
   setMeetCode: (code: string) => void
   setReady: (ready: boolean) => void
+  setHasJoinedMeet: (joined: boolean) => void
   clearJoinMeet: () => void
 }
 
@@ -18,6 +20,7 @@ export const useJoinMeetStore = create<JoinMeetState>()(
     userName: '',
     meetCode: '',
     isReady: false,
+    hasJoinedMeet: false,
 
     setUserName: (name) =>
       set(() => ({
@@ -34,11 +37,17 @@ export const useJoinMeetStore = create<JoinMeetState>()(
         isReady: ready,
       })),
     
+    setHasJoinedMeet: (joined) =>
+      set(() => ({
+        hasJoinedMeet: joined,
+      })),
+    
     clearJoinMeet: () =>
       set(() => ({
         userName: '',
         meetCode: '',
         isReady: false,
+        hasJoinedMeet: false,
       })),
   }))
 )

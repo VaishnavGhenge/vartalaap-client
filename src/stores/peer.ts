@@ -112,7 +112,7 @@ export const usePeerStore = create<PeerState>()(
     clearAll: () => {
       const { localStream, peerConnections } = get()
       
-      // Stop local stream
+      // Stop the local stream
       if (localStream) {
         localStream.getTracks().forEach(track => track.stop())
       }

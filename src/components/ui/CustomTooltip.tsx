@@ -1,6 +1,7 @@
 "use client";
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./tooltip";
+import React from "react";
 
 interface CustomTooltipProps {
   children: React.ReactNode;
