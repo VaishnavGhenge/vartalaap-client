@@ -1,15 +1,14 @@
 import {useCallback, useEffect} from "react";
 import {useRouter} from "next/navigation";
-import {httpServerUri} from "@/utils/config";
-import {post} from "@/utils/api";
 import {Button} from "@/components/utility/Button";
+import {createMeet} from "@/api/meet";
 
 
 export const NewMeetingButton = () => {
     const router = useRouter();
 
     const onNewMeetButtonClick = useCallback(() => {
-        post(`${httpServerUri}/meets/create`)
+        createMeet()
             .then((response) => response.json())
             .then((data) => {
                 window.sessionStorage.setItem("sessionId", data.sessionId);
@@ -18,7 +17,7 @@ export const NewMeetingButton = () => {
                 const meetId = data.meetId;
                 router.push(`/${meetId}?type=owner`);
             });
-    }, []);
+    }, [router]);
 
     useEffect(() => {
 
