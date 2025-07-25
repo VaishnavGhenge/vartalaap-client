@@ -1,31 +1,33 @@
-import { useEffect, useState } from 'react'
-import { Socket } from 'socket.io-client'
-import { socketService } from '@/services/socket/socket'
+import {useEffect, useState} from 'react'
+import {Socket} from 'socket.io-client'
+import {socketClient} from "@/src/services/socket/socket";
 
 export const useSocket = () => {
-  const [socket, setSocket] = useState<Socket | null>(null)
-  const [isConnected, setIsConnected] = useState(false)
+    const [socket, setSocket] = useState<typeof Socket | null>(null)
+    const [isConnected, setIsConnected] = useState(false)
 
-  useEffect(() => {
-    const connectSocket = async () => {
-      try {
-        const socketInstance = await socketService.connect()
-        setSocket(socketInstance)
-        setIsConnected(true)
-      } catch (error) {
-        console.error('Failed to connect to socket:', error)
-        setIsConnected(false)
-      }
-    }
+    useEffect(() => {
+        const connectSocket = async () => {
+            try {
+                const socketInstance = await socketClient.connect()
+                setSocket(socketInstance)
+                setIsConnected(true)
+            } catch (error) {
+                console.error('Failed to connect to socket:', error)
+                setIsConnected(false)
+            }
+        }
 
-    connectSocket()
+        void connectSocket()
 
-    return () => {
-      socketService.disconnect()
-      setSocket(null)
-      setIsConnected(false)
-    }
-  }, [])
+        return () => {
+            if (!socket) return;
 
-  return { socket, isConnected }
+            socket.disconnect()
+            setSocket(null)
+            setIsConnected(false)
+        }
+    }, [])
+
+    return {socket, isConnected}
 }

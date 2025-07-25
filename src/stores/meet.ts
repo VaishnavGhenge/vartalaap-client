@@ -35,8 +35,8 @@ export const useMeetStore = create<MeetState>()(
     currentMeet: null,
     participants: [],
     isConnected: false,
-    isMuted: false,
-    isVideoOff: false,
+    isMuted: true,
+    isVideoOff: true,
     isScreenSharing: false,
 
     setCurrentMeet: (meetId) =>

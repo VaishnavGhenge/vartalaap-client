@@ -21,7 +21,7 @@ class SocketClient {
       })
 
       this.socket.on('connect_error', (error: any) => {
-        console.error('Socket connection error:', error)
+        console.error('SocketClient connection error:', error)
         reject(error)
       })
 
@@ -59,6 +59,6 @@ class SocketClient {
   }
 }
 
-export const socket = new SocketClient(
+export const socketClient = new SocketClient(
   process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:8080'
 )
