@@ -25,7 +25,6 @@ export const NewMeetingButton = () => {
 
     return (
         <Button
-            className="btn-vartalaap"
             onClick={onNewMeetButtonClick}
         >
             New meeting

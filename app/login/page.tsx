@@ -4,6 +4,7 @@ import Navbar from "@/src/components/ui/Navbar";
 import Link from "next/link";
 import { BufferingButtonLabel } from "@/src/components/ui/BufferingButtonLabel";
 import { Input } from "@/src/components/ui/input";
+import { Button } from "@/src/components/ui/button";
 
 export default function Login() {
     return (
@@ -46,12 +47,13 @@ export default function Login() {
                         </div>
 
                         <div className='w-[300px] mb-6'>
-                            <button
+                            <Button
                                 type='button'
-                                className='btn-vartalaap w-full'
+                                variant="primary"
+                                className='w-full'
                             >
                                 <BufferingButtonLabel label="Processing..." />
-                            </button>
+                            </Button>
                         </div>
                     </form>
 

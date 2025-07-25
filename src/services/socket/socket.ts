@@ -1,14 +1,14 @@
-import { io, Socket } from 'socket.io-client'
+import io from 'socket.io-client'
 
-class SocketService {
-  private socket: Socket | null = null
-  private url: string
+class SocketClient {
+  private socket: typeof io.Socket | null = null
+  private readonly url: string
 
   constructor(url: string) {
     this.url = url
   }
 
-  connect(): Promise<Socket> {
+  connect(): Promise<typeof io.Socket> {
     return new Promise((resolve, reject) => {
       this.socket = io(this.url, {
         transports: ['websocket'],
@@ -20,7 +20,7 @@ class SocketService {
         resolve(this.socket!)
       })
 
-      this.socket.on('connect_error', (error) => {
+      this.socket.on('connect_error', (error: any) => {
         console.error('Socket connection error:', error)
         reject(error)
       })
@@ -36,7 +36,7 @@ class SocketService {
     }
   }
 
-  getSocket(): Socket | null {
+  getSocket(): typeof io.Socket | null {
     return this.socket
   }
 
@@ -59,6 +59,6 @@ class SocketService {
   }
 }
 
-export const socketService = new SocketService(
-  process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001'
+export const socket = new SocketClient(
+  process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:8080'
 )

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import Navbar from "@/src/components/ui/Navbar";
 import { Input } from "@/src/components/ui/input";
+import { Button } from "@/src/components/ui/button";
 
 export default function Register() {
     const [registerData, setRegisterData] = useState({
@@ -100,9 +101,10 @@ export default function Register() {
                         </div>
 
                         <div className='flex flex-col mb-6'>
-                            <button
+                            <Button
                                 type='button'
-                                className='btn-vartalaap w-full'
+                                variant="primary"
+                                className='w-full'
                                 disabled={isRegisterPending}
                             >
                                 {isRegisterPending ? (
@@ -110,7 +112,7 @@ export default function Register() {
                                 ) : (
                                     <span>Register</span>
                                 )}
-                            </button>
+                            </Button>
                         </div>
                     </form>
 

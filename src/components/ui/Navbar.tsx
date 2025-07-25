@@ -13,8 +13,8 @@ const Navbar = () => {
                 </div>
 
                 <div className="flex gap-2">
-                    <Button className="btn-vartalaap" onClick={() => router.push("/login")}>Login</Button>
-                    <Button className="btn-faint-vartalaap" onClick={() => router.push("/register")}>Signup</Button>
+                    <Button variant="primary" onClick={() => router.push("/login")}>Login</Button>
+                    <Button variant="outline" onClick={() => router.push("/register")}>Signup</Button>
                 </div>
             </div>
         </nav>

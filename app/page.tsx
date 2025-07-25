@@ -43,16 +43,20 @@ export default function Home() {
                                 and organize meetings seamlessly
                             </p>
 
-                            <NewMeetingButton/>
+                            <div className='grid grid-rows-2 grid-cols-4 gap-4'>
+                                <div className='col-span-3'>
+                                    <NewMeetingButton/>
+                                </div>
 
-                            <div className='flex flex-wrap gap-4'>
-                                <div className='flex gap-2'>
+                                <div className='col-span-3'>
                                     <Input
-                                        className="w-[200px]"
                                         type='text'
                                         name='meet-code'
                                         placeholder='meeting code or link here'
                                     />
+                                </div>
+
+                                <div className='col-span-1'>
                                     <JoinMeetButton />
                                 </div>
                             </div>
