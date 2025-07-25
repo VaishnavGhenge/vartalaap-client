@@ -2,6 +2,6 @@
 
 import JoinMeet from "@/src/components/features/JoinMeet";
 
-export default function MeetManager({params}: { params: { meetCode: string } }) {
+export default function MeetManager() {
     return <JoinMeet></JoinMeet>
 }
