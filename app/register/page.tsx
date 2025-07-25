@@ -1,12 +1,9 @@
 "use client";
 
-import { BufferingButtonLabel } from "@/components/layout/BufferingButtonLabel";
-import { FormAlert } from "@/components/layout/FormAlert";
+import { BufferingButtonLabel } from "@/src/components/layout/BufferingButtonLabel";
 import Link from "next/link";
-import { useCallback, useState } from "react";
-import api from "@/utils/api";
-import { getEmptyFormObject } from "@/utils/forms";
-import Navbar from "@/components/layout/Navbar";
+import { useState } from "react";
+import Navbar from "@/src/components/layout/Navbar";
 
 export default function Register() {
     const [registerData, setRegisterData] = useState({
@@ -17,37 +14,6 @@ export default function Register() {
         password2: "",
     });
     const [isRegisterPending, setIsRegisterPending] = useState(false);
-    const [formError, setFormError] = useState<string | null>(null);
-
-    const handleChange = useCallback((e: any) => {
-        setRegisterData((prevData) => ({
-            ...prevData,
-            [e.target.name]: e.target.value,
-        }));
-    }, []);
-
-    const register = useCallback(() => {
-        setIsRegisterPending(true);
-
-        api.register(registerData)
-            .then((response: Response) => {
-                if (response.ok) {
-                    setFormError(null);
-                    return response.json();
-                }
-
-                throw new Error("Registration failed");
-            })
-            .then((data: { message: string; user: any }) => {
-                setRegisterData(getEmptyFormObject(registerData));
-            })
-            .catch((error: Error) => {
-                setFormError(error.message);
-            })
-            .finally(() => {
-                setIsRegisterPending(false);
-            });
-    }, [registerData]);
 
     return (
         <div className="min-h-screen">
@@ -59,10 +25,6 @@ export default function Register() {
                     </h3>
 
                     <form>
-                        {formError && (
-                            <FormAlert message={formError} color='red' />
-                        )}
-
                         <div className='flex gap-4 mb-4'>
                             <div className='flex flex-col'>
                                 <label
@@ -78,7 +40,6 @@ export default function Register() {
                                     name='firstName'
                                     className='input'
                                     value={registerData.firstName}
-                                    onChange={handleChange}
                                 />
                             </div>
 
@@ -96,7 +57,6 @@ export default function Register() {
                                     name='lastName'
                                     className='input'
                                     value={registerData.lastName}
-                                    onChange={handleChange}
                                 />
                             </div>
                         </div>
@@ -112,7 +72,6 @@ export default function Register() {
                                 className='input'
                                 placeholder='user@email.com'
                                 value={registerData.email}
-                                onChange={handleChange}
                             />
                         </div>
 
@@ -127,7 +86,6 @@ export default function Register() {
                                 name='password'
                                 className='input'
                                 value={registerData.password}
-                                onChange={handleChange}
                             />
                         </div>
 
@@ -142,7 +100,6 @@ export default function Register() {
                                 name='password2'
                                 className='input'
                                 value={registerData.password2}
-                                onChange={handleChange}
                             />
                         </div>
 
@@ -150,7 +107,6 @@ export default function Register() {
                             <button
                                 type='button'
                                 className='btn-vartalaap w-full'
-                                onClick={register}
                                 disabled={isRegisterPending}
                             >
                                 {isRegisterPending ? (

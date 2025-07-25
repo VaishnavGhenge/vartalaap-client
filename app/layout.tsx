@@ -2,9 +2,8 @@ import "./globals.css";
 import type {Metadata} from "next";
 import {Inter} from "next/font/google";
 import React from "react";
-import {HomeWrapper} from "@/components/layout/HomeWrapper";
-import {GlobalAlert} from "@/components/utility/GlobalAlert";
-import {getBackendStatus} from "@/utils/common";
+import {HomeWrapper} from "@/src/components/layout/HomeWrapper";
+import {Providers} from "@/src/components/providers";
 
 const inter = Inter({subsets: ["latin"]});
 
@@ -18,15 +17,14 @@ export default async function RootLayout({
                                    }: {
     children: React.ReactNode;
 }) {
-    const initialBackendStatus = await getBackendStatus(); // Server fetch
-
     return (
         <html lang='en'>
             <body className={inter.className}>
-                <HomeWrapper>
-                    <GlobalAlert initialBackendStatus/>
-                    {children}
-                </HomeWrapper>
+                <Providers>
+                    <HomeWrapper>
+                        {children}
+                    </HomeWrapper>
+                </Providers>
             </body>
         </html>
     );
