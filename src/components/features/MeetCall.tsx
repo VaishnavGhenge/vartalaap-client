@@ -5,8 +5,8 @@ import {
 } from "@heroicons/react/24/outline";
 import {IUserPreferences} from "@/src/utils/types";
 import {Meet} from "@/src/services/webrtc/webrtc";
-import {MicButton} from "@/src/components/layout/MicButton";
-import {CameraButton} from "@/src/components/layout/CameraButton";
+import {MicButton} from "@/src/components/ui/MicButton";
+import {CameraButton} from "@/src/components/ui/CameraButton";
 
 export default function MeetCall(
     {

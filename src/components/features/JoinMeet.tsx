@@ -1,10 +1,11 @@
 "use client";
 
-import Navbar from "@/src/components/layout/Navbar";
+import Navbar from "@/src/components/ui/Navbar";
 import {useState} from "react";
-import {MicButton} from "@/src/components/layout/MicButton";
-import {CameraButton} from "@/src/components/layout/CameraButton";
+import {MicButton} from "@/src/components/ui/MicButton";
+import {CameraButton} from "@/src/components/ui/CameraButton";
 import {Tooltip, TooltipContent, TooltipProvider, TooltipTrigger} from "@/src/components/ui/tooltip";
+import { Input } from "@/src/components/ui/input";
 
 export default function JoinMeet() {
     const meetCode = "1bc";
@@ -101,7 +102,7 @@ export default function JoinMeet() {
                                     </div>
                                 </div>
 
-                                <input className="input" placeholder="Enter your name"/>
+                                <Input placeholder="Enter your name"/>
 
                                 <button
                                     className='text-base bg-sky-700 rounded-full text-white px-6 py-3 hover:cursor-pointer hover:bg-sky-800 transition duration-300'

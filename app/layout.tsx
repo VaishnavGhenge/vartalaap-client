@@ -2,7 +2,7 @@ import "./globals.css";
 import type {Metadata} from "next";
 import {Inter} from "next/font/google";
 import React from "react";
-import {HomeWrapper} from "@/src/components/layout/HomeWrapper";
+import {HomeWrapper} from "@/src/components/ui/HomeWrapper";
 import {Providers} from "@/src/components/providers";
 
 const inter = Inter({subsets: ["latin"]});

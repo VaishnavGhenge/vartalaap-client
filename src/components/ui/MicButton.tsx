@@ -1,5 +1,5 @@
 import {MicrophoneIcon} from "@heroicons/react/24/outline";
-import {MicrophoneSlashIcon} from "@/src/components/cutom-icons/MicrophoneSlashIcon";
+import {MicrophoneSlashIcon} from "@/src/components/ui/MicrophoneSlashIcon";
 
 interface IMicButtonProps {
     onClickFn: (micStatus: boolean) => void;

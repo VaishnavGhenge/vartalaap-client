@@ -1,9 +1,10 @@
 "use client";
 
-import { BufferingButtonLabel } from "@/src/components/layout/BufferingButtonLabel";
+import { BufferingButtonLabel } from "@/src/components/ui/BufferingButtonLabel";
 import Link from "next/link";
 import { useState } from "react";
-import Navbar from "@/src/components/layout/Navbar";
+import Navbar from "@/src/components/ui/Navbar";
+import { Input } from "@/src/components/ui/input";
 
 export default function Register() {
     const [registerData, setRegisterData] = useState({
@@ -34,11 +35,10 @@ export default function Register() {
                                     First name
                                     <span className='text-red-500'>*</span>
                                 </label>
-                                <input
+                                <Input
                                     type='text'
                                     id='firstName'
                                     name='firstName'
-                                    className='input'
                                     value={registerData.firstName}
                                 />
                             </div>
@@ -51,11 +51,10 @@ export default function Register() {
                                     Last name
                                     <span className='text-red-500'>*</span>
                                 </label>
-                                <input
+                                <Input
                                     type='text'
                                     id='lastName'
                                     name='lastName'
-                                    className='input'
                                     value={registerData.lastName}
                                 />
                             </div>
@@ -65,11 +64,10 @@ export default function Register() {
                             <label htmlFor='email' className='input-label'>
                                 Email<span className='text-red-500'>*</span>
                             </label>
-                            <input
+                            <Input
                                 type='email'
                                 id='email'
                                 name='email'
-                                className='input'
                                 placeholder='user@email.com'
                                 value={registerData.email}
                             />
@@ -80,11 +78,10 @@ export default function Register() {
                                 Password(min 8)
                                 <span className='text-red-500'>*</span>
                             </label>
-                            <input
+                            <Input
                                 type='password'
                                 id='password'
                                 name='password'
-                                className='input'
                                 value={registerData.password}
                             />
                         </div>
@@ -94,11 +91,10 @@ export default function Register() {
                                 Password again
                                 <span className='text-red-500'>*</span>
                             </label>
-                            <input
+                            <Input
                                 type='password'
                                 id='password2'
                                 name='password2'
-                                className='input'
                                 value={registerData.password2}
                             />
                         </div>

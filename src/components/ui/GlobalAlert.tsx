@@ -1,6 +1,6 @@
 "use client";
 
-import {SideWideAlert} from "@/src/components/layout/SiteWideAlert";
+import {SideWideAlert} from "@/src/components/ui/SiteWideAlert";
 import React from "react";
 
 interface GlobalAlertProps {

@@ -1,10 +1,12 @@
 "use client";
 
-import Navbar from "@/src/components/layout/Navbar";
+import Navbar from "@/src/components/ui/Navbar";
 import {IBM_Plex_Sans_Devanagari} from "next/font/google";
 import Image from "next/image";
-import {NewMeetingButton} from "@/src/components/layout/NewMeetButton";
-import {JoinMeetButton} from "@/src/components/layout/JoinMeetButton";
+import {NewMeetingButton} from "@/src/components/ui/NewMeetButton";
+import {JoinMeetButton} from "@/src/components/ui/JoinMeetButton";
+import { Input } from "@/src/components/ui/input";
+
 const ibmPlexSansDevanagari = IBM_Plex_Sans_Devanagari({
     weight: "500",
     subsets: ["cyrillic-ext"],
@@ -14,10 +16,10 @@ export default function Home() {
     return (
         <div>
             <Navbar></Navbar>
-            <main className='h-full'>
-                <div className='container mx-auto'>
+            <main className='mt-12 h-full'>
+                <div className='container mx-4 md:mx-auto my-auto'>
                     <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
-                        <div className='w-100 flex justify-center items-center'>
+                        <div className='flex justify-center items-center'>
                             <Image
                                 className='hidden w-full h-full md:block'
                                 src='/static/images/hero.svg'
@@ -41,11 +43,12 @@ export default function Home() {
                                 and organize meetings seamlessly
                             </p>
 
+                            <NewMeetingButton/>
+
                             <div className='flex flex-wrap gap-4'>
-                                <NewMeetingButton/>
                                 <div className='flex gap-2'>
-                                    <input
-                                        className="input w-[200px]"
+                                    <Input
+                                        className="w-[200px]"
                                         type='text'
                                         name='meet-code'
                                         placeholder='meeting code or link here'

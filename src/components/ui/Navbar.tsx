@@ -1,5 +1,5 @@
 import AppTitle from "./AppTitle";
-import {Button} from "@/src/components/ui/Button";
+import { Button } from "@/src/components/ui/button";
 import {useRouter} from "next/navigation";
 
 const Navbar = () => {

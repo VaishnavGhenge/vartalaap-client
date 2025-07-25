@@ -1,6 +1,6 @@
 import {useCallback, useEffect} from "react";
 import {useRouter} from "next/navigation";
-import {Button} from "@/src/components/ui/Button";
+import { Button } from "@/src/components/ui/button";
 import {createMeet} from "@/src/services/api/meet";
 
 

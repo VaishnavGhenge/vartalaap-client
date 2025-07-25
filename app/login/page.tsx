@@ -1,8 +1,9 @@
 "use client";
 
-import Navbar from "@/src/components/layout/Navbar";
+import Navbar from "@/src/components/ui/Navbar";
 import Link from "next/link";
-import { BufferingButtonLabel } from "@/src/components/layout/BufferingButtonLabel";
+import { BufferingButtonLabel } from "@/src/components/ui/BufferingButtonLabel";
+import { Input } from "@/src/components/ui/input";
 
 export default function Login() {
     return (
@@ -21,11 +22,10 @@ export default function Login() {
                                 <label htmlFor='email' className='input-label'>
                                     Email
                                 </label>
-                                <input
+                                <Input
                                     type='email'
                                     id='email'
                                     name="email"
-                                    className='input'
                                     placeholder='user@email.com'
                                 />
                             </div>
@@ -37,11 +37,10 @@ export default function Login() {
                                 >
                                     Password
                                 </label>
-                                <input
+                                <Input
                                     type='password'
                                     id='password'
                                     name="password"
-                                    className='input'
                                 />
                             </div>
                         </div>
