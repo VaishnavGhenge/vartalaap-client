@@ -52,7 +52,7 @@ export default function Home() {
                                     <Input
                                         type='text'
                                         name='meet-code'
-                                        placeholder='meeting code or link here'
+                                        placeholder='meeting code or link'
                                     />
                                 </div>
 

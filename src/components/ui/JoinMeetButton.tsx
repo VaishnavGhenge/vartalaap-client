@@ -4,7 +4,7 @@ export const JoinMeetButton = () => {
 
     return (
         <Button
-            variant="outline"
+            variant="secondary"
         >
             Join
         </Button>
