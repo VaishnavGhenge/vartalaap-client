@@ -10,7 +10,6 @@ import { useJoinMeetStore } from "@/src/stores/joinMeet";
 
 export default function MeetCall() {
     const {
-        participants,
         isMuted,
         isVideoOff,
         toggleMute,
@@ -21,7 +20,10 @@ export default function MeetCall() {
         localStream,
         initializeCamera,
         stopCamera,
+        peerConnections,
     } = usePeerStore();
+
+    const remoteCount = peerConnections.size;
     
     const { userName } = useJoinMeetStore();
 
@@ -47,10 +49,10 @@ export default function MeetCall() {
                     <div className='h-full flex items-center justify-center'>
                         {/* Dynamic grid based on participant count */}
                         <div className={`grid gap-4 w-full h-full ${
-                            participants.length + 1 === 1 ? 'grid-cols-1 max-w-4xl mx-auto' :
-                            participants.length + 1 === 2 ? 'grid-cols-1 md:grid-cols-2 max-w-6xl mx-auto' :
-                            participants.length + 1 <= 4 ? 'grid-cols-1 md:grid-cols-2 max-w-6xl mx-auto' :
-                            participants.length + 1 <= 6 ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 max-w-7xl mx-auto' :
+                            remoteCount + 1 === 1 ? 'grid-cols-1 max-w-4xl mx-auto' :
+                            remoteCount + 1 === 2 ? 'grid-cols-1 md:grid-cols-2 max-w-6xl mx-auto' :
+                            remoteCount + 1 <= 4 ? 'grid-cols-1 md:grid-cols-2 max-w-6xl mx-auto' :
+                            remoteCount + 1 <= 6 ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 max-w-7xl mx-auto' :
                             'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
                         }`}>
                             {/* Local video (you) */}
@@ -63,11 +65,11 @@ export default function MeetCall() {
                             />
                             
                             {/* Remote participants */}
-                            {participants.map((participant) => (
-                                <VideoTile 
-                                    key={participant.id} 
-                                    participant={participant}
-                                    stream={null}
+                            {Array.from(peerConnections.values()).map((c) => (
+                                <VideoTile
+                                    key={c.id}
+                                    participant={{ id: c.id, name: c.id.slice(0, 6) }}
+                                    stream={c.stream ?? null}
                                 />
                             ))}
                         </div>
