@@ -10,15 +10,17 @@ export default function Login() {
     return (
         <div className='min-h-screen'>
             <Navbar />
-            <div className='flex justify-center items-center'>
-                <div>
-                    <h3 className='text-xl mb-6 text-center'>
+            <div className='mx-auto flex max-w-7xl justify-center px-4 py-10 sm:px-6 lg:px-8 lg:py-16'>
+                <div className='app-panel w-full max-w-md rounded-[2rem] p-6 sm:p-8'>
+                    <h3 className='mb-2 text-center text-2xl font-semibold text-[hsl(var(--foreground))]'>
                         Log into Vartalaap
                     </h3>
+                    <p className='mb-8 text-center text-sm text-[hsl(var(--muted-foreground))]'>
+                        Pick your theme, sign in, and continue where your last meeting left off.
+                    </p>
 
                     <form>
-
-                        <div className='mb-6 w-[300px]'>
+                        <div className='mb-6 w-full'>
                             <div className='flex flex-col mb-2'>
                                 <label htmlFor='email' className='input-label'>
                                     Email
@@ -46,11 +48,11 @@ export default function Login() {
                             </div>
                         </div>
 
-                        <div className='w-[300px] mb-6'>
+                        <div className='mb-6 w-full'>
                             <Button
                                 type='button'
                                 variant="primary"
-                                className='w-full'
+                                className='w-full h-11'
                             >
                                 <BufferingButtonLabel label="Processing..." />
                             </Button>
@@ -58,7 +60,7 @@ export default function Login() {
                     </form>
 
                     <div className='text-center'>
-                        <p className='text-xs'>
+                        <p className='text-xs text-[hsl(var(--muted-foreground))]'>
                             <span>Don&apos;t have an account? </span>
                             <Link
                                 href='/register'

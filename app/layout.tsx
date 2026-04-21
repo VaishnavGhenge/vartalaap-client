@@ -12,13 +12,27 @@ export const metadata: Metadata = {
     description: "Video chat app",
 };
 
+const themeScript = `
+(() => {
+  const key = "vartalaap-theme";
+  const saved = localStorage.getItem(key);
+  const theme = saved === "light" || saved === "dark" || saved === "system" ? saved : "system";
+  const dark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  document.documentElement.classList.toggle("dark", dark);
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+})();
+`;
+
 export default async function RootLayout({
                                        children,
                                    }: {
     children: React.ReactNode;
 }) {
     return (
-        <html lang='en'>
+        <html lang='en' suppressHydrationWarning>
+            <head>
+                <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+            </head>
             <body className={inter.className}>
                 <Providers>
                     <HomeWrapper>

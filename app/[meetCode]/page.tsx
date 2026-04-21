@@ -12,8 +12,8 @@ import { useCall } from "@/src/hooks/use-call";
 
 export default function MeetManager() {
     const params = useParams<{ meetCode: string }>();
-    const { hasJoinedMeet, setMeetCode, userName } = useJoinMeetStore();
-    const { setCurrentMeet, isMuted, isVideoOff } = useMeetStore();
+    const { hasJoinedMeet, setMeetCode, setHasJoinedMeet, userName } = useJoinMeetStore();
+    const { clearMeet, setCurrentMeet, isMuted, isVideoOff } = useMeetStore();
     const { clearAll } = usePeerStore();
 
     const { client } = useSignaling();
@@ -34,8 +34,13 @@ export default function MeetManager() {
     }, [params.meetCode, setMeetCode, setCurrentMeet]);
 
     useEffect(() => {
-        return () => { clearAll(); };
-    }, [clearAll]);
+        return () => {
+            clearAll();
+            clearMeet();
+            setHasJoinedMeet(false);
+            setMeetCode("");
+        };
+    }, [clearAll, clearMeet, setHasJoinedMeet, setMeetCode]);
 
     return (
         <div>

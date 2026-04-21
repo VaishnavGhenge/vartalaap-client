@@ -20,14 +20,17 @@ export default function Register() {
     return (
         <div className="min-h-screen">
             <Navbar />
-            <div className='flex items-center justify-center'>
-                <div>
-                    <h3 className='text-xl mb-6 text-center'>
+            <div className='mx-auto flex max-w-7xl items-center justify-center px-4 py-10 sm:px-6 lg:px-8 lg:py-16'>
+                <div className='app-panel w-full max-w-xl rounded-[2rem] p-6 sm:p-8'>
+                    <h3 className='mb-2 text-center text-2xl font-semibold text-[hsl(var(--foreground))]'>
                         Register on Vartalaap
                     </h3>
+                    <p className='mb-8 text-center text-sm text-[hsl(var(--muted-foreground))]'>
+                        Create an account and keep the same polished light or dark experience everywhere.
+                    </p>
 
                     <form>
-                        <div className='flex gap-4 mb-4'>
+                        <div className='mb-4 grid gap-4 sm:grid-cols-2'>
                             <div className='flex flex-col'>
                                 <label
                                     htmlFor='firstName'
@@ -104,7 +107,7 @@ export default function Register() {
                             <Button
                                 type='button'
                                 variant="primary"
-                                className='w-full'
+                                className='h-11 w-full'
                                 disabled={isRegisterPending}
                             >
                                 {isRegisterPending ? (
@@ -117,7 +120,7 @@ export default function Register() {
                     </form>
 
                     <div className='text-center'>
-                        <p className='text-xs'>
+                        <p className='text-xs text-[hsl(var(--muted-foreground))]'>
                             Already have an account?{" "}
                             <Link
                                 href='/login'
