@@ -1,6 +1,8 @@
 "use client";
 
 import { PhoneOff } from "lucide-react";
+import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 import {MicButton} from "@/src/components/ui/MicButton";
 import {CameraButton} from "@/src/components/ui/CameraButton";
 import {VideoTile} from "@/src/components/ui/VideoTile";
@@ -19,26 +21,39 @@ export default function MeetCall() {
     const {
         localStream,
         initializeCamera,
-        stopCamera,
         peerConnections,
     } = usePeerStore();
 
     const remoteCount = peerConnections.size;
-    
-    const { userName } = useJoinMeetStore();
+
+    const { userName, clearJoinMeet } = useJoinMeetStore();
+    const router = useRouter();
+
+    const handleMicToggle = () => {
+        const stream = localStream;
+        if (stream) {
+            // isMuted is the CURRENT state; after toggle we want enabled = isMuted (was muted → now enabled)
+            stream.getAudioTracks().forEach((t) => { t.enabled = isMuted });
+        }
+        toggleMute();
+    };
 
     const handleCameraToggle = async () => {
-        if (isVideoOff) {
-            await initializeCamera();
-        } else {
-            stopCamera();
+        let stream = localStream;
+        if (!stream) {
+            stream = await initializeCamera();
+            if (!stream) {
+                toast.error("Camera unavailable. Check browser permissions and try again.");
+                return;
+            }
         }
+        stream.getVideoTracks().forEach((t) => { t.enabled = isVideoOff });
         toggleVideo();
     };
-    
+
     const handleEndCall = () => {
-        // TODO: Implement end call logic
-        console.log('End call');
+        clearJoinMeet();
+        router.push('/');
     };
     
 
@@ -80,7 +95,7 @@ export default function MeetCall() {
                 <div className='fixed bottom-0 left-0 right-0 bg-slate-800 border-t border-slate-700'>
                     <div className='flex gap-6 justify-center items-center py-4 px-4'>
                         <MicButton
-                            onClickFn={toggleMute}
+                            onClickFn={handleMicToggle}
                             action={isMuted ? "close" : "open"}
                         />
                         <CameraButton

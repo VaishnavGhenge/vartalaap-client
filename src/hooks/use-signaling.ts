@@ -18,7 +18,7 @@ export function useSignaling() {
         setPeerId(id)
         setConnected(true)
       } catch (e) {
-        console.error('signaling connect failed', e)
+        if (!disposed) console.error('signaling connect failed', e)
       }
     })()
     return () => {

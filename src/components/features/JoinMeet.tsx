@@ -1,6 +1,7 @@
 "use client";
 
 import {useEffect, useState, useRef} from "react";
+import {toast} from "sonner";
 import {User, Copy, Check} from "lucide-react";
 import {MicButton} from "@/src/components/ui/MicButton";
 import {CameraButton} from "@/src/components/ui/CameraButton";
@@ -52,7 +53,11 @@ export default function JoinMeet() {
     const handleCameraToggle = async () => {
         if (isVideoOff) {
             const stream = await initializeCamera();
-            if (stream && videoRef.current) {
+            if (!stream) {
+                toast.error("Camera unavailable. Check browser permissions and try again.");
+                return;
+            }
+            if (videoRef.current) {
                 videoRef.current.srcObject = stream;
             }
         } else {
