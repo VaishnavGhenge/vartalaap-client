@@ -9,15 +9,20 @@ import {VideoTile} from "@/src/components/ui/VideoTile";
 import { useMeetStore } from "@/src/stores/meet";
 import { usePeerStore } from "@/src/stores/peer";
 import { useJoinMeetStore } from "@/src/stores/joinMeet";
+import type { SignalingClient } from "@/src/services/signaling/client";
 
-export default function MeetCall() {
+interface MeetCallProps {
+    client: SignalingClient | null;
+}
+
+export default function MeetCall({ client }: MeetCallProps) {
     const {
         isMuted,
         isVideoOff,
         toggleMute,
         toggleVideo
     } = useMeetStore();
-    
+
     const {
         localStream,
         initializeCamera,
@@ -29,16 +34,19 @@ export default function MeetCall() {
     const { userName, clearJoinMeet } = useJoinMeetStore();
     const router = useRouter();
 
+    const broadcastState = (audio: boolean, video: boolean) => {
+        client?.send('peer-state', { audio, video });
+    };
+
     const handleMicToggle = () => {
-        const stream = localStream;
-        if (stream) {
-            // isMuted is the CURRENT state; after toggle we want enabled = isMuted (was muted → now enabled)
-            stream.getAudioTracks().forEach((t) => { t.enabled = isMuted });
-        }
+        const nextMuted = !isMuted;
+        localStream?.getAudioTracks().forEach((t) => { t.enabled = !nextMuted });
         toggleMute();
+        broadcastState(!nextMuted, !isVideoOff);
     };
 
     const handleCameraToggle = async () => {
+        const nextVideoOff = !isVideoOff;
         let stream = localStream;
         if (!stream) {
             stream = await initializeCamera();
@@ -47,15 +55,16 @@ export default function MeetCall() {
                 return;
             }
         }
-        stream.getVideoTracks().forEach((t) => { t.enabled = isVideoOff });
+        stream.getVideoTracks().forEach((t) => { t.enabled = !nextVideoOff });
         toggleVideo();
+        broadcastState(!isMuted, !nextVideoOff);
     };
 
     const handleEndCall = () => {
         clearJoinMeet();
         router.push('/');
     };
-    
+
 
     return (
         <div className='bg-slate-900 min-h-screen'>
@@ -78,12 +87,17 @@ export default function MeetCall() {
                                 isMuted={isMuted}
                                 stream={localStream}
                             />
-                            
+
                             {/* Remote participants */}
                             {Array.from(peerConnections.values()).map((c) => (
                                 <VideoTile
                                     key={c.id}
-                                    participant={{ id: c.id, name: c.id.slice(0, 6) }}
+                                    participant={{
+                                        id: c.id,
+                                        name: c.name || c.id.slice(0, 6),
+                                        isMuted: !c.audio,
+                                        isVideoOff: !c.video,
+                                    }}
                                     stream={c.stream ?? null}
                                 />
                             ))}

@@ -12,12 +12,19 @@ import { useCall } from "@/src/hooks/use-call";
 
 export default function MeetManager() {
     const params = useParams<{ meetCode: string }>();
-    const { hasJoinedMeet, setMeetCode } = useJoinMeetStore();
-    const { setCurrentMeet } = useMeetStore();
+    const { hasJoinedMeet, setMeetCode, userName } = useJoinMeetStore();
+    const { setCurrentMeet, isMuted, isVideoOff } = useMeetStore();
     const { clearAll } = usePeerStore();
 
     const { client } = useSignaling();
-    useCall({ client, roomId: params.meetCode, enabled: hasJoinedMeet });
+    useCall({
+        client,
+        roomId: params.meetCode,
+        enabled: hasJoinedMeet,
+        userName,
+        initialAudio: !isMuted,
+        initialVideo: !isVideoOff,
+    });
 
     useEffect(() => {
         if (params.meetCode) {
@@ -32,7 +39,7 @@ export default function MeetManager() {
 
     return (
         <div>
-            {hasJoinedMeet ? <MeetCall /> : <JoinMeet />}
+            {hasJoinedMeet ? <MeetCall client={client} /> : <JoinMeet />}
         </div>
     );
 }

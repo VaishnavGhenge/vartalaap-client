@@ -7,6 +7,9 @@ interface PeerConnection {
   id: string
   peer: Peer.Instance
   stream?: MediaStream
+  name: string
+  audio: boolean
+  video: boolean
 }
 
 interface PeerState {
@@ -18,9 +21,14 @@ interface PeerState {
   setLocalStream: (s: MediaStream | null) => void
   setIceServers: (s: IceServer[]) => void
 
-  addPeerConnection: (id: string, peer: Peer.Instance, stream?: MediaStream) => void
+  addPeerConnection: (
+    id: string,
+    peer: Peer.Instance,
+    info?: { name?: string; audio?: boolean; video?: boolean },
+  ) => void
   removePeerConnection: (id: string) => void
   updatePeerStream: (id: string, stream: MediaStream) => void
+  updatePeerMediaState: (id: string, audio: boolean, video: boolean) => void
 
   initializeCamera: () => Promise<MediaStream | null>
   stopCamera: () => void
@@ -38,10 +46,16 @@ export const usePeerStore = create<PeerState>()(
     setLocalStream: (stream) => set({ localStream: stream }),
     setIceServers: (s) => set({ iceServers: s }),
 
-    addPeerConnection: (id, peer, stream) =>
+    addPeerConnection: (id, peer, info) =>
       set((state) => {
         const next = new Map(state.peerConnections)
-        next.set(id, { id, peer, stream })
+        next.set(id, {
+          id,
+          peer,
+          name: info?.name ?? '',
+          audio: info?.audio ?? false,
+          video: info?.video ?? false,
+        })
         return { peerConnections: next }
       }),
 
@@ -58,6 +72,14 @@ export const usePeerStore = create<PeerState>()(
         const next = new Map(state.peerConnections)
         const c = next.get(id)
         if (c) next.set(id, { ...c, stream })
+        return { peerConnections: next }
+      }),
+
+    updatePeerMediaState: (id, audio, video) =>
+      set((state) => {
+        const next = new Map(state.peerConnections)
+        const c = next.get(id)
+        if (c) next.set(id, { ...c, audio, video })
         return { peerConnections: next }
       }),
 
