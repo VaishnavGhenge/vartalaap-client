@@ -10,16 +10,16 @@ const buttonVariants = cva(
     variants: {
       variant: {
         primary:
-          "bg-sky-700 text-white hover:bg-sky-800",
+          "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] shadow-sm hover:brightness-110",
         secondary:
-          "bg-sky-100 text-sky-700 hover:bg-sky-200",
+          "bg-[hsl(var(--secondary))] text-[hsl(var(--secondary-foreground))] hover:brightness-[0.98]",
         outline:
-          "border border-sky-700 text-sky-700 bg-transparent hover:bg-sky-100",
+          "border border-[hsl(var(--border))] bg-transparent text-[hsl(var(--foreground))] hover:bg-[hsl(var(--surface-2))]",
         destructive:
-          "bg-destructive text-white shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
+          "bg-[hsl(var(--destructive))] text-[hsl(var(--destructive-foreground))] shadow-xs hover:brightness-110 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40",
         ghost:
-          "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
-        link: "text-primary underline-offset-4 hover:underline",
+          "hover:bg-[hsl(var(--surface-2))] hover:text-[hsl(var(--foreground))]",
+        link: "text-[hsl(var(--primary))] underline-offset-4 hover:underline",
       },
       size: {
         default: "h-9 px-4 py-2 has-[>svg]:px-3",

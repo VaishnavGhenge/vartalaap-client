@@ -2,10 +2,11 @@
 
 import Navbar from "@/src/components/ui/Navbar";
 import {IBM_Plex_Sans_Devanagari} from "next/font/google";
-import Image from "next/image";
 import {NewMeetingButton} from "@/src/components/ui/NewMeetButton";
 import {JoinMeetButton} from "@/src/components/ui/JoinMeetButton";
 import { Input } from "@/src/components/ui/input";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 
 const ibmPlexSansDevanagari = IBM_Plex_Sans_Devanagari({
     weight: "500",
@@ -13,56 +14,71 @@ const ibmPlexSansDevanagari = IBM_Plex_Sans_Devanagari({
 });
 
 export default function Home() {
+    const router = useRouter();
+    const [meetingCode, setMeetingCode] = useState("");
+
+    const normalizedMeetingCode = meetingCode.trim().replace(/^\/+/, "");
+
+    const handleJoin = () => {
+        if (!normalizedMeetingCode) {
+            return;
+        }
+
+        router.push(`/${normalizedMeetingCode}`);
+    };
+
     return (
-        <div>
-            <Navbar></Navbar>
-            <main className='mt-12 h-full'>
-                <div className='container mx-4 md:mx-auto my-auto'>
-                    <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
-                        <div className='flex justify-center items-center'>
-                            <Image
-                                className='hidden w-full h-full md:block'
-                                src='/static/images/hero.svg'
-                                alt='Hero image'
-                                width={768}
-                                height={596}
-                                priority={true}
-                            />
-                        </div>
-                        <div className='w-100 flex flex-col justify-center items-start'>
-                            <h2 className='text-3xl pb-4 capitalize'>
-                                <span>Vartalaap - </span>
-                                <span
-                                    className={ibmPlexSansDevanagari.className}
-                                >
-                                    वार्तालाप
-                                </span>
-                            </h2>
-                            <p className='font-light pb-12'>
-                                A video chatting app which enable you to connect
-                                and organize meetings seamlessly
-                            </p>
+        <div className="min-h-screen">
+            <Navbar />
+            <main className='mx-auto flex max-w-5xl flex-col px-4 py-10 sm:px-6 lg:px-8 lg:py-16'>
+                <section className='flex min-h-[calc(100vh-10rem)] items-center justify-center'>
+                    <div className='w-full max-w-3xl text-center'>
+                        <p className='text-sm font-medium uppercase tracking-[0.24em] text-[hsl(var(--muted-foreground))]'>
+                            Vartalaap
+                        </p>
+                        <h1 className='mt-4 text-4xl font-semibold tracking-tight text-[hsl(var(--foreground))] sm:text-5xl'>
+                            Start or join a meeting
+                        </h1>
+                        <p className='mx-auto mt-4 max-w-xl text-base leading-7 text-[hsl(var(--muted-foreground))] sm:text-lg'>
+                            Minimal video meetings with a clean interface in light or dark mode.
+                        </p>
 
-                            <div className='grid grid-rows-2 grid-cols-4 gap-4'>
-                                <div className='col-span-3'>
-                                    <NewMeetingButton/>
-                                </div>
-
-                                <div className='col-span-3'>
+                        <div className='app-panel mt-10 rounded-[2rem] p-4 sm:p-5'>
+                            <div className='flex flex-col gap-3'>
+                                <div className='grid gap-3 sm:grid-cols-[minmax(0,1fr)_120px]'>
                                     <Input
                                         type='text'
                                         name='meet-code'
-                                        placeholder='meeting code or link'
+                                        value={meetingCode}
+                                        onChange={(e) => setMeetingCode(e.target.value)}
+                                        placeholder='Meeting code or link'
+                                        className='h-12 rounded-2xl border-[hsl(var(--border))] bg-transparent px-4 text-base'
+                                    />
+                                    <JoinMeetButton
+                                        disabled={!normalizedMeetingCode}
+                                        onJoin={handleJoin}
+                                        className='h-12 rounded-2xl bg-[hsl(var(--surface-2))] text-[hsl(var(--foreground))] shadow-none hover:bg-[hsl(var(--surface-3))]'
                                     />
                                 </div>
 
-                                <div className='col-span-1'>
-                                    <JoinMeetButton />
+                                <div className='flex justify-center sm:justify-start'>
+                                    <NewMeetingButton
+                                        variant="ghost"
+                                        className='h-10 rounded-full px-4 text-sm text-[hsl(var(--primary))] hover:bg-[hsl(var(--surface-2))]'
+                                    />
                                 </div>
                             </div>
                         </div>
+
+                        <div className='mt-8 flex items-center justify-center gap-3 text-sm text-[hsl(var(--muted-foreground))]'>
+                            <span className={`text-lg text-[hsl(var(--foreground))] ${ibmPlexSansDevanagari.className}`}>
+                                वार्तालाप
+                            </span>
+                            <span className='h-1 w-1 rounded-full bg-[hsl(var(--border))]' />
+                            <span>Fast to open, easy to share</span>
+                        </div>
                     </div>
-                </div>
+                </section>
             </main>
         </div>
     );

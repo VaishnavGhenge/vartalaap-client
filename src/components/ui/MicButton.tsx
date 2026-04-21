@@ -5,22 +5,20 @@ interface IMicButtonProps {
     action: "close" | "open";
 }
 
-export function MicButton({onClickFn, action}: IMicButtonProps) {
+export function MicButton({ onClickFn, action }: IMicButtonProps) {
+    const on = action === "open";
     return (
-        action === "open" ? (
-            <div
-                onClick={() => onClickFn(false)}
-                className='rounded-full w-[46px] h-[46px] border border-white flex justify-center items-center hover:cursor-pointer hover:bg-slate-400 transition duration-300'
-            >
-                <Mic className='w-[23px] h-[23px] text-white'/>
-            </div>
-        ) : (
-            <div
-                onClick={() => onClickFn(true)}
-                className='rounded-full w-[46px] h-[46px] bg-red-600 flex justify-center items-center hover:cursor-pointer hover:bg-red-700 transition duration-300'
-            >
-                <MicOff className='w-[23px] h-[23px] text-white'/>
-            </div>
-        )
-    )
+        <button
+            type='button'
+            onClick={() => onClickFn(on)}
+            aria-label={on ? "Mute microphone" : "Unmute microphone"}
+            className={`press flex h-11 w-11 cursor-pointer items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--brand-glow))] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--surface))] ${
+                on
+                    ? 'border border-[hsl(var(--border))]/70 bg-[hsl(var(--surface-2))]/85 text-[hsl(var(--foreground))] hover:bg-[hsl(var(--surface-3))]'
+                    : 'bg-[hsl(var(--destructive))] text-[hsl(var(--destructive-foreground))] shadow-lg shadow-[hsl(var(--destructive))]/25 hover:brightness-110'
+            }`}
+        >
+            {on ? <Mic className='w-5 h-5' /> : <MicOff className='w-5 h-5' />}
+        </button>
+    );
 }

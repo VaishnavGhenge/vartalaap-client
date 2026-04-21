@@ -1,21 +1,12 @@
 import AppTitle from "./AppTitle";
-import { Button } from "@/src/components/ui/button";
-import {useRouter} from "next/navigation";
+import { ThemeToggle } from "@/src/components/ui/ThemeToggle";
 
 const Navbar = () => {
-    const router = useRouter();
-
     return (
-        <nav className='bg-white w-screen'>
-            <div className='flex justify-between items-center px-6 py-4'>
-                <div>
-                    <AppTitle/>
-                </div>
-
-                <div className="flex gap-2">
-                    <Button variant="primary" onClick={() => router.push("/login")}>Login</Button>
-                    <Button variant="secondary" onClick={() => router.push("/register")}>Signup</Button>
-                </div>
+        <nav className='sticky top-0 z-40 w-full border-b border-[hsl(var(--border))]/80 bg-[hsl(var(--background))]/75 backdrop-blur-xl'>
+            <div className='mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8'>
+                <AppTitle/>
+                <ThemeToggle />
             </div>
         </nav>
     );
