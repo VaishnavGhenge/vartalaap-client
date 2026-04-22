@@ -15,10 +15,8 @@ interface PeerConnection {
 interface PeerState {
   localStream: MediaStream | null
   peerConnections: Map<string, PeerConnection>
-  isInitialized: boolean
   iceServers: IceServer[]
 
-  setLocalStream: (s: MediaStream | null) => void
   setIceServers: (s: IceServer[]) => void
 
   addPeerConnection: (
@@ -30,20 +28,49 @@ interface PeerState {
   updatePeerStream: (id: string, stream: MediaStream) => void
   updatePeerMediaState: (id: string, audio: boolean, video: boolean) => void
 
-  initializeCamera: () => Promise<MediaStream | null>
-  stopCamera: () => void
+  enableMic: () => Promise<MediaStreamTrack | null>
+  disableMic: () => void
+  enableCamera: () => Promise<MediaStreamTrack | null>
+  disableCamera: () => void
+
   createPeer: (initiator: boolean, stream?: MediaStream) => Peer.Instance
   clearAll: () => void
+}
+
+const addTrackToPeers = (
+  track: MediaStreamTrack,
+  stream: MediaStream,
+  peers: Map<string, PeerConnection>,
+) => {
+  peers.forEach((c) => {
+    try {
+      c.peer.addTrack(track, stream)
+    } catch (e) {
+      console.error('peer.addTrack failed', c.id, e)
+    }
+  })
+}
+
+const removeTrackFromPeers = (
+  track: MediaStreamTrack,
+  stream: MediaStream,
+  peers: Map<string, PeerConnection>,
+) => {
+  peers.forEach((c) => {
+    try {
+      c.peer.removeTrack(track, stream)
+    } catch (e) {
+      console.error('peer.removeTrack failed', c.id, e)
+    }
+  })
 }
 
 export const usePeerStore = create<PeerState>()(
   devtools((set, get) => ({
     localStream: null,
     peerConnections: new Map(),
-    isInitialized: false,
     iceServers: [],
 
-    setLocalStream: (stream) => set({ localStream: stream }),
     setIceServers: (s) => set({ iceServers: s }),
 
     addPeerConnection: (id, peer, info) =>
@@ -83,20 +110,64 @@ export const usePeerStore = create<PeerState>()(
         return { peerConnections: next }
       }),
 
-    initializeCamera: async () => {
+    enableMic: async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-        set({ localStream: stream, isInitialized: true })
-        return stream
+        const media = await navigator.mediaDevices.getUserMedia({ audio: true })
+        const track = media.getAudioTracks()[0]
+        if (!track) return null
+        const existing = get().localStream
+        const stream = existing ?? new MediaStream()
+        stream.getAudioTracks().forEach((t) => { t.stop(); stream.removeTrack(t) })
+        stream.addTrack(track)
+        if (!existing) set({ localStream: stream })
+        addTrackToPeers(track, stream, get().peerConnections)
+        return track
       } catch (e) {
-        console.error('getUserMedia failed', e)
+        console.error('enableMic failed', e)
         return null
       }
     },
 
-    stopCamera: () => {
-      get().localStream?.getTracks().forEach(t => t.stop())
-      set({ localStream: null, isInitialized: false })
+    disableMic: () => {
+      const stream = get().localStream
+      if (!stream) return
+      const peers = get().peerConnections
+      stream.getAudioTracks().forEach((t) => {
+        removeTrackFromPeers(t, stream, peers)
+        t.stop()
+        stream.removeTrack(t)
+      })
+      if (stream.getTracks().length === 0) set({ localStream: null })
+    },
+
+    enableCamera: async () => {
+      try {
+        const media = await navigator.mediaDevices.getUserMedia({ video: true })
+        const track = media.getVideoTracks()[0]
+        if (!track) return null
+        const existing = get().localStream
+        const stream = existing ?? new MediaStream()
+        stream.getVideoTracks().forEach((t) => { t.stop(); stream.removeTrack(t) })
+        stream.addTrack(track)
+        if (!existing) set({ localStream: stream })
+        addTrackToPeers(track, stream, get().peerConnections)
+        return track
+      } catch (e) {
+        console.error('enableCamera failed', e)
+        return null
+      }
+    },
+
+    disableCamera: () => {
+      const stream = get().localStream
+      if (!stream) return
+      const peers = get().peerConnections
+      stream.getVideoTracks().forEach((t) => {
+        removeTrackFromPeers(t, stream, peers)
+        t.stop()
+        stream.removeTrack(t)
+      })
+      if (stream.getTracks().length === 0) set({ localStream: null })
     },
 
     createPeer: (initiator, stream) => {
@@ -111,13 +182,12 @@ export const usePeerStore = create<PeerState>()(
 
     clearAll: () => {
       const { localStream, peerConnections } = get()
-      localStream?.getTracks().forEach(t => t.stop())
-      peerConnections.forEach(c => c.peer.destroy())
+      localStream?.getTracks().forEach((t) => t.stop())
+      peerConnections.forEach((c) => c.peer.destroy())
       set({
         localStream: null,
         peerConnections: new Map(),
-        isInitialized: false,
       })
     },
-  }))
+  })),
 )

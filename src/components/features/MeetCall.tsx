@@ -19,7 +19,7 @@ interface MeetCallProps {
 
 export default function MeetCall({ client }: MeetCallProps) {
     const { isMuted, isVideoOff, toggleMute, toggleVideo } = useMeetStore();
-    const { localStream, initializeCamera, peerConnections } = usePeerStore();
+    const { localStream, enableMic, disableMic, enableCamera, disableCamera, peerConnections } = usePeerStore();
     const { userName, meetCode, clearJoinMeet } = useJoinMeetStore();
     const router = useRouter();
 
@@ -33,22 +33,14 @@ export default function MeetCall({ client }: MeetCallProps) {
 
     const handleMicToggle = async () => {
         const nextMuted = !isMuted;
-        let stream = localStream;
-        const justCreated = !stream;
-        if (!stream) {
-            stream = await initializeCamera();
-            if (!stream) {
+        if (nextMuted) {
+            disableMic();
+        } else {
+            const track = await enableMic();
+            if (!track) {
                 toast.error("Microphone unavailable. Check browser permissions and try again.");
                 return;
             }
-            stream.getVideoTracks().forEach((t) => { t.enabled = !isVideoOff });
-        }
-        stream.getAudioTracks().forEach((t) => { t.enabled = !nextMuted });
-        if (justCreated) {
-            const fresh = stream;
-            peerConnections.forEach((c) => {
-                try { c.peer.addStream(fresh) } catch (e) { console.error('addStream failed', c.id, e) }
-            });
         }
         toggleMute();
         broadcastState(!nextMuted, !isVideoOff);
@@ -56,22 +48,14 @@ export default function MeetCall({ client }: MeetCallProps) {
 
     const handleCameraToggle = async () => {
         const nextVideoOff = !isVideoOff;
-        let stream = localStream;
-        const justCreated = !stream;
-        if (!stream) {
-            stream = await initializeCamera();
-            if (!stream) {
+        if (nextVideoOff) {
+            disableCamera();
+        } else {
+            const track = await enableCamera();
+            if (!track) {
                 toast.error("Camera unavailable. Check browser permissions and try again.");
                 return;
             }
-            stream.getAudioTracks().forEach((t) => { t.enabled = !isMuted });
-        }
-        stream.getVideoTracks().forEach((t) => { t.enabled = !nextVideoOff });
-        if (justCreated) {
-            const fresh = stream;
-            peerConnections.forEach((c) => {
-                try { c.peer.addStream(fresh) } catch (e) { console.error('addStream failed', c.id, e) }
-            });
         }
         toggleVideo();
         broadcastState(!isMuted, !nextVideoOff);
