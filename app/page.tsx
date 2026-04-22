@@ -28,10 +28,10 @@ export default function Home() {
     };
 
     return (
-        <div className="min-h-screen">
+        <div className="flex min-h-screen flex-col">
             <Navbar />
-            <main className='mx-auto flex max-w-5xl flex-col px-4 py-10 sm:px-6 lg:px-8 lg:py-16'>
-                <section className='flex min-h-[calc(100vh-10rem)] items-center justify-center'>
+            <main className='mx-auto flex w-full max-w-5xl flex-1 flex-col px-4 py-10 sm:px-6 lg:px-8 lg:py-16'>
+                <section className='flex flex-1 items-center justify-center'>
                     <div className='w-full max-w-3xl text-center'>
                         <p className='text-sm font-medium uppercase tracking-[0.24em] text-[hsl(var(--muted-foreground))]'>
                             Vartalaap

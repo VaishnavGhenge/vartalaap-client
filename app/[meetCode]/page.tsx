@@ -43,7 +43,7 @@ export default function MeetManager() {
     }, [clearAll, clearMeet, setHasJoinedMeet, setMeetCode]);
 
     return (
-        <div>
+        <div className="flex flex-1 flex-col">
             {hasJoinedMeet ? <MeetCall client={client} /> : <JoinMeet />}
         </div>
     );
