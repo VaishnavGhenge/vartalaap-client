@@ -41,6 +41,7 @@ export default function JoinMeet() {
                 toast.error("Camera unavailable. Check browser permissions and try again.");
                 return;
             }
+            stream.getAudioTracks().forEach((t) => { t.enabled = !isMuted });
             if (videoRef.current) {
                 videoRef.current.srcObject = stream;
             }
@@ -61,7 +62,11 @@ export default function JoinMeet() {
     const handleJoinMeet = async () => {
         if (!userName.trim()) return;
         if (!localStream && !isVideoOff) {
-            await initializeCamera();
+            const stream = await initializeCamera();
+            if (stream) {
+                stream.getAudioTracks().forEach((t) => { t.enabled = !isMuted });
+                stream.getVideoTracks().forEach((t) => { t.enabled = !isVideoOff });
+            }
         }
         setHasJoinedMeet(true);
     };
@@ -81,11 +86,11 @@ export default function JoinMeet() {
     const initials = initialsOf(previewName);
 
     return (
-        <main className='relative min-h-screen overflow-hidden text-[hsl(var(--foreground))]'>
+        <main className='relative flex flex-1 overflow-hidden text-[hsl(var(--foreground))]'>
             <div className='pointer-events-none absolute inset-0 opacity-[0.08]'
                  style={{ background: 'radial-gradient(50% 40% at 50% 0%, hsl(var(--brand-glow) / 0.42) 0%, transparent 70%)' }} />
 
-            <div className='relative max-w-6xl mx-auto px-4 py-8 lg:py-14 min-h-screen flex items-center'>
+            <div className='relative w-full max-w-6xl mx-auto px-4 py-8 lg:py-14 flex items-center'>
                 <div className='grid grid-cols-1 lg:grid-cols-5 gap-8 w-full'>
                     {/* Preview tile */}
                     <div className='lg:col-span-3 flex flex-col items-center justify-center'>
