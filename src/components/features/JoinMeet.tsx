@@ -20,7 +20,7 @@ export default function JoinMeet() {
     const [meetCode, setMeetCode] = useState("");
     const [copied, setCopied] = useState(false);
 
-    const { localStream, initializeCamera } = usePeerStore();
+    const { localStream, enableMic, disableMic, enableCamera, disableCamera } = usePeerStore();
     const { isMuted, isVideoOff, toggleMute, toggleVideo } = useMeetStore();
     const { userName, setUserName, setHasJoinedMeet } = useJoinMeetStore();
 
@@ -29,52 +29,37 @@ export default function JoinMeet() {
     }, [params]);
 
     useEffect(() => {
-        if (localStream && videoRef.current) {
-            videoRef.current.srcObject = localStream;
-        }
+        if (videoRef.current) videoRef.current.srcObject = localStream;
     }, [localStream]);
 
     const handleCameraToggle = async () => {
-        const nextVideoOff = !isVideoOff;
-        let stream = localStream;
-        if (!stream) {
-            stream = await initializeCamera();
-            if (!stream) {
+        if (isVideoOff) {
+            const track = await enableCamera();
+            if (!track) {
                 toast.error("Camera unavailable. Check browser permissions and try again.");
                 return;
             }
-            stream.getAudioTracks().forEach((t) => { t.enabled = !isMuted });
-            if (videoRef.current) videoRef.current.srcObject = stream;
+        } else {
+            disableCamera();
         }
-        stream.getVideoTracks().forEach((t) => { t.enabled = !nextVideoOff });
         toggleVideo();
     };
 
     const handleMicToggle = async () => {
-        const nextMuted = !isMuted;
-        let stream = localStream;
-        if (!stream) {
-            stream = await initializeCamera();
-            if (!stream) {
+        if (isMuted) {
+            const track = await enableMic();
+            if (!track) {
                 toast.error("Microphone unavailable. Check browser permissions and try again.");
                 return;
             }
-            stream.getVideoTracks().forEach((t) => { t.enabled = !isVideoOff });
-            if (videoRef.current) videoRef.current.srcObject = stream;
+        } else {
+            disableMic();
         }
-        stream.getAudioTracks().forEach((t) => { t.enabled = !nextMuted });
         toggleMute();
     };
 
-    const handleJoinMeet = async () => {
+    const handleJoinMeet = () => {
         if (!userName.trim()) return;
-        if (!localStream && !isVideoOff) {
-            const stream = await initializeCamera();
-            if (stream) {
-                stream.getAudioTracks().forEach((t) => { t.enabled = !isMuted });
-                stream.getVideoTracks().forEach((t) => { t.enabled = !isVideoOff });
-            }
-        }
         setHasJoinedMeet(true);
     };
 
