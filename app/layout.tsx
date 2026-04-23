@@ -37,7 +37,8 @@ export default async function RootLayout({
     return (
         <html lang='en' suppressHydrationWarning>
             <head>
-                <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+                {/* biome-ignore lint: theme init must run before paint to avoid flash */}
+                <script suppressHydrationWarning dangerouslySetInnerHTML={{ __html: themeScript }} />
             </head>
             <body className={inter.className}>
                 <Providers>
