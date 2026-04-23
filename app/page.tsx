@@ -17,13 +17,18 @@ export default function Home() {
     const router = useRouter();
     const [meetingCode, setMeetingCode] = useState("");
 
-    const normalizedMeetingCode = meetingCode.trim().replace(/^\/+/, "");
+    const normalizedMeetingCode = (() => {
+        const trimmed = meetingCode.trim();
+        try {
+            const url = new URL(trimmed.includes('://') ? trimmed : `https://${trimmed}`);
+            const path = url.pathname.replace(/^\/+|\/+$/g, '');
+            if (path) return path;
+        } catch { /* not a url */ }
+        return trimmed.replace(/^\/+|\/+$/g, '');
+    })();
 
     const handleJoin = () => {
-        if (!normalizedMeetingCode) {
-            return;
-        }
-
+        if (!normalizedMeetingCode) return;
         router.push(`/${normalizedMeetingCode}`);
     };
 
