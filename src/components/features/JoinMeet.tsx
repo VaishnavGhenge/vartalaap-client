@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Copy, Check } from "lucide-react";
+import { Copy, Check, Share2 } from "lucide-react";
 import { MicButton } from "@/src/components/ui/MicButton";
 import { CameraButton } from "@/src/components/ui/CameraButton";
 import { Input } from "@/src/components/ui/input";
@@ -19,6 +19,8 @@ export default function JoinMeet() {
 
     const [meetCode, setMeetCode] = useState("");
     const [copied, setCopied] = useState(false);
+    const [canShare, setCanShare] = useState(false);
+    useEffect(() => { setCanShare('share' in navigator); }, []);
 
     const { localStream, enableMic, disableMic, enableCamera, disableCamera } = usePeerStore();
     const { isMuted, isVideoOff, toggleMute, toggleVideo } = useMeetStore();
@@ -65,11 +67,15 @@ export default function JoinMeet() {
 
     const handleCopyCode = async () => {
         try {
-            await navigator.clipboard.writeText(meetCode);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
-        } catch {
-            toast.error("Could not copy");
+            if (canShare) {
+                await navigator.share({ title: 'Join my Vartalaap call', url: window.location.href });
+            } else {
+                await navigator.clipboard.writeText(window.location.href);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+            }
+        } catch (e) {
+            if ((e as Error).name !== 'AbortError') toast.error("Could not share");
         }
     };
 
@@ -78,12 +84,12 @@ export default function JoinMeet() {
     const initials = initialsOf(previewName);
 
     return (
-        <main className='relative flex flex-1 overflow-hidden text-[hsl(var(--foreground))]'>
+        <main className='relative flex flex-1 overflow-y-auto text-[hsl(var(--foreground))]'>
             <div className='pointer-events-none absolute inset-0 opacity-[0.08]'
                  style={{ background: 'radial-gradient(50% 40% at 50% 0%, hsl(var(--brand-glow) / 0.42) 0%, transparent 70%)' }} />
 
-            <div className='relative w-full max-w-6xl mx-auto px-4 py-8 lg:py-14 flex items-center'>
-                <div className='grid grid-cols-1 lg:grid-cols-5 gap-8 w-full'>
+            <div className='relative w-full max-w-6xl mx-auto px-4 py-4 sm:py-8 lg:py-14 flex items-start sm:items-center'>
+                <div className='grid grid-cols-1 lg:grid-cols-5 gap-4 sm:gap-8 w-full'>
                     {/* Preview tile */}
                     <div className='lg:col-span-3 flex flex-col items-center justify-center'>
                         <div className='app-panel relative w-full overflow-hidden rounded-[2rem]'
@@ -109,7 +115,7 @@ export default function JoinMeet() {
                                 {previewName}
                             </div>
 
-                            <div className='absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full border border-[hsl(var(--border))]/70 bg-[hsl(var(--surface))]/82 px-2 py-2 backdrop-blur-md'>
+                            <div className='absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-[hsl(var(--border))]/70 bg-[hsl(var(--surface))]/82 px-1.5 py-1.5 backdrop-blur-md'>
                                 <MicButton onClickFn={handleMicToggle} action={isMuted ? "close" : "open"} />
                                 <CameraButton onClickFn={handleCameraToggle} action={isVideoOff ? "close" : "open"} />
                             </div>
@@ -118,14 +124,14 @@ export default function JoinMeet() {
 
                     {/* Join form */}
                     <div className='lg:col-span-2 flex flex-col justify-center'>
-                        <div className='app-panel rounded-[2rem] p-6 sm:p-8'>
+                        <div className='app-panel rounded-[2rem] p-4 sm:p-6 lg:p-8'>
                             <div className='inline-flex rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--surface-2))] px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-[hsl(var(--muted-foreground))]'>
                                 Pre-join
                             </div>
                             <h2 className='mt-4 text-3xl font-semibold tracking-tight'>Ready to join?</h2>
                             <p className='mt-2 text-sm text-[hsl(var(--muted-foreground))]'>Check your camera and mic, confirm your name, then jump in.</p>
 
-                            <div className='mt-8 flex items-center justify-between gap-3 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--surface-2))]/85 px-4 py-3'>
+                            <div className='mt-4 sm:mt-8 flex items-center justify-between gap-3 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--surface-2))]/85 px-4 py-3'>
                                 <div className='flex flex-col'>
                                     <span className='text-[11px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]'>Meeting code</span>
                                     <span className='font-mono tracking-wide text-[hsl(var(--foreground))]'>{meetCode || '—'}</span>
@@ -135,8 +141,10 @@ export default function JoinMeet() {
                                     onClick={handleCopyCode}
                                     className='press inline-flex items-center gap-1.5 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--surface))] px-3 py-1.5 text-xs text-[hsl(var(--foreground))]'
                                 >
-                                    {copied ? <Check className='w-4 h-4 text-[hsl(var(--brand-glow))]' /> : <Copy className='w-4 h-4' />}
-                                    {copied ? 'Copied' : 'Copy'}
+                                    {copied
+                                        ? <Check className='w-4 h-4 text-[hsl(var(--brand-glow))]' />
+                                        : canShare ? <Share2 className='w-4 h-4' /> : <Copy className='w-4 h-4' />}
+                                    {copied ? 'Copied' : canShare ? 'Share' : 'Copy'}
                                 </button>
                             </div>
 
@@ -150,7 +158,7 @@ export default function JoinMeet() {
                             <Button
                                 onClick={handleJoinMeet}
                                 disabled={!userName.trim()}
-                                className='mt-4 h-11 font-medium'
+                                className='mt-4 h-11 w-full font-semibold text-base tracking-wide'
                             >
                                 Join now
                             </Button>
