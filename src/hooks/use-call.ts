@@ -98,7 +98,12 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
 
     ;(async () => {
       try {
-        const iceServers = await fetchIceServers()
+        let iceServers: Awaited<ReturnType<typeof fetchIceServers>> = []
+        try {
+          iceServers = await fetchIceServers()
+        } catch (e) {
+          console.warn('ICE server fetch failed, proceeding without TURN', e)
+        }
         if (disposed) return
         store.getState().setIceServers(iceServers)
         const a = joinArgs.current
