@@ -142,7 +142,9 @@ export const usePeerStore = create<PeerState>()(
 
     enableCamera: async () => {
       try {
-        const media = await navigator.mediaDevices.getUserMedia({ video: true })
+        const media = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+        })
         const track = media.getVideoTracks()[0]
         if (!track) return null
         const existing = get().localStream
@@ -177,6 +179,7 @@ export const usePeerStore = create<PeerState>()(
         trickle: true,
         stream,
         config: { iceServers: iceServers as RTCIceServer[] },
+        sdpTransform: (sdp: string) => sdp.replace(/b=AS:\d+/g, 'b=AS:2500'),
       })
     },
 
