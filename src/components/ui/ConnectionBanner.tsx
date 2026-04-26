@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Loader2, WifiOff } from "lucide-react";
 import type { ConnState } from "@/src/services/signaling/client";
 
@@ -15,18 +15,35 @@ interface ConnectionBannerProps {
 
 export function ConnectionBanner({ connState, reconnectAttempt, onLeave }: ConnectionBannerProps) {
     const [countdown, setCountdown] = useState(AUTO_LEAVE_S);
+    const hasAutoLeftRef = useRef(false);
+    const onLeaveRef = useRef(onLeave);
+
+    useEffect(() => {
+        onLeaveRef.current = onLeave;
+    }, [onLeave]);
 
     // Countdown + auto-leave when failed
     useEffect(() => {
-        if (connState !== 'failed') { setCountdown(AUTO_LEAVE_S); return }
+        hasAutoLeftRef.current = false;
+        if (connState !== 'failed') {
+            setCountdown(AUTO_LEAVE_S);
+            return;
+        }
+
         const interval = setInterval(() => {
-            setCountdown((s) => {
-                if (s <= 1) { clearInterval(interval); onLeave(); return 0 }
-                return s - 1
-            })
+            setCountdown((s) => Math.max(s - 1, 0))
         }, 1000)
         return () => clearInterval(interval)
-    }, [connState, onLeave])
+    }, [connState])
+
+    useEffect(() => {
+        if (connState !== 'failed' || countdown !== 0 || hasAutoLeftRef.current) {
+            return;
+        }
+
+        hasAutoLeftRef.current = true;
+        onLeaveRef.current();
+    }, [connState, countdown]);
 
     if (connState === 'reconnecting') {
         return (
