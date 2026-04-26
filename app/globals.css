@@ -18,29 +18,33 @@
         --secondary-foreground: 207 90% 25%;
 
         --muted: 210 28% 94%;
-        --muted-foreground: 215 16% 40%;
+        --muted-foreground: 215 16% 47%;
 
         --accent: 39 100% 93%;
         --accent-foreground: 29 66% 22%;
 
-        --destructive: 0 84.2% 60.2%;
-        --destructive-foreground: 0 0% 98%;
+        --destructive: 0 78% 55%;
+        --destructive-foreground: 0 0% 100%;
 
-        --border: 215 24% 88%;
-        --input: 214 32% 91%;
+        --border: 215 20% 86%;
+        --input: 214 24% 90%;
         --ring: 205 89% 40%;
 
         --surface: 0 0% 100%;
-        --surface-2: 210 29% 96%;
-        --surface-3: 212 30% 92%;
-        --hero-from: 206 100% 99%;
-        --hero-via: 210 60% 97%;
-        --hero-to: 42 100% 96%;
+        --surface-2: 210 26% 96%;
+        --surface-3: 212 24% 91%;
+
+        /* Subtle cool-white gradient — no amber on non-call pages */
+        --hero-from: 210 50% 99%;
+        --hero-via: 210 35% 98%;
+        --hero-to: 215 28% 96%;
+
         --brand-soft: 205 92% 84%;
-        --brand-glow: 43 96% 65%;
+        /* Amber — reserved for the speaking ring only */
+        --brand-glow: 43 96% 62%;
         --shadow-color: 214 40% 18%;
 
-        --radius: 0.5rem;
+        --radius: 0.75rem;
     }
 
     .dark {
@@ -53,31 +57,31 @@
         --popover: 222 30% 13%;
         --popover-foreground: 210 40% 96%;
 
-        --primary: 199 94% 70%;
+        --primary: 199 94% 68%;
         --primary-foreground: 222 47% 11%;
 
         --secondary: 216 34% 20%;
         --secondary-foreground: 205 100% 91%;
 
         --muted: 219 28% 18%;
-        --muted-foreground: 215 18% 71%;
+        --muted-foreground: 215 16% 62%;
 
         --accent: 31 68% 23%;
         --accent-foreground: 42 100% 88%;
 
-        --destructive: 0 72% 56%;
-        --destructive-foreground: 0 0% 98%;
+        --destructive: 0 68% 52%;
+        --destructive-foreground: 0 0% 100%;
 
-        --border: 218 24% 24%;
-        --input: 218 24% 24%;
-        --ring: 199 94% 70%;
+        --border: 218 20% 22%;
+        --input: 218 20% 22%;
+        --ring: 199 94% 68%;
 
         --surface: 222 30% 13%;
         --surface-2: 223 28% 16%;
-        --surface-3: 222 27% 20%;
+        --surface-3: 222 26% 20%;
         --hero-from: 223 35% 10%;
         --hero-via: 224 32% 12%;
-        --hero-to: 231 27% 15%;
+        --hero-to: 222 30% 13%;
         --brand-soft: 201 88% 32%;
         --brand-glow: 41 89% 56%;
         --shadow-color: 220 60% 3%;
@@ -105,7 +109,8 @@
     body {
         background-color: hsl(var(--background));
         color: hsl(var(--foreground));
-        font-feature-settings: "rlig" 1, "calt" 1;
+        font-feature-settings: "rlig" 1, "calt" 1, "tnum" 1;
+        -webkit-font-smoothing: antialiased;
         transition: background-color 180ms ease, color 180ms ease;
     }
 
@@ -113,77 +118,172 @@
     button,
     input {
         transition:
-            background-color 180ms ease,
-            border-color 180ms ease,
-            color 180ms ease,
-            box-shadow 180ms ease,
-            opacity 180ms ease,
-            transform 180ms ease;
+            background-color 160ms ease,
+            border-color 160ms ease,
+            color 160ms ease,
+            box-shadow 160ms ease,
+            opacity 160ms ease,
+            transform 120ms cubic-bezier(0.22, 1, 0.36, 1);
     }
 
     ::selection {
-        background-color: hsl(var(--primary) / 0.22);
+        background-color: hsl(var(--primary) / 0.18);
     }
 }
 
-.input-label {
-    @apply text-xs font-medium text-[hsl(var(--muted-foreground))]
+/* ─── Semantic utilities ──────────────────────────────────────────────────── */
+
+/* Muted uppercase label: "MEETING CODE", "PRE-JOIN", etc. */
+.label-caps {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: hsl(var(--muted-foreground));
+    line-height: 1;
 }
 
+/* Monospace meeting code display */
+.meet-code {
+    font-family: ui-monospace, 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+    letter-spacing: 0.06em;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Inline text link */
 .link {
-    @apply text-[hsl(var(--primary))] underline decoration-[hsl(var(--primary))]/45 underline-offset-4
+    color: hsl(var(--primary));
+    text-decoration: underline;
+    text-decoration-color: hsl(var(--primary) / 0.4);
+    text-underline-offset: 4px;
 }
 
+/* ─── Layout surfaces ─────────────────────────────────────────────────────── */
+
+/* Full-page gradient shell used on home / pre-join */
 .app-shell {
-    background-image:
-        radial-gradient(circle at top, hsl(var(--brand-glow) / 0.16), transparent 28rem),
-        linear-gradient(135deg, hsl(var(--hero-from)), hsl(var(--hero-via)) 52%, hsl(var(--hero-to)));
+    background-image: linear-gradient(
+        160deg,
+        hsl(var(--hero-from)),
+        hsl(var(--hero-via)) 55%,
+        hsl(var(--hero-to))
+    );
 }
 
+/* Frosted-glass panel: cards, sidebars, modals */
 .app-panel {
     background-color: hsl(var(--surface) / 0.88);
-    border: 1px solid hsl(var(--border) / 0.9);
+    border: 1px solid hsl(var(--border) / 0.85);
     box-shadow:
-        0 20px 60px -28px hsl(var(--shadow-color) / 0.45),
-        inset 0 1px 0 hsl(0 0% 100% / 0.08);
-    backdrop-filter: blur(18px);
+        0 16px 48px -20px hsl(var(--shadow-color) / 0.36),
+        inset 0 1px 0 hsl(0 0% 100% / 0.07);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
 }
 
+/* Dimmer variant for nested surfaces */
 .app-panel-muted {
-    background-color: hsl(var(--surface-2) / 0.9);
-    border: 1px solid hsl(var(--border) / 0.8);
+    background-color: hsl(var(--surface-2) / 0.92);
+    border: 1px solid hsl(var(--border) / 0.7);
 }
 
-.app-grid {
-    background-image:
-        linear-gradient(hsl(var(--border) / 0.22) 1px, transparent 1px),
-        linear-gradient(90deg, hsl(var(--border) / 0.22) 1px, transparent 1px);
-    background-size: 28px 28px;
-    background-position: center;
+/* ─── Glass pill ─────────────────────────────────────────────────────────── */
+/*
+ * Reusable overlay chip used on video tiles, control bars, and the top-bar
+ * meeting code button.  Add size / spacing / content classes on top of this.
+ *
+ * Usage:  <div class="glass-pill px-3 py-1.5 text-sm gap-2">…</div>
+ */
+.glass-pill {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 9999px;
+    border: 1px solid hsl(var(--border) / 0.55);
+    background-color: hsl(var(--surface) / 0.78);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    color: hsl(var(--foreground));
+    line-height: 1;
+    white-space: nowrap;
 }
+
+/* ─── Control buttons (mic, camera, etc.) ────────────────────────────────── */
+/*
+ * Base + state modifiers for round media-control icon buttons.
+ * Compose: <button class="ctrl-btn ctrl-btn-on h-11 w-11">
+ */
+.ctrl-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    cursor: pointer;
+    flex-shrink: 0;
+    outline: none;
+    transition:
+        background-color 160ms ease,
+        box-shadow 160ms ease,
+        filter 120ms ease,
+        transform 120ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.ctrl-btn:focus-visible {
+    box-shadow: 0 0 0 3px hsl(var(--ring) / 0.4);
+}
+
+.ctrl-btn:active {
+    transform: scale(0.91);
+}
+
+/* Active / "on" state: neutral, blends into the control bar */
+.ctrl-btn-on {
+    border: 1px solid hsl(var(--border) / 0.65);
+    background-color: hsl(var(--surface-2) / 0.9);
+    color: hsl(var(--foreground));
+}
+
+.ctrl-btn-on:hover {
+    background-color: hsl(var(--surface-3));
+}
+
+/* Muted / "off" state: destructive, always visible */
+.ctrl-btn-off {
+    background-color: hsl(var(--destructive));
+    color: hsl(var(--destructive-foreground));
+    box-shadow: 0 4px 14px -4px hsl(var(--destructive) / 0.4);
+}
+
+.ctrl-btn-off:hover {
+    filter: brightness(1.09);
+}
+
+/* ─── Animations ─────────────────────────────────────────────────────────── */
 
 @keyframes tile-in {
     from { opacity: 0; transform: scale(0.96); }
     to   { opacity: 1; transform: scale(1); }
 }
 
-@keyframes speaker-pulse {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.0); }
-    50%      { box-shadow: 0 0 0 6px rgba(251, 191, 36, 0.35); }
-}
-
 .tile-in {
-    animation: tile-in 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: tile-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* Amber speaking indicator — the one deliberate use of brand-glow */
 .speaking-ring {
-    box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.9), 0 0 24px 4px rgba(251, 191, 36, 0.25);
-    transition: box-shadow 160ms ease-out;
+    box-shadow:
+        0 0 0 2.5px hsl(var(--brand-glow) / 0.95),
+        0 0 20px 4px hsl(var(--brand-glow) / 0.22);
+    transition: box-shadow 140ms ease-out;
 }
 
+/* Press / tap feedback for interactive surfaces */
 .press {
-    transition: transform 120ms cubic-bezier(0.22, 1, 0.36, 1), background-color 160ms, box-shadow 160ms;
+    transition:
+        transform 120ms cubic-bezier(0.22, 1, 0.36, 1),
+        background-color 160ms ease,
+        box-shadow 160ms ease;
 }
+
 .press:active {
     transform: scale(0.94);
 }

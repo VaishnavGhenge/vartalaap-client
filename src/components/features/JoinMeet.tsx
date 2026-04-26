@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Copy, Check, Share2 } from "lucide-react";
+import { resumeSharedAudioContext } from "@/src/lib/audio-context";
 import { MicButton } from "@/src/components/ui/MicButton";
 import { CameraButton } from "@/src/components/ui/CameraButton";
 import { Input } from "@/src/components/ui/input";
@@ -26,9 +27,7 @@ export default function JoinMeet() {
     const { isMuted, isVideoOff, toggleMute, toggleVideo } = useMeetStore();
     const { userName, setUserName, setHasJoinedMeet } = useJoinMeetStore();
 
-    useEffect(() => {
-        setMeetCode(params.meetCode);
-    }, [params]);
+    useEffect(() => { setMeetCode(params.meetCode); }, [params]);
 
     useEffect(() => {
         if (videoRef.current) videoRef.current.srcObject = localStream;
@@ -37,10 +36,7 @@ export default function JoinMeet() {
     const handleCameraToggle = async () => {
         if (isVideoOff) {
             const track = await enableCamera();
-            if (!track) {
-                toast.error("Camera unavailable. Check browser permissions and try again.");
-                return;
-            }
+            if (!track) { toast.error("Camera unavailable. Check browser permissions."); return; }
         } else {
             disableCamera();
         }
@@ -50,22 +46,20 @@ export default function JoinMeet() {
     const handleMicToggle = async () => {
         if (isMuted) {
             const track = await enableMic();
-            if (!track) {
-                toast.error("Microphone unavailable. Check browser permissions and try again.");
-                return;
-            }
+            if (!track) { toast.error("Microphone unavailable. Check browser permissions."); return; }
         } else {
             disableMic();
         }
         toggleMute();
     };
 
-    const handleJoinMeet = () => {
+    const handleJoin = () => {
         if (!userName.trim()) return;
+        resumeSharedAudioContext();
         setHasJoinedMeet(true);
     };
 
-    const handleCopyCode = async () => {
+    const handleShare = async () => {
         try {
             if (canShare) {
                 await navigator.share({ title: 'Join my Vartalaap call', url: window.location.href });
@@ -84,86 +78,104 @@ export default function JoinMeet() {
     const initials = initialsOf(previewName);
 
     return (
-        <main className='relative flex flex-1 overflow-y-auto text-[hsl(var(--foreground))]'>
-            <div className='pointer-events-none absolute inset-0 opacity-[0.08]'
-                 style={{ background: 'radial-gradient(50% 40% at 50% 0%, hsl(var(--brand-glow) / 0.42) 0%, transparent 70%)' }} />
+        <main className="relative flex flex-1 overflow-y-auto">
+            <div className="w-full max-w-5xl mx-auto px-4 py-6 sm:py-10 lg:py-16
+                            flex items-start sm:items-center">
+                <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 sm:gap-6 w-full">
 
-            <div className='relative w-full max-w-6xl mx-auto px-4 py-4 sm:py-8 lg:py-14 flex items-start sm:items-center'>
-                <div className='grid grid-cols-1 lg:grid-cols-5 gap-4 sm:gap-8 w-full'>
-                    {/* Preview tile */}
-                    <div className='lg:col-span-3 flex flex-col items-center justify-center'>
-                        <div className='app-panel relative w-full overflow-hidden rounded-[2rem]'
+                    {/* ── Camera preview ────────────────────────────────── */}
+                    <div className="lg:col-span-3">
+                        <div className="app-panel relative w-full overflow-hidden rounded-2xl"
                              style={{ aspectRatio: '16/9' }}>
-                            {isVideoOff ? (
-                                <div className='absolute inset-0 flex items-center justify-center bg-[linear-gradient(160deg,hsl(var(--surface-2)),hsl(var(--surface-3)))]'>
-                                    <div className={`flex items-center justify-center rounded-full ${avatarBg} text-white font-semibold shadow-lg`}
-                                         style={{ width: '24%', aspectRatio: '1 / 1', minWidth: 72, minHeight: 72, maxWidth: 140, maxHeight: 140, fontSize: 'clamp(24px, 5vw, 48px)' }}>
+
+                            {/* Avatar placeholder when camera is off */}
+                            {isVideoOff && (
+                                <div className="absolute inset-0 flex items-center justify-center
+                                                bg-[linear-gradient(160deg,hsl(var(--surface-2)),hsl(var(--surface-3)))]">
+                                    <div className={`flex items-center justify-center rounded-full
+                                                     ${avatarBg} text-white font-semibold`}
+                                         style={{
+                                             width: '22%',
+                                             aspectRatio: '1/1',
+                                             minWidth: 64, minHeight: 64,
+                                             maxWidth: 120, maxHeight: 120,
+                                             fontSize: 'clamp(20px, 4.5vw, 44px)',
+                                         }}>
                                         {initials}
                                     </div>
                                 </div>
-                            ) : null}
+                            )}
 
                             <video
                                 ref={videoRef}
-                                className='absolute inset-0 w-full h-full object-cover'
-                                autoPlay
-                                muted
-                                playsInline
+                                className="absolute inset-0 w-full h-full object-cover"
+                                autoPlay muted playsInline
                             />
 
-                            <div className='absolute left-4 bottom-4 rounded-full border border-[hsl(var(--border))]/70 bg-[hsl(var(--surface))]/82 px-3 py-1 text-sm backdrop-blur-sm'>
+                            {/* Name label */}
+                            <div className="glass-pill absolute left-3 bottom-3 px-2.5 py-1 text-[13px]">
                                 {previewName}
                             </div>
 
-                            <div className='absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-[hsl(var(--border))]/70 bg-[hsl(var(--surface))]/82 px-1.5 py-1.5 backdrop-blur-md'>
+                            {/* Mic + camera toggles */}
+                            <div className="glass-pill absolute bottom-3 left-1/2 -translate-x-1/2 gap-1.5 px-1.5 py-1.5">
                                 <MicButton onClickFn={handleMicToggle} action={isMuted ? "close" : "open"} />
                                 <CameraButton onClickFn={handleCameraToggle} action={isVideoOff ? "close" : "open"} />
                             </div>
                         </div>
                     </div>
 
-                    {/* Join form */}
-                    <div className='lg:col-span-2 flex flex-col justify-center'>
-                        <div className='app-panel rounded-[2rem] p-4 sm:p-6 lg:p-8'>
-                            <div className='inline-flex rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--surface-2))] px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-[hsl(var(--muted-foreground))]'>
-                                Pre-join
-                            </div>
-                            <h2 className='mt-4 text-3xl font-semibold tracking-tight'>Ready to join?</h2>
-                            <p className='mt-2 text-sm text-[hsl(var(--muted-foreground))]'>Check your camera and mic, confirm your name, then jump in.</p>
+                    {/* ── Join panel ────────────────────────────────────── */}
+                    <div className="lg:col-span-2 flex flex-col justify-center">
+                        <div className="app-panel rounded-2xl p-5 sm:p-6">
 
-                            <div className='mt-4 sm:mt-8 flex items-center justify-between gap-3 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--surface-2))]/85 px-4 py-3'>
-                                <div className='flex flex-col'>
-                                    <span className='text-[11px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]'>Meeting code</span>
-                                    <span className='font-mono tracking-wide text-[hsl(var(--foreground))]'>{meetCode || '—'}</span>
+                            {/* Meeting code row */}
+                            <div className="flex items-center justify-between gap-3
+                                            rounded-xl border border-[hsl(var(--border))]
+                                            bg-[hsl(var(--surface-2))]/80 px-4 py-3">
+                                <div className="flex flex-col gap-0.5 min-w-0">
+                                    <span className="label-caps">Meeting code</span>
+                                    <span className="meet-code text-sm text-[hsl(var(--foreground))] truncate">
+                                        {meetCode || '—'}
+                                    </span>
                                 </div>
                                 <button
-                                    type='button'
-                                    onClick={handleCopyCode}
-                                    className='press inline-flex items-center gap-1.5 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--surface))] px-3 py-1.5 text-xs text-[hsl(var(--foreground))]'
+                                    type="button"
+                                    onClick={handleShare}
+                                    className="press glass-pill shrink-0 gap-1.5 px-3 py-1.5 text-xs
+                                               text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
                                 >
                                     {copied
-                                        ? <Check className='w-4 h-4 text-[hsl(var(--brand-glow))]' />
-                                        : canShare ? <Share2 className='w-4 h-4' /> : <Copy className='w-4 h-4' />}
+                                        ? <Check className="w-3.5 h-3.5 text-[hsl(var(--primary))]" />
+                                        : canShare
+                                            ? <Share2 className="w-3.5 h-3.5" />
+                                            : <Copy className="w-3.5 h-3.5" />
+                                    }
                                     {copied ? 'Copied' : canShare ? 'Share' : 'Copy'}
                                 </button>
                             </div>
 
-                            <Input
-                                placeholder='Enter your name'
-                                value={userName}
-                                onChange={(e) => setUserName(e.target.value)}
-                                className='mt-4'
-                            />
-
-                            <Button
-                                onClick={handleJoinMeet}
-                                disabled={!userName.trim()}
-                                className='mt-4 h-11 w-full font-semibold text-base tracking-wide'
-                            >
-                                Join now
-                            </Button>
+                            <div className="mt-4 flex flex-col gap-3">
+                                <Input
+                                    placeholder="Your name"
+                                    value={userName}
+                                    onChange={(e) => setUserName(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
+                                    autoComplete="name"
+                                    maxLength={40}
+                                />
+                                <Button
+                                    onClick={handleJoin}
+                                    disabled={!userName.trim()}
+                                    size="lg"
+                                    className="w-full"
+                                >
+                                    Join now
+                                </Button>
+                            </div>
                         </div>
                     </div>
+
                 </div>
             </div>
         </main>

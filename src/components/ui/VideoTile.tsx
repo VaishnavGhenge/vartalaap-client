@@ -1,15 +1,19 @@
 "use client";
 
 import { MicOff } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { VideoStream } from "@/src/components/ui/Video";
 import { useAudioLevel } from "@/src/hooks/use-audio-level";
 import { avatarColor, initialsOf } from "@/src/lib/avatar";
+
+const REMOTE_HOLD_MS = 280
 
 interface Participant {
     id: string;
     name: string;
     isMuted?: boolean;
     isVideoOff?: boolean;
+    speaking?: boolean;
 }
 
 interface VideoTileProps {
@@ -32,34 +36,62 @@ export const VideoTile = ({
     const name = isLocal ? (userName || 'You') : (participant?.name || 'Participant');
     const videoOff = isLocal ? !!isVideoOff : !!participant?.isVideoOff;
     const muted = isLocal ? !!isMuted : !!participant?.isMuted;
+    const label = isLocal ? `${name} (you)` : name;
 
-    // Speaking detection: ignore our own audio (it's not broadcast to ourselves anyway
-    // because <video muted={isLocal}/>, but MediaStream still carries the track).
-    const speaking = useAudioLevel(stream, !muted);
+    // Local: detect from own mic stream (reliable).
+    // Remote: use the speaking flag broadcast by the remote peer, held for
+    // REMOTE_HOLD_MS so rapid true→false transitions don't get swallowed by
+    // React batching before they can render.
+    const localSpeaking = useAudioLevel(isLocal ? stream : null, isLocal && !muted);
+    const [remoteSpeaking, setRemoteSpeaking] = useState(false);
+    const holdTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+    useEffect(() => {
+        if (isLocal) return;
+        if (participant?.speaking) {
+            clearTimeout(holdTimer.current);
+            setRemoteSpeaking(true);
+        } else {
+            holdTimer.current = setTimeout(() => setRemoteSpeaking(false), REMOTE_HOLD_MS);
+        }
+        return () => clearTimeout(holdTimer.current);
+    }, [isLocal, participant?.speaking]);
+    const speaking = isLocal ? localSpeaking : remoteSpeaking;
 
     const color = avatarColor(name);
     const initials = initialsOf(name);
-    const label = isLocal ? `${name} (you)` : name;
 
     return (
-        <div
-            className={`tile-in relative h-full w-full overflow-hidden rounded-[1.5rem] border border-[hsl(var(--border))]/60 bg-[linear-gradient(160deg,hsl(var(--surface-2)),hsl(var(--surface-3)))] ${speaking ? 'speaking-ring' : ''}`}
-        >
-            {videoOff || !stream ? (
-                <div className='absolute inset-0 flex items-center justify-center bg-[linear-gradient(160deg,hsl(var(--surface-2)),hsl(var(--surface-3)))]'>
-                    <div className={`flex items-center justify-center rounded-full ${color} text-white font-semibold shadow-lg`}
-                         style={{ width: '22%', aspectRatio: '1 / 1', minWidth: 48, minHeight: 48, maxWidth: 112, maxHeight: 112, fontSize: 'clamp(18px, 4vw, 40px)' }}>
+        <div className={`tile-in relative h-full w-full overflow-hidden rounded-2xl
+                         border border-[hsl(var(--border))]/50
+                         bg-[linear-gradient(160deg,hsl(var(--surface-2)),hsl(var(--surface-3)))]
+                         ${speaking ? 'speaking-ring' : ''}`}>
+
+            {/* Avatar (camera off or no stream yet) */}
+            {(videoOff || !stream) && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                    <div className={`flex items-center justify-center rounded-full ${color} text-white font-semibold`}
+                         style={{
+                             width: '22%',
+                             aspectRatio: '1/1',
+                             minWidth: 44, minHeight: 44,
+                             maxWidth: 108, maxHeight: 108,
+                             fontSize: 'clamp(16px, 3.8vw, 38px)',
+                         }}>
                         {initials}
                     </div>
                 </div>
-            ) : (
+            )}
+
+            {/* Live video */}
+            {!videoOff && stream && (
                 <VideoStream stream={stream} isLocal={isLocal} />
             )}
 
-            <div className='absolute bottom-3 left-3 flex items-center gap-1.5 rounded-full border border-[hsl(var(--border))]/70 bg-[hsl(var(--surface))]/82 px-2.5 py-1 text-[13px] text-[hsl(var(--foreground))] backdrop-blur-sm'>
-                {muted && <MicOff className='w-3.5 h-3.5 text-[hsl(var(--destructive))]' />}
-                <span className='truncate max-w-[160px]'>{label}</span>
+            {/* Name pill */}
+            <div className="glass-pill absolute bottom-2.5 left-2.5 gap-1 px-2 py-1 text-[12px]">
+                {muted && <MicOff className="w-3 h-3 text-[hsl(var(--destructive))] shrink-0" />}
+                <span className="truncate max-w-[140px]">{label}</span>
             </div>
         </div>
     );
-}
+};

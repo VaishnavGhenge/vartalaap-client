@@ -2,8 +2,10 @@
 
 import { PhoneOff, Copy, Check, Share2 } from "lucide-react";
 import { toast } from "sonner";
+import { resumeSharedAudioContext } from "@/src/lib/audio-context";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useAudioLevel } from "@/src/hooks/use-audio-level";
 import { MicButton } from "@/src/components/ui/MicButton";
 import { CameraButton } from "@/src/components/ui/CameraButton";
 import { VideoTile } from "@/src/components/ui/VideoTile";
@@ -29,23 +31,36 @@ export default function MeetCall({ client }: MeetCallProps) {
 
     const remotePeers = useMemo(() => Array.from(peerConnections.values()), [peerConnections]);
 
-    const broadcastState = (audio: boolean, video: boolean) => {
-        client?.send('peer-state', { audio, video });
+    const broadcastState = (audio: boolean, video: boolean, speaking?: boolean) => {
+        client?.send('peer-state', { audio, video, speaking });
     };
+
+    // Detect local speaking and broadcast so remote peers can show the ring.
+    // We detect from our own mic (reliable), not from the remote WebRTC stream
+    // (unreliable — different browser audio pipeline).
+    const localSpeaking = useAudioLevel(localStream, !isMuted);
+    const prevSpeakingRef = useRef(localSpeaking);
+    useEffect(() => {
+        if (prevSpeakingRef.current === localSpeaking) return;
+        prevSpeakingRef.current = localSpeaking;
+        broadcastState(!isMuted, !isVideoOff, localSpeaking);
+    // broadcastState is stable (depends only on client ref); isMuted/isVideoOff
+    // are read at broadcast time so they don't need to be deps here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [localSpeaking]);
 
     const handleMicToggle = async () => {
         const nextMuted = !isMuted;
         if (nextMuted) {
             disableMic();
         } else {
+            resumeSharedAudioContext();
             const track = await enableMic();
-            if (!track) {
-                toast.error("Microphone unavailable. Check browser permissions and try again.");
-                return;
-            }
+            if (!track) { toast.error("Microphone unavailable. Check browser permissions."); return; }
         }
         toggleMute();
-        broadcastState(!nextMuted, !isVideoOff);
+        // When muting, explicitly clear speaking so remote peers drop the ring.
+        broadcastState(!nextMuted, !isVideoOff, nextMuted ? false : undefined);
     };
 
     const handleCameraToggle = async () => {
@@ -54,16 +69,13 @@ export default function MeetCall({ client }: MeetCallProps) {
             disableCamera();
         } else {
             const track = await enableCamera();
-            if (!track) {
-                toast.error("Camera unavailable. Check browser permissions and try again.");
-                return;
-            }
+            if (!track) { toast.error("Camera unavailable. Check browser permissions."); return; }
         }
         toggleVideo();
         broadcastState(!isMuted, !nextVideoOff);
     };
 
-    const handleCopyCode = async () => {
+    const handleShare = async () => {
         try {
             if (canShare) {
                 await navigator.share({ title: 'Join my Vartalaap call', url: window.location.href });
@@ -83,40 +95,43 @@ export default function MeetCall({ client }: MeetCallProps) {
     };
 
     const alone = remotePeers.length === 0;
+    const participantCount = remotePeers.length + 1;
 
     return (
-        <div className='relative min-h-dvh w-full overflow-hidden text-[hsl(var(--foreground))]'>
-            {/* Subtle amber vignette */}
-            <div className='pointer-events-none absolute inset-0 opacity-[0.07]'
-                 style={{ background: 'radial-gradient(60% 50% at 50% 10%, hsl(var(--brand-glow) / 0.34) 0%, transparent 70%)' }} />
+        <div className="relative min-h-dvh w-full overflow-hidden text-[hsl(var(--foreground))]">
 
-            {/* Top bar: meeting code */}
-            <div className='absolute left-4 top-4 z-20 flex items-center gap-2'>
+            {/* ── Top bar ──────────────────────────────────────────────── */}
+            <div className="absolute left-4 top-4 right-4 z-20 flex items-center justify-between gap-3">
+                {/* Share button */}
                 <button
-                    type='button'
-                    onClick={handleCopyCode}
-                    className='press group flex items-center gap-2 rounded-full border border-[hsl(var(--border))]/70 bg-[hsl(var(--surface))]/82 px-3 py-1.5 text-sm backdrop-blur-sm'
-                    aria-label={canShare ? 'Share meeting' : 'Copy meeting code'}
+                    type="button"
+                    onClick={handleShare}
+                    aria-label={canShare ? 'Share meeting' : 'Copy meeting link'}
+                    className="press glass-pill gap-2 px-3 py-1.5 text-sm
+                               hover:bg-[hsl(var(--surface-2))] transition-colors"
                 >
-                    <span className='font-mono tracking-wide'>{meetCode || '—'}</span>
+                    <span className="meet-code">{meetCode || '—'}</span>
                     {copied
-                        ? <Check className='w-4 h-4 text-[hsl(var(--brand-glow))]' />
+                        ? <Check className="w-3.5 h-3.5 text-[hsl(var(--primary))]" />
                         : canShare
-                            ? <Share2 className='w-4 h-4 text-[hsl(var(--muted-foreground))] group-hover:text-[hsl(var(--foreground))]' />
-                            : <Copy className='w-4 h-4 text-[hsl(var(--muted-foreground))] group-hover:text-[hsl(var(--foreground))]' />
+                            ? <Share2 className="w-3.5 h-3.5 text-[hsl(var(--muted-foreground))]" />
+                            : <Copy className="w-3.5 h-3.5 text-[hsl(var(--muted-foreground))]" />
                     }
                 </button>
+
+                {/* Participant count */}
+                <div className="glass-pill px-3 py-1.5 text-xs text-[hsl(var(--muted-foreground))]">
+                    {participantCount} {participantCount === 1 ? 'participant' : 'participants'}
+                </div>
             </div>
 
-            <div className='absolute right-4 top-4 z-20 rounded-full border border-[hsl(var(--border))]/70 bg-[hsl(var(--surface))]/82 px-3 py-1.5 text-xs sm:text-sm text-[hsl(var(--muted-foreground))] backdrop-blur-sm'>
-                {remotePeers.length + 1} participant{remotePeers.length === 0 ? "" : "s"}
-            </div>
-
-            <main className='flex flex-col h-dvh'>
-                <div className='flex-1 p-4 min-h-0' style={{ paddingBottom: 'calc(7rem + env(safe-area-inset-bottom, 0px))' }}>
-                    <VideoGrid gap={12} tileAspect={16 / 9}>
+            {/* ── Video grid ───────────────────────────────────────────── */}
+            <main className="flex flex-col h-dvh">
+                <div className="flex-1 p-3 min-h-0"
+                     style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom, 0px))' }}>
+                    <VideoGrid gap={8} tileAspect={16 / 9}>
                         <VideoTile
-                            key='local'
+                            key="local"
                             isLocal
                             userName={userName}
                             isVideoOff={isVideoOff}
@@ -131,6 +146,7 @@ export default function MeetCall({ client }: MeetCallProps) {
                                     name: c.name || c.id.slice(0, 6),
                                     isMuted: !c.audio,
                                     isVideoOff: !c.video,
+                                    speaking: c.speaking,
                                 }}
                                 stream={c.stream ?? null}
                             />
@@ -138,38 +154,36 @@ export default function MeetCall({ client }: MeetCallProps) {
                     </VideoGrid>
                 </div>
 
+                {/* Waiting hint */}
                 {alone && (
-                    <div className='pointer-events-none absolute inset-x-0 flex justify-center' style={{ bottom: 'calc(7rem + env(safe-area-inset-bottom, 0px))' }}>
-                        <div className='rounded-full border border-[hsl(var(--border))]/70 bg-[hsl(var(--surface))]/78 px-4 py-2 text-sm text-[hsl(var(--muted-foreground))] backdrop-blur-sm'>
-                            You&apos;re the only one here — share the code above to invite someone.
-                        </div>
+                    <div className="pointer-events-none absolute inset-x-0 flex justify-center px-4"
+                         style={{ bottom: 'calc(5.5rem + env(safe-area-inset-bottom, 0px))' }}>
+                        <p className="glass-pill px-4 py-2 text-xs text-[hsl(var(--muted-foreground))]">
+                            Share the code above to invite someone
+                        </p>
                     </div>
                 )}
-
-                {/* Floating control bar */}
-                <div className='absolute left-1/2 -translate-x-1/2 z-20' style={{ bottom: 'max(1.25rem, env(safe-area-inset-bottom))' }}>
-                    <div className='flex items-center gap-2 rounded-full border border-[hsl(var(--border))]/70 bg-[hsl(var(--surface))]/82 px-2 py-2 shadow-2xl shadow-[hsl(var(--shadow-color))]/35 backdrop-blur-md'>
-                        <MicButton
-                            onClickFn={handleMicToggle}
-                            action={isMuted ? "close" : "open"}
-                        />
-                        <CameraButton
-                            onClickFn={handleCameraToggle}
-                            action={isVideoOff ? "close" : "open"}
-                        />
-                        <div className='mx-1 h-6 w-px bg-[hsl(var(--border))]' />
-                        <button
-                            type='button'
-                            onClick={handleEndCall}
-                            aria-label='Leave call'
-                            className='press flex h-11 items-center gap-2 rounded-full bg-[hsl(var(--destructive))] pl-4 pr-5 text-[hsl(var(--destructive-foreground))] shadow-lg shadow-[hsl(var(--destructive))]/30 hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--destructive))]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--surface))]'
-                        >
-                            <PhoneOff className='w-5 h-5' />
-                            <span className='text-sm font-medium'>Leave</span>
-                        </button>
-                    </div>
-                </div>
             </main>
+
+            {/* ── Floating control bar ──────────────────────────────────── */}
+            <div className="absolute left-1/2 -translate-x-1/2 z-20"
+                 style={{ bottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
+                <div className="glass-pill gap-2 px-2 py-2 shadow-xl shadow-[hsl(var(--shadow-color))]/25">
+                    <MicButton onClickFn={handleMicToggle} action={isMuted ? "close" : "open"} />
+                    <CameraButton onClickFn={handleCameraToggle} action={isVideoOff ? "close" : "open"} />
+
+                    <div className="mx-1 h-5 w-px bg-[hsl(var(--border))]" />
+
+                    <button
+                        type="button"
+                        onClick={handleEndCall}
+                        aria-label="Leave call"
+                        className="ctrl-btn ctrl-btn-off h-9 w-9 sm:h-11 sm:w-11"
+                    >
+                        <PhoneOff className="w-4 h-4 sm:w-5 sm:h-5" />
+                    </button>
+                </div>
+            </div>
         </div>
     );
 }

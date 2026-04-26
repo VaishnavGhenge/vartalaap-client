@@ -45,6 +45,10 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
         store.getState().removePeerConnection(remoteId)
       })
       peer.on('error', (err) => {
+        // If the peer is already gone from the store, destroy() was called
+        // intentionally (peer-left cleanup) and the resulting WebRTC abort
+        // surfaces here — not a real error, ignore it.
+        if (!store.getState().peerConnections.has(remoteId)) return
         console.error('peer error', remoteId, err)
         store.getState().removePeerConnection(remoteId)
       })
@@ -83,7 +87,9 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
 
     const handlePeerState = (env: Envelope<PeerStateData>) => {
       if (!env.from || !env.data) return
-      store.getState().updatePeerMediaState(env.from, env.data.audio, env.data.video)
+      // Treat absent speaking field as false — server omits it when null/missing,
+      // so we can't use ?? to fall back to the previous value.
+      store.getState().updatePeerMediaState(env.from, env.data.audio, env.data.video, env.data.speaking ?? false)
     }
 
     const handleSignal = (env: Envelope) => {
