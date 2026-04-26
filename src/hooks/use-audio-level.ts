@@ -1,9 +1,14 @@
 import { useEffect, useState } from 'react'
+import { getSharedAudioContext } from '@/src/lib/audio-context'
 
 const DEFAULT_THRESHOLD = 0.035
 const HOLD_MS = 280
 
-export function useAudioLevel(stream: MediaStream | null, active: boolean, threshold = DEFAULT_THRESHOLD): boolean {
+export function useAudioLevel(
+  stream: MediaStream | null,
+  active: boolean,
+  threshold = DEFAULT_THRESHOLD,
+): boolean {
   const [speaking, setSpeaking] = useState(false)
 
   useEffect(() => {
@@ -11,61 +16,73 @@ export function useAudioLevel(stream: MediaStream | null, active: boolean, thres
       setSpeaking(false)
       return
     }
-    const track = stream.getAudioTracks()[0]
-    if (!track) {
-      setSpeaking(false)
-      return
-    }
 
-    const AudioCtor = (window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext)
-    if (!AudioCtor) return
+    // Build analyser from the stream's current audio track.
+    // Returns a teardown fn, or null if no audio track is present yet.
+    const attach = (): (() => void) | null => {
+      const track = stream.getAudioTracks()[0]
+      if (!track) return null
 
-    const ctx = new AudioCtor()
-    const source = ctx.createMediaStreamSource(stream)
-    const analyser = ctx.createAnalyser()
-    analyser.fftSize = 512
-    analyser.smoothingTimeConstant = 0.6
-    source.connect(analyser)
+      const ctx = getSharedAudioContext()
+      if (!ctx) return null
 
-    const data = new Uint8Array(analyser.frequencyBinCount)
-    let raf = 0
-    let lastOnAt = 0
-    let lastOffAt = 0
-    let current = false
+      // Ensure the shared context is running (no-op on desktop, needed on iOS).
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {})
 
-    const loop = () => {
-      analyser.getByteTimeDomainData(data)
-      let sumSq = 0
-      for (let i = 0; i < data.length; i++) {
-        const v = (data[i] - 128) / 128
-        sumSq += v * v
-      }
-      const rms = Math.sqrt(sumSq / data.length)
-      const now = performance.now()
-      const isLoud = rms > threshold
-      if (isLoud) {
-        lastOnAt = now
-        if (!current) {
-          current = true
-          setSpeaking(true)
+      const source = ctx.createMediaStreamSource(stream)
+      const analyser = ctx.createAnalyser()
+      analyser.fftSize = 512
+      analyser.smoothingTimeConstant = 0.6
+      source.connect(analyser)
+
+      const data = new Uint8Array(analyser.frequencyBinCount)
+      let raf = 0
+      let lastOnAt = 0
+      let current = false
+
+      const loop = () => {
+        analyser.getByteTimeDomainData(data)
+        let sumSq = 0
+        for (let i = 0; i < data.length; i++) {
+          const v = (data[i] - 128) / 128
+          sumSq += v * v
         }
-      } else {
-        lastOffAt = now
-        if (current && now - lastOnAt > HOLD_MS) {
+        const rms = Math.sqrt(sumSq / data.length)
+        const now = performance.now()
+        if (rms > threshold) {
+          lastOnAt = now
+          if (!current) { current = true; setSpeaking(true) }
+        } else if (current && now - lastOnAt > HOLD_MS) {
           current = false
           setSpeaking(false)
         }
+        raf = requestAnimationFrame(loop)
       }
-      // Satisfy lint: reference lastOffAt so unused-var check passes (also useful for debugging).
-      void lastOffAt
       raf = requestAnimationFrame(loop)
+
+      return () => {
+        cancelAnimationFrame(raf)
+        try { source.disconnect() } catch { /* noop */ }
+        // Do NOT close the shared context here.
+      }
     }
-    raf = requestAnimationFrame(loop)
+
+    let teardown = attach()
+
+    // Re-attach when audio tracks are added to the stream later
+    // (e.g. remote peer enables mic after joining with camera only).
+    const onAddTrack = (e: MediaStreamTrackEvent) => {
+      if (e.track.kind !== 'audio') return
+      teardown?.()
+      teardown = attach()
+    }
+
+    stream.addEventListener('addtrack', onAddTrack)
 
     return () => {
-      cancelAnimationFrame(raf)
-      try { source.disconnect() } catch { /* noop */ }
-      void ctx.close()
+      stream.removeEventListener('addtrack', onAddTrack)
+      teardown?.()
+      setSpeaking(false)
     }
   }, [stream, active, threshold])
 

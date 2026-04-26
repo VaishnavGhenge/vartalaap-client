@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Copy, Check, Share2 } from "lucide-react";
+import { resumeSharedAudioContext } from "@/src/lib/audio-context";
 import { MicButton } from "@/src/components/ui/MicButton";
 import { CameraButton } from "@/src/components/ui/CameraButton";
 import { Input } from "@/src/components/ui/input";
@@ -54,6 +55,7 @@ export default function JoinMeet() {
 
     const handleJoin = () => {
         if (!userName.trim()) return;
+        resumeSharedAudioContext();
         setHasJoinedMeet(true);
     };
 

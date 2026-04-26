@@ -2,6 +2,7 @@
 
 import { PhoneOff, Copy, Check, Share2 } from "lucide-react";
 import { toast } from "sonner";
+import { resumeSharedAudioContext } from "@/src/lib/audio-context";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { MicButton } from "@/src/components/ui/MicButton";
@@ -38,6 +39,7 @@ export default function MeetCall({ client }: MeetCallProps) {
         if (nextMuted) {
             disableMic();
         } else {
+            resumeSharedAudioContext();
             const track = await enableMic();
             if (!track) { toast.error("Microphone unavailable. Check browser permissions."); return; }
         }
