@@ -45,6 +45,10 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
         store.getState().removePeerConnection(remoteId)
       })
       peer.on('error', (err) => {
+        // If the peer is already gone from the store, destroy() was called
+        // intentionally (peer-left cleanup) and the resulting WebRTC abort
+        // surfaces here — not a real error, ignore it.
+        if (!store.getState().peerConnections.has(remoteId)) return
         console.error('peer error', remoteId, err)
         store.getState().removePeerConnection(remoteId)
       })
