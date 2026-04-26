@@ -5,27 +5,34 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/src/lib/utils"
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded text-sm font-medium transition-all duration-300 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:cursor-pointer",
+  [
+    "press inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl",
+    "text-sm font-medium tracking-wide",
+    "disabled:pointer-events-none disabled:opacity-40",
+    "[&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0",
+    "outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]/50 focus-visible:ring-offset-1",
+  ].join(" "),
   {
     variants: {
       variant: {
         primary:
           "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] shadow-sm hover:brightness-110",
         secondary:
-          "bg-[hsl(var(--secondary))] text-[hsl(var(--secondary-foreground))] hover:brightness-[0.98]",
+          "bg-[hsl(var(--surface-2))] text-[hsl(var(--foreground))] border border-[hsl(var(--border))]/70 hover:bg-[hsl(var(--surface-3))]",
         outline:
           "border border-[hsl(var(--border))] bg-transparent text-[hsl(var(--foreground))] hover:bg-[hsl(var(--surface-2))]",
         destructive:
-          "bg-[hsl(var(--destructive))] text-[hsl(var(--destructive-foreground))] shadow-xs hover:brightness-110 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40",
+          "bg-[hsl(var(--destructive))] text-[hsl(var(--destructive-foreground))] shadow-sm hover:brightness-110",
         ghost:
-          "hover:bg-[hsl(var(--surface-2))] hover:text-[hsl(var(--foreground))]",
-        link: "text-[hsl(var(--primary))] underline-offset-4 hover:underline",
+          "hover:bg-[hsl(var(--surface-2))] text-[hsl(var(--foreground))]",
+        link:
+          "text-[hsl(var(--primary))] underline-offset-4 hover:underline shadow-none",
       },
       size: {
-        default: "h-9 px-4 py-2 has-[>svg]:px-3",
-        sm: "h-8 rounded-md gap-1.5 px-3 has-[>svg]:px-2.5",
-        lg: "h-10 rounded-md px-6 has-[>svg]:px-4",
-        icon: "size-9",
+        default: "h-10 px-4 py-2",
+        sm:      "h-8 rounded-lg px-3 text-xs",
+        lg:      "h-11 px-6",
+        icon:    "size-10",
       },
     },
     defaultVariants: {
