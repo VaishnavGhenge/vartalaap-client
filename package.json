@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "scan": "next dev & npx react-scan@latest localhost:3000"
+    "scan": "next dev & npx react-scan@latest localhost:3000",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@dicebear/collection": "^9.4.2",
@@ -30,16 +33,23 @@
     "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@tailwindcss/postcss": "^4.2.4",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "@vitest/coverage-v8": "^4.1.5",
     "autoprefixer": "latest",
     "eslint": "latest",
     "eslint-config-next": "^16.2.4",
+    "jsdom": "^29.0.2",
     "postcss": "latest",
     "react-scan": "^0.5.3",
     "tailwindcss": "latest",
-    "typescript": "latest"
+    "typescript": "latest",
+    "vitest": "^4.1.5"
   }
 }
