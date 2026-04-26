@@ -15,6 +15,7 @@ interface PeerConnection {
 
 interface PeerState {
   localStream: MediaStream | null
+  facingMode: 'user' | 'environment'
   peerConnections: Map<string, PeerConnection>
   iceServers: IceServer[]
 
@@ -33,6 +34,7 @@ interface PeerState {
   disableMic: () => void
   enableCamera: () => Promise<MediaStreamTrack | null>
   disableCamera: () => void
+  switchCamera: () => Promise<boolean>
 
   createPeer: (initiator: boolean, stream?: MediaStream) => Peer.Instance
   clearPeers: () => void
@@ -67,9 +69,27 @@ const removeTrackFromPeers = (
   })
 }
 
+// Replace the video track on all peer RTCPeerConnections without renegotiation.
+// simple-peer exposes the underlying RTCPeerConnection via _pc.
+const replaceVideoTrackOnPeers = (
+  newTrack: MediaStreamTrack,
+  peers: Map<string, PeerConnection>,
+) => {
+  peers.forEach((c) => {
+    try {
+      const pc = (c.peer as unknown as { _pc: RTCPeerConnection })._pc
+      const sender = pc?.getSenders().find(s => s.track?.kind === 'video')
+      sender?.replaceTrack(newTrack)
+    } catch (e) {
+      console.error('replaceTrack failed', c.id, e)
+    }
+  })
+}
+
 export const usePeerStore = create<PeerState>()(
   devtools((set, get) => ({
     localStream: null,
+    facingMode: 'user',
     peerConnections: new Map(),
     iceServers: [],
 
@@ -145,8 +165,14 @@ export const usePeerStore = create<PeerState>()(
 
     enableCamera: async () => {
       try {
+        const { facingMode } = get()
         const media = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+          video: {
+            facingMode,
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            frameRate: { ideal: 30 },
+          },
         })
         const track = media.getVideoTracks()[0]
         if (!track) return null
@@ -173,6 +199,39 @@ export const usePeerStore = create<PeerState>()(
         stream.removeTrack(t)
       })
       if (stream.getTracks().length === 0) set({ localStream: null })
+    },
+
+    switchCamera: async () => {
+      const { localStream, facingMode, peerConnections } = get()
+      if (!localStream) return false
+
+      const nextFacing: 'user' | 'environment' = facingMode === 'user' ? 'environment' : 'user'
+
+      try {
+        const media = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { exact: nextFacing },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            frameRate: { ideal: 30 },
+          },
+        })
+        const newTrack = media.getVideoTracks()[0]
+        if (!newTrack) return false
+
+        // Swap track in the local stream
+        localStream.getVideoTracks().forEach((t) => { t.stop(); localStream.removeTrack(t) })
+        localStream.addTrack(newTrack)
+
+        // Replace on existing peer connections — no renegotiation needed
+        replaceVideoTrackOnPeers(newTrack, peerConnections)
+
+        set({ facingMode: nextFacing })
+        return true
+      } catch (e) {
+        console.error('switchCamera failed', e)
+        return false
+      }
     },
 
     createPeer: (initiator, stream) => {
