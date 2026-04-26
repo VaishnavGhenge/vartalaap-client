@@ -8,8 +8,14 @@ export default defineConfig({
   retries: 0,
   use: {
     baseURL: 'http://localhost:3000',
-    // Grant camera/mic permissions so media prompts don't block tests
     permissions: ['camera', 'microphone'],
+    // Provide fake camera/mic streams in headless mode (no hardware needed)
+    launchOptions: {
+      args: [
+        '--use-fake-device-for-media-stream',
+        '--use-fake-ui-for-media-stream',
+      ],
+    },
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },

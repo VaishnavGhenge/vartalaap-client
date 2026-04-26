@@ -11,7 +11,10 @@ async function joinCall(page: Page, name = 'Alice') {
 
 // Grant camera permission and stub enumerateDevices to report N cameras
 async function contextWithCameras(browser: import('@playwright/test').Browser, count: number) {
-  const context = await browser.newContext({ permissions: ['camera', 'microphone'] })
+  const context = await browser.newContext({
+    permissions: ['camera', 'microphone'],
+    baseURL: 'http://localhost:3000',
+  })
   await context.addInitScript((n: number) => {
     const original = navigator.mediaDevices.enumerateDevices.bind(navigator.mediaDevices)
     Object.defineProperty(navigator.mediaDevices, 'enumerateDevices', {
