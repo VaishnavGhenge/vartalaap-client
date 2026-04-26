@@ -10,6 +10,7 @@ interface Participant {
     name: string;
     isMuted?: boolean;
     isVideoOff?: boolean;
+    speaking?: boolean;
 }
 
 interface VideoTileProps {
@@ -34,7 +35,12 @@ export const VideoTile = ({
     const muted = isLocal ? !!isMuted : !!participant?.isMuted;
     const label = isLocal ? `${name} (you)` : name;
 
-    const speaking = useAudioLevel(stream, !muted);
+    // Local: detect from own mic stream (reliable).
+    // Remote: use the speaking flag broadcast by the remote peer — remote
+    // WebRTC stream audio analysis is unreliable across browsers/pipelines.
+    const localSpeaking = useAudioLevel(isLocal ? stream : null, isLocal && !muted);
+    const speaking = isLocal ? localSpeaking : !!participant?.speaking;
+
     const color = avatarColor(name);
     const initials = initialsOf(name);
 

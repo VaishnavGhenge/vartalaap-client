@@ -87,7 +87,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
 
     const handlePeerState = (env: Envelope<PeerStateData>) => {
       if (!env.from || !env.data) return
-      store.getState().updatePeerMediaState(env.from, env.data.audio, env.data.video)
+      store.getState().updatePeerMediaState(env.from, env.data.audio, env.data.video, env.data.speaking)
     }
 
     const handleSignal = (env: Envelope) => {

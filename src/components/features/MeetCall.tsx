@@ -4,7 +4,8 @@ import { PhoneOff, Copy, Check, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { resumeSharedAudioContext } from "@/src/lib/audio-context";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useAudioLevel } from "@/src/hooks/use-audio-level";
 import { MicButton } from "@/src/components/ui/MicButton";
 import { CameraButton } from "@/src/components/ui/CameraButton";
 import { VideoTile } from "@/src/components/ui/VideoTile";
@@ -30,9 +31,23 @@ export default function MeetCall({ client }: MeetCallProps) {
 
     const remotePeers = useMemo(() => Array.from(peerConnections.values()), [peerConnections]);
 
-    const broadcastState = (audio: boolean, video: boolean) => {
-        client?.send('peer-state', { audio, video });
+    const broadcastState = (audio: boolean, video: boolean, speaking?: boolean) => {
+        client?.send('peer-state', { audio, video, speaking });
     };
+
+    // Detect local speaking and broadcast so remote peers can show the ring.
+    // We detect from our own mic (reliable), not from the remote WebRTC stream
+    // (unreliable — different browser audio pipeline).
+    const localSpeaking = useAudioLevel(localStream, !isMuted);
+    const prevSpeakingRef = useRef(localSpeaking);
+    useEffect(() => {
+        if (prevSpeakingRef.current === localSpeaking) return;
+        prevSpeakingRef.current = localSpeaking;
+        broadcastState(!isMuted, !isVideoOff, localSpeaking);
+    // broadcastState is stable (depends only on client ref); isMuted/isVideoOff
+    // are read at broadcast time so they don't need to be deps here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [localSpeaking]);
 
     const handleMicToggle = async () => {
         const nextMuted = !isMuted;
@@ -130,6 +145,7 @@ export default function MeetCall({ client }: MeetCallProps) {
                                     name: c.name || c.id.slice(0, 6),
                                     isMuted: !c.audio,
                                     isVideoOff: !c.video,
+                                    speaking: c.speaking,
                                 }}
                                 stream={c.stream ?? null}
                             />
