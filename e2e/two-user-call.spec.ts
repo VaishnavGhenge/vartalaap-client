@@ -2,13 +2,22 @@ import { test, expect, chromium } from '@playwright/test'
 
 const randomRoom = () => Math.random().toString(36).slice(2, 8)
 
+// chromium.launch() bypasses playwright.config launchOptions, so pass args explicitly
+const LAUNCH_ARGS = {
+  args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'],
+}
+const CTX_OPTS = {
+  permissions: ['camera', 'microphone'] as const,
+  baseURL: 'http://localhost:3000',
+}
+
 test.describe('Two-user call', () => {
   test('both users can see each other after joining the same room', async () => {
-    const browser = await chromium.launch()
+    const browser = await chromium.launch(LAUNCH_ARGS)
     const roomCode = randomRoom()
 
-    const ctx1 = await browser.newContext({ permissions: ['camera', 'microphone'] })
-    const ctx2 = await browser.newContext({ permissions: ['camera', 'microphone'] })
+    const ctx1 = await browser.newContext(CTX_OPTS)
+    const ctx2 = await browser.newContext(CTX_OPTS)
     const page1 = await ctx1.newPage()
     const page2 = await ctx2.newPage()
 
@@ -56,11 +65,11 @@ test.describe('Two-user call', () => {
   })
 
   test('a user who leaves is removed from the other user\'s view', async () => {
-    const browser = await chromium.launch()
+    const browser = await chromium.launch(LAUNCH_ARGS)
     const roomCode = randomRoom()
 
-    const ctx1 = await browser.newContext({ permissions: ['camera', 'microphone'] })
-    const ctx2 = await browser.newContext({ permissions: ['camera', 'microphone'] })
+    const ctx1 = await browser.newContext(CTX_OPTS)
+    const ctx2 = await browser.newContext(CTX_OPTS)
     const page1 = await ctx1.newPage()
     const page2 = await ctx2.newPage()
 
@@ -94,11 +103,11 @@ test.describe('Two-user call', () => {
   })
 
   test('rejoining the same room after leaving works', async () => {
-    const browser = await chromium.launch()
+    const browser = await chromium.launch(LAUNCH_ARGS)
     const roomCode = randomRoom()
 
-    const ctx1 = await browser.newContext({ permissions: ['camera', 'microphone'] })
-    const ctx2 = await browser.newContext({ permissions: ['camera', 'microphone'] })
+    const ctx1 = await browser.newContext(CTX_OPTS)
+    const ctx2 = await browser.newContext(CTX_OPTS)
     const page1 = await ctx1.newPage()
     const page2 = await ctx2.newPage()
 

@@ -6,10 +6,12 @@ import { Copy, Check, Share2 } from "lucide-react";
 import { resumeSharedAudioContext } from "@/src/lib/audio-context";
 import { MicButton } from "@/src/components/ui/MicButton";
 import { CameraButton } from "@/src/components/ui/CameraButton";
+import { FlipCameraButton } from "@/src/components/ui/FlipCameraButton";
 import { Input } from "@/src/components/ui/input";
 import { useParams } from "next/navigation";
 import { Button } from "@/src/components/ui/button";
 import { usePeerStore } from "@/src/stores/peer";
+import { useHasMultipleCameras } from "@/src/hooks/use-has-multiple-cameras";
 import { useMeetStore } from "@/src/stores/meet";
 import { useJoinMeetStore } from "@/src/stores/joinMeet";
 import { avatarColor, initialsOf } from "@/src/lib/avatar";
@@ -23,7 +25,8 @@ export default function JoinMeet() {
     const [canShare, setCanShare] = useState(false);
     useEffect(() => { setCanShare('share' in navigator); }, []);
 
-    const { localStream, enableMic, disableMic, enableCamera, disableCamera } = usePeerStore();
+    const { localStream, enableMic, disableMic, enableCamera, disableCamera, switchCamera } = usePeerStore();
+    const hasMultipleCameras = useHasMultipleCameras();
     const { isMuted, isVideoOff, toggleMute, toggleVideo } = useMeetStore();
     const { userName, setUserName, setHasJoinedMeet } = useJoinMeetStore();
 
@@ -119,8 +122,17 @@ export default function JoinMeet() {
 
                             {/* Mic + camera toggles */}
                             <div className="glass-pill absolute bottom-3 left-1/2 -translate-x-1/2 gap-1.5 px-1.5 py-1.5">
-                                <MicButton onClickFn={handleMicToggle} action={isMuted ? "close" : "open"} />
-                                <CameraButton onClickFn={handleCameraToggle} action={isVideoOff ? "close" : "open"} />
+                                <MicButton onClickFn={handleMicToggle} action={isMuted ? "close" : "open"} size="sm" />
+                                <CameraButton onClickFn={handleCameraToggle} action={isVideoOff ? "close" : "open"} size="sm" />
+                                {hasMultipleCameras && !isVideoOff && (
+                                    <FlipCameraButton
+                                        onClickFn={async () => {
+                                            const ok = await switchCamera();
+                                            if (!ok) toast.error("Could not switch camera.");
+                                        }}
+                                        size="sm"
+                                    />
+                                )}
                             </div>
                         </div>
                     </div>

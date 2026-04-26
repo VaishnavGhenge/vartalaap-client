@@ -7,6 +7,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAudioLevel } from "@/src/hooks/use-audio-level";
 import { MicButton } from "@/src/components/ui/MicButton";
 import { CameraButton } from "@/src/components/ui/CameraButton";
+import { FlipCameraButton } from "@/src/components/ui/FlipCameraButton";
+import { useHasMultipleCameras } from "@/src/hooks/use-has-multiple-cameras";
 import { VideoTile } from "@/src/components/ui/VideoTile";
 import { VideoGrid } from "@/src/components/ui/VideoGrid";
 import { ConnectionBanner } from "@/src/components/ui/ConnectionBanner";
@@ -23,7 +25,8 @@ interface MeetCallProps {
 
 export default function MeetCall({ client, connState, reconnectAttempt }: MeetCallProps) {
     const { isMuted, isVideoOff, toggleMute, toggleVideo } = useMeetStore();
-    const { localStream, enableMic, disableMic, enableCamera, disableCamera, peerConnections } = usePeerStore();
+    const { localStream, enableMic, disableMic, enableCamera, disableCamera, switchCamera, peerConnections } = usePeerStore();
+    const hasMultipleCameras = useHasMultipleCameras();
     const { userName, meetCode, clearJoinMeet } = useJoinMeetStore();
 
     const [copied, setCopied] = useState(false);
@@ -83,6 +86,11 @@ export default function MeetCall({ client, connState, reconnectAttempt }: MeetCa
         } catch (e) {
             if ((e as Error).name !== 'AbortError') toast.error("Could not share");
         }
+    };
+
+    const handleFlipCamera = async () => {
+        const ok = await switchCamera();
+        if (!ok) toast.error("Could not switch camera.");
     };
 
     const handleEndCall = () => {
@@ -169,6 +177,9 @@ export default function MeetCall({ client, connState, reconnectAttempt }: MeetCa
                 <div className="glass-pill gap-2 px-2 py-2 shadow-xl shadow-[hsl(var(--shadow-color))]/25">
                     <MicButton onClickFn={handleMicToggle} action={isMuted ? "close" : "open"} />
                     <CameraButton onClickFn={handleCameraToggle} action={isVideoOff ? "close" : "open"} />
+                    {hasMultipleCameras && !isVideoOff && (
+                        <FlipCameraButton onClickFn={handleFlipCamera} />
+                    )}
 
                     <div className="mx-1 h-5 w-px bg-[hsl(var(--border))]" />
 
