@@ -87,7 +87,9 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
 
     const handlePeerState = (env: Envelope<PeerStateData>) => {
       if (!env.from || !env.data) return
-      store.getState().updatePeerMediaState(env.from, env.data.audio, env.data.video, env.data.speaking)
+      // Treat absent speaking field as false — server omits it when null/missing,
+      // so we can't use ?? to fall back to the previous value.
+      store.getState().updatePeerMediaState(env.from, env.data.audio, env.data.video, env.data.speaking ?? false)
     }
 
     const handleSignal = (env: Envelope) => {

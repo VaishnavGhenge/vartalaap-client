@@ -1,9 +1,12 @@
 "use client";
 
 import { MicOff } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { VideoStream } from "@/src/components/ui/Video";
 import { useAudioLevel } from "@/src/hooks/use-audio-level";
 import { avatarColor, initialsOf } from "@/src/lib/avatar";
+
+const REMOTE_HOLD_MS = 280
 
 interface Participant {
     id: string;
@@ -36,10 +39,23 @@ export const VideoTile = ({
     const label = isLocal ? `${name} (you)` : name;
 
     // Local: detect from own mic stream (reliable).
-    // Remote: use the speaking flag broadcast by the remote peer — remote
-    // WebRTC stream audio analysis is unreliable across browsers/pipelines.
+    // Remote: use the speaking flag broadcast by the remote peer, held for
+    // REMOTE_HOLD_MS so rapid true→false transitions don't get swallowed by
+    // React batching before they can render.
     const localSpeaking = useAudioLevel(isLocal ? stream : null, isLocal && !muted);
-    const speaking = isLocal ? localSpeaking : !!participant?.speaking;
+    const [remoteSpeaking, setRemoteSpeaking] = useState(false);
+    const holdTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+    useEffect(() => {
+        if (isLocal) return;
+        if (participant?.speaking) {
+            clearTimeout(holdTimer.current);
+            setRemoteSpeaking(true);
+        } else {
+            holdTimer.current = setTimeout(() => setRemoteSpeaking(false), REMOTE_HOLD_MS);
+        }
+        return () => clearTimeout(holdTimer.current);
+    }, [isLocal, participant?.speaking]);
+    const speaking = isLocal ? localSpeaking : remoteSpeaking;
 
     const color = avatarColor(name);
     const initials = initialsOf(name);

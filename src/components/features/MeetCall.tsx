@@ -59,7 +59,8 @@ export default function MeetCall({ client }: MeetCallProps) {
             if (!track) { toast.error("Microphone unavailable. Check browser permissions."); return; }
         }
         toggleMute();
-        broadcastState(!nextMuted, !isVideoOff);
+        // When muting, explicitly clear speaking so remote peers drop the ring.
+        broadcastState(!nextMuted, !isVideoOff, nextMuted ? false : undefined);
     };
 
     const handleCameraToggle = async () => {

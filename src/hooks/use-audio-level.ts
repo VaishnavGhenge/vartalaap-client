@@ -36,7 +36,7 @@ export function useAudioLevel(
       source.connect(analyser)
 
       const data = new Uint8Array(analyser.frequencyBinCount)
-      let raf = 0
+      let timer = 0
       let lastOnAt = 0
       let current = false
 
@@ -56,12 +56,13 @@ export function useAudioLevel(
           current = false
           setSpeaking(false)
         }
-        raf = requestAnimationFrame(loop)
       }
-      raf = requestAnimationFrame(loop)
+      // setInterval keeps running in background tabs; rAF is paused when
+      // the tab loses focus, which would stop speaking detection mid-call.
+      timer = window.setInterval(loop, 30) as unknown as number
 
       return () => {
-        cancelAnimationFrame(raf)
+        clearInterval(timer)
         try { source.disconnect() } catch { /* noop */ }
         // Do NOT close the shared context here.
       }
