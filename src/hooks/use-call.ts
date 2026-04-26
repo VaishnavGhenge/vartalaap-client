@@ -25,6 +25,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
 
     const store = usePeerStore
     let disposed = false
+    const pendingSignals = new Map<string, Peer.SignalData[]>()
 
     const makePeer = (
       remoteId: string,
@@ -49,6 +50,15 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       })
 
       store.getState().addPeerConnection(remoteId, peer, info)
+
+      const buffered = pendingSignals.get(remoteId)
+      if (buffered) {
+        buffered.forEach((data) => {
+          try { peer.signal(data) } catch (e) { console.error('buffered signal failed', e) }
+        })
+        pendingSignals.delete(remoteId)
+      }
+
       return peer
     }
 
@@ -80,7 +90,9 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       if (!env.from) return
       const conn = store.getState().peerConnections.get(env.from)
       if (!conn) {
-        console.warn('signal for unknown peer', env.from)
+        const buf = pendingSignals.get(env.from) ?? []
+        buf.push(env.data as Peer.SignalData)
+        pendingSignals.set(env.from, buf)
         return
       }
       try {
@@ -120,6 +132,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       client.off('peer-left', handlePeerLeft as (env: Envelope) => void)
       client.off('peer-state', handlePeerState as (env: Envelope) => void)
       client.off('signal', handleSignal)
+      pendingSignals.clear()
       store.getState().clearAll()
     }
     // Intentionally excluding userName/initialAudio/initialVideo: they're

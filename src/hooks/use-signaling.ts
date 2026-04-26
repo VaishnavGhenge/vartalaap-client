@@ -1,20 +1,20 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { SignalingClient } from '@/src/services/signaling/client'
 import { wsServerUri } from '@/src/services/api/config'
 
 export function useSignaling() {
-  const ref = useRef<SignalingClient | null>(null)
+  const [client, setClient] = useState<SignalingClient | null>(null)
   const [peerId, setPeerId] = useState<string | null>(null)
   const [connected, setConnected] = useState(false)
 
   useEffect(() => {
-    const client = new SignalingClient(wsServerUri)
-    ref.current = client
+    const c = new SignalingClient(wsServerUri)
     let disposed = false
     ;(async () => {
       try {
-        const id = await client.connect()
-        if (disposed) { client.disconnect(); return }
+        const id = await c.connect()
+        if (disposed) { c.disconnect(); return }
+        setClient(c)
         setPeerId(id)
         setConnected(true)
       } catch (e) {
@@ -23,10 +23,11 @@ export function useSignaling() {
     })()
     return () => {
       disposed = true
-      client.disconnect()
-      ref.current = null
+      c.disconnect()
+      setClient(null)
+      setConnected(false)
     }
   }, [])
 
-  return { client: ref.current, peerId, connected }
+  return { client, peerId, connected }
 }
