@@ -8,131 +8,104 @@ import { Input } from "@/src/components/ui/input";
 import { Button } from "@/src/components/ui/button";
 
 export default function Register() {
-    const [registerData, setRegisterData] = useState({
-        firstName: "",
-        lastName: "",
-        email: "",
-        password: "",
-        password2: "",
-    });
     const [isRegisterPending, setIsRegisterPending] = useState(false);
 
     return (
-        <div className="min-h-screen">
+        <div className="flex min-h-dvh flex-col">
             <Navbar />
-            <div className='mx-auto flex max-w-7xl items-center justify-center px-4 py-10 sm:px-6 lg:px-8 lg:py-16'>
-                <div className='app-panel w-full max-w-xl rounded-[2rem] p-6 sm:p-8'>
-                    <h3 className='mb-2 text-center text-2xl font-semibold text-[hsl(var(--foreground))]'>
-                        Register on Vartalaap
-                    </h3>
-                    <p className='mb-8 text-center text-sm text-[hsl(var(--muted-foreground))]'>
-                        Create an account and keep the same polished light or dark experience everywhere.
+
+            <main className="flex flex-1 items-center justify-center px-4 py-12 sm:px-6">
+                <div className="app-panel w-full max-w-sm sm:max-w-md rounded-2xl p-6 sm:p-8">
+
+                    <h1 className="text-xl font-semibold tracking-tight text-[hsl(var(--foreground))]">
+                        Create account
+                    </h1>
+                    <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
+                        Join Vartalaap
                     </p>
 
-                    <form>
-                        <div className='mb-4 grid gap-4 sm:grid-cols-2'>
-                            <div className='flex flex-col'>
-                                <label
-                                    htmlFor='firstName'
-                                    className='input-label'
-                                >
+                    <form className="mt-6 flex flex-col gap-4">
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            <div className="flex flex-col gap-1.5">
+                                <label htmlFor="firstName" className="label-caps">
                                     First name
-                                    <span className='text-red-500'>*</span>
                                 </label>
                                 <Input
-                                    type='text'
-                                    id='firstName'
-                                    name='firstName'
-                                    value={registerData.firstName}
+                                    type="text"
+                                    id="firstName"
+                                    name="firstName"
+                                    autoComplete="given-name"
                                 />
                             </div>
 
-                            <div className='flex flex-col'>
-                                <label
-                                    htmlFor='lastName'
-                                    className='input-label'
-                                >
+                            <div className="flex flex-col gap-1.5">
+                                <label htmlFor="lastName" className="label-caps">
                                     Last name
-                                    <span className='text-red-500'>*</span>
                                 </label>
                                 <Input
-                                    type='text'
-                                    id='lastName'
-                                    name='lastName'
-                                    value={registerData.lastName}
+                                    type="text"
+                                    id="lastName"
+                                    name="lastName"
+                                    autoComplete="family-name"
                                 />
                             </div>
                         </div>
 
-                        <div className='flex flex-col mb-4'>
-                            <label htmlFor='email' className='input-label'>
-                                Email<span className='text-red-500'>*</span>
-                            </label>
+                        <div className="flex flex-col gap-1.5">
+                            <label htmlFor="email" className="label-caps">Email</label>
                             <Input
-                                type='email'
-                                id='email'
-                                name='email'
-                                placeholder='user@email.com'
-                                value={registerData.email}
+                                type="email"
+                                id="email"
+                                name="email"
+                                placeholder="you@example.com"
+                                autoComplete="email"
                             />
                         </div>
 
-                        <div className='flex flex-col mb-4'>
-                            <label htmlFor='password' className='input-label'>
-                                Password(min 8)
-                                <span className='text-red-500'>*</span>
+                        <div className="flex flex-col gap-1.5">
+                            <label htmlFor="password" className="label-caps">
+                                Password <span className="normal-case tracking-normal font-normal opacity-60">(min 8 chars)</span>
                             </label>
                             <Input
-                                type='password'
-                                id='password'
-                                name='password'
-                                value={registerData.password}
+                                type="password"
+                                id="password"
+                                name="password"
+                                autoComplete="new-password"
+                                minLength={8}
                             />
                         </div>
 
-                        <div className='flex flex-col mb-6'>
-                            <label htmlFor='password2' className='input-label'>
-                                Password again
-                                <span className='text-red-500'>*</span>
-                            </label>
+                        <div className="flex flex-col gap-1.5">
+                            <label htmlFor="password2" className="label-caps">Confirm password</label>
                             <Input
-                                type='password'
-                                id='password2'
-                                name='password2'
-                                value={registerData.password2}
+                                type="password"
+                                id="password2"
+                                name="password2"
+                                autoComplete="new-password"
                             />
                         </div>
 
-                        <div className='flex flex-col mb-6'>
-                            <Button
-                                type='button'
-                                variant="primary"
-                                className='h-11 w-full'
-                                disabled={isRegisterPending}
-                            >
-                                {isRegisterPending ? (
-                                    <BufferingButtonLabel label='Processing...' />
-                                ) : (
-                                    <span>Register</span>
-                                )}
-                            </Button>
-                        </div>
+                        <Button
+                            type="button"
+                            size="lg"
+                            className="mt-1 w-full"
+                            disabled={isRegisterPending}
+                        >
+                            {isRegisterPending
+                                ? <BufferingButtonLabel label="Creating account…" />
+                                : "Create account"
+                            }
+                        </Button>
                     </form>
 
-                    <div className='text-center'>
-                        <p className='text-xs text-[hsl(var(--muted-foreground))]'>
-                            Already have an account?{" "}
-                            <Link
-                                href='/login'
-                                className='link'
-                                prefetch={true}
-                            >
-                                Login
-                            </Link>
-                        </p>
-                    </div>
+                    <p className="mt-6 text-center text-xs text-[hsl(var(--muted-foreground))]">
+                        Already have an account?{" "}
+                        <Link href="/login" className="link" prefetch>
+                            Sign in
+                        </Link>
+                    </p>
                 </div>
-            </div>
+            </main>
         </div>
     );
 }
