@@ -35,6 +35,7 @@ interface PeerState {
   disableCamera: () => void
 
   createPeer: (initiator: boolean, stream?: MediaStream) => Peer.Instance
+  clearPeers: () => void
   clearAll: () => void
 }
 
@@ -183,6 +184,12 @@ export const usePeerStore = create<PeerState>()(
         config: { iceServers: iceServers as RTCIceServer[] },
         sdpTransform: (sdp: string) => sdp.replace(/b=AS:\d+/g, 'b=AS:2500'),
       })
+    },
+
+    clearPeers: () => {
+      const { peerConnections } = get()
+      peerConnections.forEach((c) => c.peer.destroy())
+      set({ peerConnections: new Map() })
     },
 
     clearAll: () => {

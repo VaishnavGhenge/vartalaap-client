@@ -16,7 +16,7 @@ export default function MeetManager() {
     const { clearMeet, setCurrentMeet, isMuted, isVideoOff } = useMeetStore();
     const { clearAll } = usePeerStore();
 
-    const { client } = useSignaling();
+    const { client, connState, reconnectAttempt } = useSignaling();
     useCall({
         client,
         roomId: params.meetCode,
@@ -44,7 +44,7 @@ export default function MeetManager() {
 
     return (
         <div className="flex flex-1 flex-col">
-            {hasJoinedMeet ? <MeetCall client={client} /> : <JoinMeet />}
+            {hasJoinedMeet ? <MeetCall client={client} connState={connState} reconnectAttempt={reconnectAttempt} /> : <JoinMeet />}
         </div>
     );
 }

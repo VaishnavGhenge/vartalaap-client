@@ -108,6 +108,16 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       }
     }
 
+    // On reconnect: clear stale peers and rejoin — the server will send
+    // peer-left + peer-joined to the other peers so they recreate their side.
+    client.onReconnected = () => {
+      if (disposed) return
+      pendingSignals.clear()
+      store.getState().clearPeers()
+      const a = joinArgs.current
+      client.send('join', { name: a.userName, audio: a.initialAudio, video: a.initialVideo }, { room: roomId })
+    }
+
     client.on('joined', handleJoined as (env: Envelope) => void)
     client.on('peer-joined', handlePeerJoined as (env: Envelope) => void)
     client.on('peer-left', handlePeerLeft as (env: Envelope) => void)
@@ -133,6 +143,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
 
     return () => {
       disposed = true
+      client.onReconnected = undefined
       client.off('joined', handleJoined as (env: Envelope) => void)
       client.off('peer-joined', handlePeerJoined as (env: Envelope) => void)
       client.off('peer-left', handlePeerLeft as (env: Envelope) => void)

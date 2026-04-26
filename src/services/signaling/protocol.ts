@@ -8,6 +8,8 @@ export type MsgType =
   | 'peer-state'
   | 'signal'
   | 'error'
+  | 'ping'
+  | 'pong'
 
 export interface Envelope<T = unknown> {
   type: MsgType

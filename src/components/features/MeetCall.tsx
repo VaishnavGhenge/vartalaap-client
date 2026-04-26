@@ -3,27 +3,28 @@
 import { PhoneOff, Copy, Check, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { resumeSharedAudioContext } from "@/src/lib/audio-context";
-import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAudioLevel } from "@/src/hooks/use-audio-level";
 import { MicButton } from "@/src/components/ui/MicButton";
 import { CameraButton } from "@/src/components/ui/CameraButton";
 import { VideoTile } from "@/src/components/ui/VideoTile";
 import { VideoGrid } from "@/src/components/ui/VideoGrid";
+import { ConnectionBanner } from "@/src/components/ui/ConnectionBanner";
 import { useMeetStore } from "@/src/stores/meet";
 import { usePeerStore } from "@/src/stores/peer";
 import { useJoinMeetStore } from "@/src/stores/joinMeet";
-import type { SignalingClient } from "@/src/services/signaling/client";
+import type { SignalingClient, ConnState } from "@/src/services/signaling/client";
 
 interface MeetCallProps {
     client: SignalingClient | null;
+    connState: ConnState;
+    reconnectAttempt: number;
 }
 
-export default function MeetCall({ client }: MeetCallProps) {
+export default function MeetCall({ client, connState, reconnectAttempt }: MeetCallProps) {
     const { isMuted, isVideoOff, toggleMute, toggleVideo } = useMeetStore();
     const { localStream, enableMic, disableMic, enableCamera, disableCamera, peerConnections } = usePeerStore();
     const { userName, meetCode, clearJoinMeet } = useJoinMeetStore();
-    const router = useRouter();
 
     const [copied, setCopied] = useState(false);
     const [canShare, setCanShare] = useState(false);
@@ -36,16 +37,12 @@ export default function MeetCall({ client }: MeetCallProps) {
     };
 
     // Detect local speaking and broadcast so remote peers can show the ring.
-    // We detect from our own mic (reliable), not from the remote WebRTC stream
-    // (unreliable — different browser audio pipeline).
     const localSpeaking = useAudioLevel(localStream, !isMuted);
     const prevSpeakingRef = useRef(localSpeaking);
     useEffect(() => {
         if (prevSpeakingRef.current === localSpeaking) return;
         prevSpeakingRef.current = localSpeaking;
         broadcastState(!isMuted, !isVideoOff, localSpeaking);
-    // broadcastState is stable (depends only on client ref); isMuted/isVideoOff
-    // are read at broadcast time so they don't need to be deps here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [localSpeaking]);
 
@@ -59,7 +56,6 @@ export default function MeetCall({ client }: MeetCallProps) {
             if (!track) { toast.error("Microphone unavailable. Check browser permissions."); return; }
         }
         toggleMute();
-        // When muting, explicitly clear speaking so remote peers drop the ring.
         broadcastState(!nextMuted, !isVideoOff, nextMuted ? false : undefined);
     };
 
@@ -91,7 +87,6 @@ export default function MeetCall({ client }: MeetCallProps) {
 
     const handleEndCall = () => {
         clearJoinMeet();
-        router.push('/');
     };
 
     const alone = remotePeers.length === 0;
@@ -100,9 +95,14 @@ export default function MeetCall({ client }: MeetCallProps) {
     return (
         <div className="relative min-h-dvh w-full overflow-hidden text-[hsl(var(--foreground))]">
 
+            <ConnectionBanner
+                connState={connState}
+                reconnectAttempt={reconnectAttempt}
+                onLeave={handleEndCall}
+            />
+
             {/* ── Top bar ──────────────────────────────────────────────── */}
             <div className="absolute left-4 top-4 right-4 z-20 flex items-center justify-between gap-3">
-                {/* Share button */}
                 <button
                     type="button"
                     onClick={handleShare}
@@ -119,7 +119,6 @@ export default function MeetCall({ client }: MeetCallProps) {
                     }
                 </button>
 
-                {/* Participant count */}
                 <div className="glass-pill px-3 py-1.5 text-xs text-[hsl(var(--muted-foreground))]">
                     {participantCount} {participantCount === 1 ? 'participant' : 'participants'}
                 </div>
@@ -154,7 +153,6 @@ export default function MeetCall({ client }: MeetCallProps) {
                     </VideoGrid>
                 </div>
 
-                {/* Waiting hint */}
                 {alone && (
                     <div className="pointer-events-none absolute inset-x-0 flex justify-center px-4"
                          style={{ bottom: 'calc(5.5rem + env(safe-area-inset-bottom, 0px))' }}>
