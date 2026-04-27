@@ -70,8 +70,10 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
     }
 
     const handleJoined = (env: Envelope<JoinedData>) => {
+      const myId = client.getPeerId()
       const peers = env.data?.peers ?? []
       for (const p of peers) {
+        if (p.id === myId) continue
         makePeer(p.id, true, { name: p.name, audio: p.audio, video: p.video })
       }
     }
@@ -79,6 +81,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
     const handlePeerJoined = (env: Envelope<PeerJoinedData>) => {
       const d = env.data
       if (!d?.peerId) return
+      if (d.peerId === client.getPeerId()) return
       makePeer(d.peerId, false, { name: d.name, audio: d.audio, video: d.video })
     }
 
