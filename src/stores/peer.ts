@@ -69,8 +69,7 @@ const removeTrackFromPeers = (
   })
 }
 
-// Replace the video track on all peer RTCPeerConnections without renegotiation.
-// simple-peer exposes the underlying RTCPeerConnection via _pc.
+// Replace video track on all peers without renegotiation; uses _pc directly.
 const replaceVideoTrackOnPeers = (
   newTrack: MediaStreamTrack,
   peers: Map<string, PeerConnection>,
@@ -84,6 +83,18 @@ const replaceVideoTrackOnPeers = (
       console.error('replaceTrack failed', c.id, e)
     }
   })
+}
+
+// Placeholder sent via replaceTrack when camera is disabled so the video sender survives.
+const createBlackVideoTrack = (): MediaStreamTrack | null => {
+  try {
+    const canvas = document.createElement('canvas')
+    canvas.width = 2
+    canvas.height = 2
+    return canvas.captureStream(0).getVideoTracks()[0] ?? null
+  } catch {
+    return null
+  }
 }
 
 export const usePeerStore = create<PeerState>()(
@@ -135,7 +146,15 @@ export const usePeerStore = create<PeerState>()(
 
     enableMic: async () => {
       try {
-        const media = await navigator.mediaDevices.getUserMedia({ audio: true })
+        const media = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            sampleRate: { ideal: 48000 },
+            channelCount: { ideal: 1 },
+          },
+        })
         const track = media.getAudioTracks()[0]
         if (!track) return null
         const existing = get().localStream
@@ -181,7 +200,21 @@ export const usePeerStore = create<PeerState>()(
         stream.getVideoTracks().forEach((t) => { t.stop(); stream.removeTrack(t) })
         stream.addTrack(track)
         if (!existing) set({ localStream: stream })
-        addTrackToPeers(track, stream, get().peerConnections)
+        // Reuse the placeholder sender left by disableCamera; first-timers fall back to addTrack.
+        const peers = get().peerConnections
+        peers.forEach((c) => {
+          try {
+            const pc = (c.peer as unknown as { _pc: RTCPeerConnection })._pc
+            const sender = pc?.getSenders().find(s => s.track?.kind === 'video')
+            if (sender) {
+              sender.replaceTrack(track)
+            } else {
+              c.peer.addTrack(track, stream)
+            }
+          } catch (e) {
+            console.error('enableCamera peer track failed', c.id, e)
+          }
+        })
         return track
       } catch (e) {
         console.error('enableCamera failed', e)
@@ -194,7 +227,12 @@ export const usePeerStore = create<PeerState>()(
       if (!stream) return
       const peers = get().peerConnections
       stream.getVideoTracks().forEach((t) => {
-        removeTrackFromPeers(t, stream, peers)
+        // replaceTrack(black) keeps the sender alive; peer.removeTrack crashes Safari.
+        const placeholder = createBlackVideoTrack()
+        if (placeholder) {
+          replaceVideoTrackOnPeers(placeholder, peers)
+          placeholder.stop()
+        }
         t.stop()
         stream.removeTrack(t)
       })

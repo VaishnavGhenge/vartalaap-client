@@ -42,6 +42,51 @@ function makeTrack(kind: 'video' | 'audio', facingMode?: string): MediaStreamTra
   } as unknown as MediaStreamTrack
 }
 
+// Stubs document.createElement('canvas') so createBlackVideoTrack works in jsdom.
+// Returns the placeholder track object so tests can inspect it.
+function stubCanvasCaptureStream() {
+  const placeholder = makeTrack('video')
+  vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+    if (tag === 'canvas') {
+      return {
+        width: 0,
+        height: 0,
+        captureStream: vi.fn(() => ({
+          getVideoTracks: () => [placeholder],
+        })),
+      } as unknown as HTMLElement
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (document.createElement as any).__vitest_original?.(tag) ?? document.createElement(tag)
+  })
+  return placeholder
+}
+
+// Creates a FakePeer with a pinned video sender so replaceTrack calls are trackable.
+async function makePeerWithVideoSender() {
+  const Peer = (await import('simple-peer')).default
+  const peer = new (Peer as unknown as new () => {
+    _pc: { getSenders: ReturnType<typeof vi.fn> }
+    addTrack: ReturnType<typeof vi.fn>
+    removeTrack: ReturnType<typeof vi.fn>
+  })()
+  const sender = { track: { kind: 'video' }, replaceTrack: vi.fn().mockResolvedValue(undefined) }
+  peer._pc.getSenders = vi.fn(() => [sender])
+  return { peer, sender }
+}
+
+// Creates a FakePeer that has NO video sender (peer joined before camera was on).
+async function makePeerWithoutVideoSender() {
+  const Peer = (await import('simple-peer')).default
+  const peer = new (Peer as unknown as new () => {
+    _pc: { getSenders: ReturnType<typeof vi.fn> }
+    addTrack: ReturnType<typeof vi.fn>
+    removeTrack: ReturnType<typeof vi.fn>
+  })()
+  peer._pc.getSenders = vi.fn(() => [])
+  return { peer }
+}
+
 function makeStream(tracks: MediaStreamTrack[] = []): MediaStream {
   const list = [...tracks]
   return {
@@ -65,6 +110,17 @@ function stubGetUserMedia(track: MediaStreamTrack) {
 // ─── Setup ────────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
+  // jsdom doesn't ship MediaStream; provide a minimal stub so enableCamera's
+  // `existing ?? new MediaStream()` branch works in tests.
+  vi.stubGlobal('MediaStream', class {
+    private _tracks: MediaStreamTrack[] = []
+    getTracks() { return [...this._tracks] }
+    getVideoTracks() { return this._tracks.filter(t => t.kind === 'video') }
+    getAudioTracks() { return this._tracks.filter(t => t.kind === 'audio') }
+    addTrack(t: MediaStreamTrack) { this._tracks.push(t) }
+    removeTrack(t: MediaStreamTrack) { this._tracks = this._tracks.filter(x => x !== t) }
+  })
+
   usePeerStore.setState({
     localStream: null,
     facingMode: 'user',
@@ -199,5 +255,197 @@ describe('enableCamera — facingMode', () => {
         video: expect.objectContaining({ facingMode: 'user' }),
       })
     )
+  })
+})
+
+// ─── disableCamera — peer interaction ────────────────────────────────────────
+
+describe('disableCamera — peer interaction', () => {
+  it('uses replaceTrack(placeholder) instead of peer.removeTrack so audio is not disrupted', async () => {
+    const { peer, sender } = await makePeerWithVideoSender()
+    const placeholder = stubCanvasCaptureStream()
+    const videoTrack = makeTrack('video')
+    const stream = makeStream([videoTrack])
+    usePeerStore.setState({
+      localStream: stream,
+      peerConnections: new Map([
+        ['peer-1', { id: 'peer-1', peer: peer as never, name: 'Alice', audio: true, video: true, speaking: false }],
+      ]),
+    })
+
+    usePeerStore.getState().disableCamera()
+
+    expect(peer.removeTrack).not.toHaveBeenCalled()
+    expect(sender.replaceTrack).toHaveBeenCalledWith(placeholder)
+  })
+
+  it('stops the placeholder immediately after handing it to the sender', async () => {
+    const { peer } = await makePeerWithVideoSender()
+    const placeholder = stubCanvasCaptureStream()
+    const stream = makeStream([makeTrack('video')])
+    usePeerStore.setState({
+      localStream: stream,
+      peerConnections: new Map([
+        ['peer-1', { id: 'peer-1', peer: peer as never, name: 'Alice', audio: true, video: true, speaking: false }],
+      ]),
+    })
+
+    usePeerStore.getState().disableCamera()
+
+    expect(placeholder.stop).toHaveBeenCalled()
+  })
+
+  it('stops the real video track', async () => {
+    const { peer } = await makePeerWithVideoSender()
+    stubCanvasCaptureStream()
+    const videoTrack = makeTrack('video')
+    const stream = makeStream([videoTrack])
+    usePeerStore.setState({
+      localStream: stream,
+      peerConnections: new Map([
+        ['peer-1', { id: 'peer-1', peer: peer as never, name: 'Alice', audio: true, video: true, speaking: false }],
+      ]),
+    })
+
+    usePeerStore.getState().disableCamera()
+
+    expect(videoTrack.stop).toHaveBeenCalled()
+  })
+
+  it('does not touch the audio sender when disabling camera', async () => {
+    const { peer } = await makePeerWithVideoSender()
+    // Add an audio sender alongside the video sender
+    const audioSender = { track: { kind: 'audio' }, replaceTrack: vi.fn() }
+    peer._pc.getSenders = vi.fn(() => [
+      { track: { kind: 'video' }, replaceTrack: vi.fn().mockResolvedValue(undefined) },
+      audioSender,
+    ])
+    stubCanvasCaptureStream()
+    const stream = makeStream([makeTrack('audio'), makeTrack('video')])
+    usePeerStore.setState({
+      localStream: stream,
+      peerConnections: new Map([
+        ['peer-1', { id: 'peer-1', peer: peer as never, name: 'Alice', audio: true, video: true, speaking: false }],
+      ]),
+    })
+
+    usePeerStore.getState().disableCamera()
+
+    expect(audioSender.replaceTrack).not.toHaveBeenCalled()
+  })
+
+  it('keeps localStream when an audio track is still present', async () => {
+    const { peer } = await makePeerWithVideoSender()
+    stubCanvasCaptureStream()
+    const stream = makeStream([makeTrack('audio'), makeTrack('video')])
+    usePeerStore.setState({
+      localStream: stream,
+      peerConnections: new Map([
+        ['peer-1', { id: 'peer-1', peer: peer as never, name: 'Alice', audio: true, video: true, speaking: false }],
+      ]),
+    })
+
+    usePeerStore.getState().disableCamera()
+
+    expect(usePeerStore.getState().localStream).not.toBeNull()
+  })
+
+  it('sets localStream to null when video was the only track', async () => {
+    const { peer } = await makePeerWithVideoSender()
+    stubCanvasCaptureStream()
+    const stream = makeStream([makeTrack('video')])
+    usePeerStore.setState({
+      localStream: stream,
+      peerConnections: new Map([
+        ['peer-1', { id: 'peer-1', peer: peer as never, name: 'Alice', audio: false, video: true, speaking: false }],
+      ]),
+    })
+
+    usePeerStore.getState().disableCamera()
+
+    expect(usePeerStore.getState().localStream).toBeNull()
+  })
+})
+
+// ─── enableCamera — peer sender reuse ────────────────────────────────────────
+
+describe('enableCamera — peer sender reuse', () => {
+  it('calls replaceTrack on the existing video sender (camera was on before)', async () => {
+    const { peer, sender } = await makePeerWithVideoSender()
+    const newTrack = makeTrack('video')
+    stubGetUserMedia(newTrack)
+    // Provide an audio-only stream so enableCamera reuses it instead of
+    // calling new MediaStream() — which avoids an unrelated code path.
+    const stream = makeStream([makeTrack('audio')])
+    usePeerStore.setState({
+      localStream: stream,
+      peerConnections: new Map([
+        ['peer-1', { id: 'peer-1', peer: peer as never, name: 'Alice', audio: true, video: false, speaking: false }],
+      ]),
+    })
+
+    await usePeerStore.getState().enableCamera()
+
+    expect(sender.replaceTrack).toHaveBeenCalledWith(newTrack)
+    expect(peer.addTrack).not.toHaveBeenCalled()
+  })
+
+  it('falls back to peer.addTrack when no video sender exists yet (first enable)', async () => {
+    const { peer } = await makePeerWithoutVideoSender()
+    const newTrack = makeTrack('video')
+    stubGetUserMedia(newTrack)
+    const stream = makeStream([makeTrack('audio')])
+    usePeerStore.setState({
+      localStream: stream,
+      peerConnections: new Map([
+        ['peer-1', { id: 'peer-1', peer: peer as never, name: 'Alice', audio: true, video: false, speaking: false }],
+      ]),
+    })
+
+    await usePeerStore.getState().enableCamera()
+
+    expect(peer.addTrack).toHaveBeenCalledWith(newTrack, expect.any(Object))
+  })
+})
+
+// ─── disableCamera → enableCamera full cycle ─────────────────────────────────
+
+describe('disableCamera → enableCamera cycle', () => {
+  it('enableCamera finds the sender left by disableCamera and uses replaceTrack', async () => {
+    const { peer } = await makePeerWithVideoSender()
+
+    // The sender starts with a real video track. disableCamera replaces it with
+    // the placeholder (stopped, kind='video'). We track this by having getSenders
+    // always return the same sender object whose .track updates via replaceTrack.
+    const placeholder = stubCanvasCaptureStream()
+    let currentTrack: MediaStreamTrack | null = makeTrack('video')
+    const sender = {
+      get track() { return currentTrack },
+      replaceTrack: vi.fn().mockImplementation((t: MediaStreamTrack | null) => {
+        currentTrack = t
+        return Promise.resolve()
+      }),
+    }
+    peer._pc.getSenders = vi.fn(() => [sender])
+
+    // Stream has audio + video so localStream survives disableCamera (audio remains).
+    const stream = makeStream([makeTrack('audio'), makeTrack('video')])
+    const newTrack = makeTrack('video')
+    stubGetUserMedia(newTrack)
+    usePeerStore.setState({
+      localStream: stream,
+      peerConnections: new Map([
+        ['peer-1', { id: 'peer-1', peer: peer as never, name: 'Alice', audio: true, video: true, speaking: false }],
+      ]),
+    })
+
+    usePeerStore.getState().disableCamera()
+    // After disableCamera: sender.track === placeholder (stopped, kind='video')
+    expect(sender.track).toBe(placeholder)
+
+    await usePeerStore.getState().enableCamera()
+    // enableCamera finds the sender via track.kind==='video' and replaces with the real track
+    expect(sender.replaceTrack).toHaveBeenLastCalledWith(newTrack)
+    expect(peer.addTrack).not.toHaveBeenCalled()
   })
 })
