@@ -32,6 +32,9 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       initiator: boolean,
       info: { name: string; audio: boolean; video: boolean },
     ) => {
+      if (store.getState().peerConnections.has(remoteId)) {
+        store.getState().removePeerConnection(remoteId)
+      }
       const localStream = store.getState().localStream ?? undefined
       const peer = store.getState().createPeer(initiator, localStream)
 
@@ -142,6 +145,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
     })()
 
     return () => {
+      client.send('leave', undefined, { room: roomId })
       disposed = true
       client.onReconnected = undefined
       client.off('joined', handleJoined as (env: Envelope) => void)
