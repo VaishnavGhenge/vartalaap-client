@@ -82,9 +82,9 @@ export const VideoTile = ({
                 </div>
             )}
 
-            {/* Live video */}
-            {!videoOff && stream && (
-                <VideoStream stream={stream} isLocal={isLocal} />
+            {/* Keep the media element mounted so remote audio continues while video is off. */}
+            {stream && (
+                <VideoStream stream={stream} isLocal={isLocal} hideVideo={videoOff} />
             )}
 
             {/* Name pill */}

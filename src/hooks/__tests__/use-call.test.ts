@@ -56,6 +56,7 @@ function makeClient() {
     send: vi.fn((type: string, data?: unknown, extra?: unknown) => {
       sent.push({ type, data, extra })
     }),
+    getPeerId: vi.fn(() => 'peer-alice'),
     onReconnected: undefined as (() => void) | undefined,
 
     // Test helper — simulate receiving a message
