@@ -2,7 +2,7 @@
 
 import { MicOff } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { VideoStream } from "@/src/components/ui/Video";
+import { AudioStream, VideoStream } from "@/src/components/ui/Video";
 import { useAudioLevel } from "@/src/hooks/use-audio-level";
 import { avatarColor, initialsOf } from "@/src/lib/avatar";
 
@@ -82,10 +82,8 @@ export const VideoTile = ({
                 </div>
             )}
 
-            {/* Keep the media element mounted so remote audio continues while video is off. */}
-            {stream && (
-                <VideoStream stream={stream} isLocal={isLocal} hideVideo={videoOff} />
-            )}
+            {!isLocal && stream && <AudioStream stream={stream} />}
+            {!videoOff && stream && <VideoStream stream={stream} isLocal={isLocal} />}
 
             {/* Name pill */}
             <div className="glass-pill absolute bottom-2.5 left-2.5 gap-1 px-2 py-1 text-[12px]">

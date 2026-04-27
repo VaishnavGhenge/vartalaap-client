@@ -5,13 +5,13 @@ import { VideoTile } from '../VideoTile'
 function makeStream(): MediaStream {
   return {
     getTracks: () => [],
-    getAudioTracks: () => [],
+    getAudioTracks: () => [{ kind: 'audio' } as MediaStreamTrack],
     getVideoTracks: () => [],
   } as unknown as MediaStream
 }
 
 describe('VideoTile', () => {
-  it('keeps the media element mounted when a remote camera is off', () => {
+  it('shows the avatar and mounts dedicated audio playback when a remote camera is off', () => {
     const { container } = render(
       <VideoTile
         participant={{ id: 'peer-1', name: 'Alice', isVideoOff: true }}
@@ -20,6 +20,7 @@ describe('VideoTile', () => {
     )
 
     expect(screen.getByText('A')).toBeInTheDocument()
-    expect(container.querySelector('video')).toBeInTheDocument()
+    expect(container.querySelector('audio')).toBeInTheDocument()
+    expect(container.querySelector('video')).not.toBeInTheDocument()
   })
 })
