@@ -4,6 +4,7 @@ import {Inter} from "next/font/google";
 import React from "react";
 import {HomeWrapper} from "@/src/components/ui/HomeWrapper";
 import {Providers} from "@/src/components/providers";
+import {SentryInit} from "@/src/components/SentryInit";
 
 const inter = Inter({subsets: ["latin"]});
 
@@ -41,6 +42,7 @@ export default async function RootLayout({
                 <script suppressHydrationWarning dangerouslySetInnerHTML={{ __html: themeScript }} />
             </head>
             <body className={inter.className}>
+                <SentryInit />
                 <Providers>
                     <HomeWrapper>
                         {children}
