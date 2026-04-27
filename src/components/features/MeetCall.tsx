@@ -24,7 +24,7 @@ interface MeetCallProps {
 }
 
 export default function MeetCall({ client, connState, reconnectAttempt }: MeetCallProps) {
-    const { isMuted, isVideoOff, toggleMute, toggleVideo } = useMeetStore();
+    const { isMuted, isVideoOff, toggleMute, toggleVideo, clearMeet } = useMeetStore();
     const { localStream, enableMic, disableMic, enableCamera, disableCamera, switchCamera, peerConnections } = usePeerStore();
     const hasMultipleCameras = useHasMultipleCameras();
     const { userName, meetCode, clearJoinMeet } = useJoinMeetStore();
@@ -94,6 +94,7 @@ export default function MeetCall({ client, connState, reconnectAttempt }: MeetCa
     };
 
     const handleEndCall = () => {
+        clearMeet();
         clearJoinMeet();
     };
 
