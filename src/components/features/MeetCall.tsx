@@ -3,6 +3,7 @@
 import { PhoneOff, Copy, Check, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { resumeSharedAudioContext } from "@/src/lib/audio-context";
+import { playLeaveCall } from "@/src/lib/sounds";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAudioLevel } from "@/src/hooks/use-audio-level";
 import { MicButton } from "@/src/components/ui/MicButton";
@@ -21,9 +22,10 @@ interface MeetCallProps {
     client: SignalingClient | null;
     connState: ConnState;
     reconnectAttempt: number;
+    routeMeetCode?: string;
 }
 
-export default function MeetCall({ client, connState, reconnectAttempt }: MeetCallProps) {
+export default function MeetCall({ client, connState, reconnectAttempt, routeMeetCode }: MeetCallProps) {
     const { isMuted, isVideoOff, toggleMute, toggleVideo, clearMeet } = useMeetStore();
     const { localStream, enableMic, disableMic, enableCamera, disableCamera, switchCamera, peerConnections } = usePeerStore();
     const hasMultipleCameras = useHasMultipleCameras();
@@ -94,12 +96,14 @@ export default function MeetCall({ client, connState, reconnectAttempt }: MeetCa
     };
 
     const handleEndCall = () => {
+        playLeaveCall();
         clearMeet();
         clearJoinMeet();
     };
 
     const alone = remotePeers.length === 0;
     const participantCount = remotePeers.length + 1;
+    const displayMeetCode = meetCode || routeMeetCode || '—';
 
     return (
         <div className="relative min-h-dvh w-full overflow-hidden text-[hsl(var(--foreground))]">
@@ -119,7 +123,7 @@ export default function MeetCall({ client, connState, reconnectAttempt }: MeetCa
                     className="press glass-pill gap-2 px-3 py-1.5 text-sm
                                hover:bg-[hsl(var(--surface-2))] transition-colors"
                 >
-                    <span className="meet-code">{meetCode || '—'}</span>
+                    <span className="meet-code">{displayMeetCode}</span>
                     {copied
                         ? <Check className="w-3.5 h-3.5 text-[hsl(var(--primary))]" />
                         : canShare

@@ -3,6 +3,11 @@ import { devtools } from 'zustand/middleware'
 import Peer from 'simple-peer'
 import type { IceServer } from '@/src/services/api/ice'
 
+const VIDEO_WIDTH_IDEAL = 960
+const VIDEO_HEIGHT_IDEAL = 540
+const VIDEO_FRAME_RATE_IDEAL = 24
+const VIDEO_MAX_BITRATE_BPS = 900_000
+
 interface PeerConnection {
   id: string
   peer: Peer.Instance
@@ -41,6 +46,42 @@ interface PeerState {
   clearAll: () => void
 }
 
+interface AdaptiveVideoSendParameters extends RTCRtpSendParameters {
+  degradationPreference?: 'maintain-framerate' | 'maintain-resolution' | 'balanced'
+}
+
+const isVideoSender = (sender: RTCRtpSender) => sender.track?.kind === 'video'
+
+const tuneVideoSenderForCongestion = async (sender: RTCRtpSender) => {
+  if (!sender.getParameters || !sender.setParameters) return
+
+  try {
+    const params = sender.getParameters() as AdaptiveVideoSendParameters
+    params.degradationPreference = 'maintain-framerate'
+    params.encodings = params.encodings?.length ? params.encodings : [{}]
+    params.encodings = params.encodings.map((encoding) => ({
+      ...encoding,
+      maxBitrate: VIDEO_MAX_BITRATE_BPS,
+      maxFramerate: VIDEO_FRAME_RATE_IDEAL,
+      scaleResolutionDownBy: Math.max(encoding.scaleResolutionDownBy ?? 1, 1),
+    }))
+    await sender.setParameters(params)
+  } catch (e) {
+    console.warn('video sender congestion tuning failed', e)
+  }
+}
+
+const tunePeerVideoSendersForCongestion = (peer: Peer.Instance) => {
+  try {
+    const pc = (peer as unknown as { _pc?: RTCPeerConnection })._pc
+    pc?.getSenders().filter(isVideoSender).forEach((sender) => {
+      void tuneVideoSenderForCongestion(sender)
+    })
+  } catch (e) {
+    console.warn('peer video congestion tuning failed', e)
+  }
+}
+
 const addTrackToPeers = (
   track: MediaStreamTrack,
   stream: MediaStream,
@@ -49,6 +90,7 @@ const addTrackToPeers = (
   peers.forEach((c) => {
     try {
       c.peer.addTrack(track, stream)
+      if (track.kind === 'video') tunePeerVideoSendersForCongestion(c.peer)
     } catch (e) {
       console.error('peer.addTrack failed', c.id, e)
     }
@@ -77,8 +119,10 @@ const replaceVideoTrackOnPeers = (
   peers.forEach((c) => {
     try {
       const pc = (c.peer as unknown as { _pc: RTCPeerConnection })._pc
-      const sender = pc?.getSenders().find(s => s.track?.kind === 'video')
-      sender?.replaceTrack(newTrack)
+      const sender = pc?.getSenders().find(isVideoSender)
+      if (!sender) return
+      sender.replaceTrack(newTrack)
+      void tuneVideoSenderForCongestion(sender)
     } catch (e) {
       console.error('replaceTrack failed', c.id, e)
     }
@@ -188,9 +232,9 @@ export const usePeerStore = create<PeerState>()(
         const media = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode,
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            frameRate: { ideal: 30 },
+            width: { ideal: VIDEO_WIDTH_IDEAL },
+            height: { ideal: VIDEO_HEIGHT_IDEAL },
+            frameRate: { ideal: VIDEO_FRAME_RATE_IDEAL },
           },
         })
         const track = media.getVideoTracks()[0]
@@ -205,11 +249,13 @@ export const usePeerStore = create<PeerState>()(
         peers.forEach((c) => {
           try {
             const pc = (c.peer as unknown as { _pc: RTCPeerConnection })._pc
-            const sender = pc?.getSenders().find(s => s.track?.kind === 'video')
+            const sender = pc?.getSenders().find(isVideoSender)
             if (sender) {
               sender.replaceTrack(track)
+              void tuneVideoSenderForCongestion(sender)
             } else {
               c.peer.addTrack(track, stream)
+              tunePeerVideoSendersForCongestion(c.peer)
             }
           } catch (e) {
             console.error('enableCamera peer track failed', c.id, e)
@@ -249,9 +295,9 @@ export const usePeerStore = create<PeerState>()(
         const media = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: { exact: nextFacing },
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            frameRate: { ideal: 30 },
+            width: { ideal: VIDEO_WIDTH_IDEAL },
+            height: { ideal: VIDEO_HEIGHT_IDEAL },
+            frameRate: { ideal: VIDEO_FRAME_RATE_IDEAL },
           },
         })
         const newTrack = media.getVideoTracks()[0]
@@ -274,13 +320,14 @@ export const usePeerStore = create<PeerState>()(
 
     createPeer: (initiator, stream) => {
       const { iceServers } = get()
-      return new Peer({
+      const peer = new Peer({
         initiator,
         trickle: true,
         stream,
         config: { iceServers: iceServers as RTCIceServer[] },
-        sdpTransform: (sdp: string) => sdp.replace(/b=AS:\d+/g, 'b=AS:2500'),
       })
+      queueMicrotask(() => tunePeerVideoSendersForCongestion(peer))
+      return peer
     },
 
     clearPeers: () => {

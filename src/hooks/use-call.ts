@@ -6,6 +6,7 @@ import type {
   Envelope, JoinedData, PeerJoinedData, PeerLeftData, PeerStateData,
 } from '@/src/services/signaling/protocol'
 import Peer from 'simple-peer'
+import { playPeerJoined, playPeerLeft } from '@/src/lib/sounds'
 
 interface Args {
   client: SignalingClient | null
@@ -83,12 +84,14 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       if (!d?.peerId) return
       if (d.peerId === client.getPeerId()) return
       makePeer(d.peerId, false, { name: d.name, audio: d.audio, video: d.video })
+      playPeerJoined()
     }
 
     const handlePeerLeft = (env: Envelope<PeerLeftData>) => {
       const remoteId = env.data?.peerId
       if (!remoteId) return
       store.getState().removePeerConnection(remoteId)
+      playPeerLeft()
     }
 
     const handlePeerState = (env: Envelope<PeerStateData>) => {

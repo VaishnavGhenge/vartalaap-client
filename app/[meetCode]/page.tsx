@@ -12,6 +12,7 @@ import { useCall } from "@/src/hooks/use-call";
 
 export default function MeetManager() {
     const params = useParams<{ meetCode: string }>();
+    const meetCode = params.meetCode;
     const { hasJoinedMeet, setMeetCode, setHasJoinedMeet, userName } = useJoinMeetStore();
     const { clearMeet, setCurrentMeet, isMuted, isVideoOff } = useMeetStore();
     const { clearAll } = usePeerStore();
@@ -19,7 +20,7 @@ export default function MeetManager() {
     const { client, connState, reconnectAttempt } = useSignaling();
     useCall({
         client,
-        roomId: params.meetCode,
+        roomId: meetCode,
         enabled: hasJoinedMeet,
         userName,
         initialAudio: !isMuted,
@@ -27,11 +28,11 @@ export default function MeetManager() {
     });
 
     useEffect(() => {
-        if (params.meetCode) {
-            setMeetCode(params.meetCode);
-            setCurrentMeet(params.meetCode);
+        if (meetCode) {
+            setMeetCode(meetCode);
+            setCurrentMeet(meetCode);
         }
-    }, [params.meetCode, setMeetCode, setCurrentMeet]);
+    }, [meetCode, setMeetCode, setCurrentMeet]);
 
     useEffect(() => {
         return () => {
@@ -44,7 +45,9 @@ export default function MeetManager() {
 
     return (
         <div className="flex flex-1 flex-col">
-            {hasJoinedMeet ? <MeetCall client={client} connState={connState} reconnectAttempt={reconnectAttempt} /> : <JoinMeet />}
+            {hasJoinedMeet
+                ? <MeetCall client={client} connState={connState} reconnectAttempt={reconnectAttempt} routeMeetCode={meetCode} />
+                : <JoinMeet />}
         </div>
     );
 }

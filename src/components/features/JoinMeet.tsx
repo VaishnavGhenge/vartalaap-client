@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Copy, Check, Share2 } from "lucide-react";
 import { resumeSharedAudioContext } from "@/src/lib/audio-context";
+import { playJoinCall } from "@/src/lib/sounds";
 import { MicButton } from "@/src/components/ui/MicButton";
 import { CameraButton } from "@/src/components/ui/CameraButton";
 import { FlipCameraButton } from "@/src/components/ui/FlipCameraButton";
@@ -28,7 +29,7 @@ export default function JoinMeet() {
     const { localStream, enableMic, disableMic, enableCamera, disableCamera, switchCamera } = usePeerStore();
     const hasMultipleCameras = useHasMultipleCameras();
     const { isMuted, isVideoOff, toggleMute, toggleVideo } = useMeetStore();
-    const { userName, setUserName, setHasJoinedMeet } = useJoinMeetStore();
+    const { userName, setUserName, setMeetCode: setStoredMeetCode, setHasJoinedMeet } = useJoinMeetStore();
 
     useEffect(() => { setMeetCode(params.meetCode); }, [params]);
 
@@ -58,7 +59,9 @@ export default function JoinMeet() {
 
     const handleJoin = () => {
         if (!userName.trim()) return;
+        setStoredMeetCode(params.meetCode);
         resumeSharedAudioContext();
+        playJoinCall();
         setHasJoinedMeet(true);
     };
 
