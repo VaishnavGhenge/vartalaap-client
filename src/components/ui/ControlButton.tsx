@@ -30,6 +30,7 @@ export function ControlButton({
             type="button"
             onClick={onClick}
             aria-label={active ? activeLabel : inactiveLabel}
+            aria-pressed={active}
             className={cn(
                 "ctrl-btn",
                 dim,
@@ -38,8 +39,8 @@ export function ControlButton({
             )}
         >
             {active
-                ? <ActiveIcon className={iconSize} />
-                : <InactiveIcon className={iconSize} />
+                ? <ActiveIcon className={iconSize} aria-hidden="true" />
+                : <InactiveIcon className={iconSize} aria-hidden="true" />
             }
         </button>
     );

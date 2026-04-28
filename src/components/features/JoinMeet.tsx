@@ -154,21 +154,25 @@ export default function JoinMeet() {
                                 <button
                                     type="button"
                                     onClick={handleShare}
+                                    aria-label={copied ? 'Link copied' : canShare ? 'Share meeting link' : 'Copy meeting link'}
                                     className="press glass-pill shrink-0 gap-1.5 px-3 py-1.5 text-xs
-                                               text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
+                                               text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]
+                                               focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]/50"
                                 >
                                     {copied
-                                        ? <Check className="w-3.5 h-3.5 text-[hsl(var(--primary))]" />
+                                        ? <Check className="w-3.5 h-3.5 text-[hsl(var(--primary))]" aria-hidden="true" />
                                         : canShare
-                                            ? <Share2 className="w-3.5 h-3.5" />
-                                            : <Copy className="w-3.5 h-3.5" />
+                                            ? <Share2 className="w-3.5 h-3.5" aria-hidden="true" />
+                                            : <Copy className="w-3.5 h-3.5" aria-hidden="true" />
                                     }
                                     {copied ? 'Copied' : canShare ? 'Share' : 'Copy'}
                                 </button>
                             </div>
 
                             <div className="mt-4 flex flex-col gap-3">
+                                <label htmlFor="join-name" className="sr-only">Your name</label>
                                 <Input
+                                    id="join-name"
                                     placeholder="Your name"
                                     value={userName}
                                     onChange={(e) => setUserName(e.target.value)}

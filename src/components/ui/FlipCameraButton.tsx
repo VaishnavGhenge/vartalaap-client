@@ -18,7 +18,7 @@ export function FlipCameraButton({ onClickFn, size = "md" }: FlipCameraButtonPro
             aria-label="Switch camera"
             className={`ctrl-btn ctrl-btn-on ${dim}`}
         >
-            <FlipHorizontal2 className={iconSize} />
+            <FlipHorizontal2 className={iconSize} aria-hidden="true" />
         </button>
     );
 }

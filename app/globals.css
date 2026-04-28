@@ -315,6 +315,7 @@
 
 /* Press / tap feedback for interactive surfaces */
 .press {
+    cursor: pointer;
     transition:
         transform 120ms cubic-bezier(0.22, 1, 0.36, 1),
         background-color 160ms ease,

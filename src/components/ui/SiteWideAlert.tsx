@@ -18,7 +18,7 @@ export const SideWideAlert = (props: Props) => {
     }, [props.color]);
 
     return (
-        <div className={`${colorClass} px-2 py-2`}>
+        <div role="alert" className={`${colorClass} px-2 py-2`}>
             <div className="flex justify-center items-center">
                 <p className="text-white text-xs">{message}</p>
             </div>
