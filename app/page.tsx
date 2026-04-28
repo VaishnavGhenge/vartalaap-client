@@ -1,17 +1,12 @@
 "use client";
 
 import Navbar from "@/src/components/ui/Navbar";
-import { IBM_Plex_Sans_Devanagari } from "next/font/google";
+import { BrandWordmark } from "@/src/components/ui/BrandWordmark";
 import { NewMeetingButton } from "@/src/components/ui/NewMeetButton";
 import { JoinMeetButton } from "@/src/components/ui/JoinMeetButton";
 import { Input } from "@/src/components/ui/input";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-
-const devanagari = IBM_Plex_Sans_Devanagari({
-    weight: "500",
-    subsets: ["devanagari"],
-});
 
 export default function Home() {
     const router = useRouter();
@@ -45,9 +40,7 @@ export default function Home() {
 
                     {/* Identity mark */}
                     <div className="mb-10 flex flex-col items-center gap-3 text-center">
-                        <span className={`${devanagari.className} text-4xl sm:text-5xl text-[hsl(var(--foreground))]`}>
-                            वार्तालाप
-                        </span>
+                        <BrandWordmark className="text-5xl sm:text-6xl" variant="rozha" />
                         <p className="text-sm text-[hsl(var(--muted-foreground))] leading-relaxed">
                             Instant video calls. No accounts, no downloads.
                         </p>
