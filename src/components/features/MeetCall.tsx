@@ -229,16 +229,13 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
             </main>
 
             {/* ── Screen-share overlay ─────────────────────────────────────
-                Covers the entire page with a solid background while sharing.
-                Whatever surface is captured (tab, window, full screen) only
-                sees this overlay — not the video grid — so infinite mirror is
-                impossible. Remote tiles are safe to show here because they
-                display camera feeds, not the call UI itself.
+                Opaque overlay blocks the page from the screen capture so no
+                mirror is possible. All controls live here so nothing is lost.
             ─────────────────────────────────────────────────────────────── */}
             {isScreenSharing && (
-                <div className="fixed inset-0 z-50 flex flex-col
-                                bg-[hsl(var(--background))]">
-                    {/* Participant cameras */}
+                <div className="fixed inset-0 z-50 flex flex-col bg-[hsl(var(--background))]">
+
+                    {/* ── Participant cameras ─────────────────────────────── */}
                     <div className="flex-1 p-3 min-h-0"
                          style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom, 0px))' }}>
                         {remotePeers.length > 0 ? (
@@ -265,54 +262,109 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                         ) : (
                             <div className="flex h-full items-center justify-center">
                                 <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                                    Sharing your screen
+                                    Sharing your screen — waiting for others to join
                                 </p>
                             </div>
                         )}
                     </div>
+
+                    {/* ── Self-view ───────────────────────────────────────── */}
+                    {!isVideoOff && localStream && (
+                        <div className="absolute bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))] right-3 z-10
+                                        rounded-xl overflow-hidden shadow-lg border border-[hsl(var(--border)/0.5)]"
+                             style={{ width: 'clamp(80px, 14vw, 140px)', aspectRatio: '16/9' }}>
+                            <VideoTile
+                                isLocal
+                                userName={userName}
+                                isVideoOff={false}
+                                isMuted={isMuted}
+                                stream={localStream}
+                            />
+                        </div>
+                    )}
+
+                    {/* ── "Sharing your screen" banner ────────────────────── */}
+                    <div className="absolute left-4 top-4 z-10">
+                        <div className="glass-pill gap-2 px-3 py-1.5 text-xs font-medium
+                                        text-[hsl(var(--primary))]">
+                            <Monitor className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                            Sharing your screen
+                        </div>
+                    </div>
+
+                    {/* ── Control bar (full, inside the overlay) ──────────── */}
+                    <div className="absolute left-1/2 -translate-x-1/2 z-20"
+                         style={{ bottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
+                        <div className="glass-pill gap-2 px-2 py-2 shadow-xl shadow-[hsl(var(--shadow-color))]/25">
+                            <MicButton onClickFn={handleMicToggle} action={isMuted ? "close" : "open"} />
+                            <CameraButton onClickFn={handleCameraToggle} action={isVideoOff ? "close" : "open"} />
+
+                            <button
+                                type="button"
+                                onClick={handleScreenShare}
+                                aria-label="Stop sharing screen"
+                                className="ctrl-btn ctrl-btn-screen h-9 w-9 sm:h-11 sm:w-11"
+                            >
+                                <Monitor className="w-4 h-4 sm:w-5 sm:h-5" />
+                            </button>
+
+                            <div className="mx-1 h-5 w-px bg-[hsl(var(--border))]" />
+
+                            <button
+                                type="button"
+                                onClick={handleEndCall}
+                                aria-label="Leave call"
+                                className="ctrl-btn ctrl-btn-off h-9 w-9 sm:h-11 sm:w-11"
+                            >
+                                <PhoneOff className="w-4 h-4 sm:w-5 sm:h-5" />
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
 
-            {/* ── Floating control bar ──────────────────────────────────── */}
-            <div className="absolute left-1/2 -translate-x-1/2 z-20"
-                 style={{ bottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
-                <div className="glass-pill gap-2 px-2 py-2 shadow-xl shadow-[hsl(var(--shadow-color))]/25">
-                    <MicButton onClickFn={handleMicToggle} action={isMuted ? "close" : "open"} />
-                    <CameraButton onClickFn={handleCameraToggle} action={isVideoOff ? "close" : "open"} />
-                    {hasMultipleCameras && !isVideoOff && (
-                        <FlipCameraButton onClickFn={handleFlipCamera} />
-                    )}
+            {/* ── Floating control bar (normal mode) ───────────────────── */}
+            {!isScreenSharing && (
+                <div className="absolute left-1/2 -translate-x-1/2 z-20"
+                     style={{ bottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
+                    <div className="glass-pill gap-2 px-2 py-2 shadow-xl shadow-[hsl(var(--shadow-color))]/25">
+                        <MicButton onClickFn={handleMicToggle} action={isMuted ? "close" : "open"} />
+                        <CameraButton onClickFn={handleCameraToggle} action={isVideoOff ? "close" : "open"} />
+                        {hasMultipleCameras && !isVideoOff && (
+                            <FlipCameraButton onClickFn={handleFlipCamera} />
+                        )}
 
-                    <button
-                        type="button"
-                        onClick={handleScreenShare}
-                        aria-label={isScreenSharing ? "Stop sharing screen" : "Share screen"}
-                        className={`ctrl-btn h-9 w-9 sm:h-11 sm:w-11 ${isScreenSharing ? "ctrl-btn-screen" : "ctrl-btn-on"}`}
-                    >
-                        <Monitor className="w-4 h-4 sm:w-5 sm:h-5" />
-                    </button>
+                        <button
+                            type="button"
+                            onClick={handleScreenShare}
+                            aria-label="Share screen"
+                            className="ctrl-btn ctrl-btn-on h-9 w-9 sm:h-11 sm:w-11"
+                        >
+                            <Monitor className="w-4 h-4 sm:w-5 sm:h-5" />
+                        </button>
 
-                    <div className="mx-1 h-5 w-px bg-[hsl(var(--border))]" />
+                        <div className="mx-1 h-5 w-px bg-[hsl(var(--border))]" />
 
-                    <button
-                        type="button"
-                        onClick={() => setShowStats(true)}
-                        aria-label="Network stats"
-                        className="ctrl-btn ctrl-btn-on h-9 w-9 sm:h-11 sm:w-11"
-                    >
-                        <BarChart2 className="w-4 h-4 sm:w-5 sm:h-5" />
-                    </button>
+                        <button
+                            type="button"
+                            onClick={() => setShowStats(true)}
+                            aria-label="Network stats"
+                            className="ctrl-btn ctrl-btn-on h-9 w-9 sm:h-11 sm:w-11"
+                        >
+                            <BarChart2 className="w-4 h-4 sm:w-5 sm:h-5" />
+                        </button>
 
-                    <button
-                        type="button"
-                        onClick={handleEndCall}
-                        aria-label="Leave call"
-                        className="ctrl-btn ctrl-btn-off h-9 w-9 sm:h-11 sm:w-11"
-                    >
-                        <PhoneOff className="w-4 h-4 sm:w-5 sm:h-5" />
-                    </button>
+                        <button
+                            type="button"
+                            onClick={handleEndCall}
+                            aria-label="Leave call"
+                            className="ctrl-btn ctrl-btn-off h-9 w-9 sm:h-11 sm:w-11"
+                        >
+                            <PhoneOff className="w-4 h-4 sm:w-5 sm:h-5" />
+                        </button>
+                    </div>
                 </div>
-            </div>
+            )}
 
             {showStats && (
                 <StatsPanel rows={statsRows} onClose={() => setShowStats(false)} />
