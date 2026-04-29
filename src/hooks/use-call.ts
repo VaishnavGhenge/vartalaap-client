@@ -28,6 +28,11 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
     let disposed = false
     const pendingSignals = new Map<string, Peer.SignalData[]>()
 
+    // ICE restart state — lives for the duration of the call.
+    const restartAttempts = new Map<string, number>()
+    const restartTimers = new Map<string, ReturnType<typeof setTimeout>>()
+    const MAX_RESTART_ATTEMPTS = 3
+
     const makePeer = (
       remoteId: string,
       initiator: boolean,
@@ -46,6 +51,9 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
         store.getState().updatePeerStream(remoteId, stream)
       })
       peer.on('close', () => {
+        clearTimeout(restartTimers.get(remoteId))
+        restartTimers.delete(remoteId)
+        restartAttempts.delete(remoteId)
         store.getState().removePeerConnection(remoteId)
       })
       peer.on('error', (err) => {
@@ -56,6 +64,49 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
         console.error('peer error', remoteId, err)
         store.getState().removePeerConnection(remoteId)
       })
+
+      // ICE restart — initiator only to avoid signaling glare.
+      //
+      // When connectionState → 'disconnected' the ICE transport has lost its
+      // path but hasn't given up yet. We wait 2 s (transient drops recover on
+      // their own) then call restartIce(), which re-runs candidate gathering
+      // and emits a new offer through the existing signal handler. The DTLS
+      // session survives; the remote peer never sees a leave/join event.
+      //
+      // 'failed' means the browser's ICE agent exhausted all retries — at
+      // that point simple-peer destroys the peer, which falls through to the
+      // error/close handlers above (existing behaviour).
+      if (initiator) {
+        const pc = (peer as unknown as { _pc?: RTCPeerConnection })._pc
+        if (pc && typeof pc.restartIce === 'function') {
+          pc.addEventListener('connectionstatechange', function onStateChange() {
+            if (peer.destroyed) {
+              pc.removeEventListener('connectionstatechange', onStateChange)
+              return
+            }
+
+            if (pc.connectionState === 'disconnected') {
+              if (restartTimers.has(remoteId)) return  // already scheduled
+              const attempt = restartAttempts.get(remoteId) ?? 0
+              if (attempt >= MAX_RESTART_ATTEMPTS) return
+
+              restartTimers.set(remoteId, setTimeout(() => {
+                restartTimers.delete(remoteId)
+                if (peer.destroyed || pc.connectionState !== 'disconnected') return
+                restartAttempts.set(remoteId, attempt + 1)
+                console.info('[ice-restart] peer=%s attempt=%d', remoteId, attempt + 1)
+                pc.restartIce()
+              }, 2000))
+
+            } else if (pc.connectionState === 'connected') {
+              // Successful (re)connection — clear restart state.
+              clearTimeout(restartTimers.get(remoteId))
+              restartTimers.delete(remoteId)
+              restartAttempts.delete(remoteId)
+            }
+          })
+        }
+      }
 
       store.getState().addPeerConnection(remoteId, peer, info)
 
@@ -160,6 +211,9 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       client.off('peer-state', handlePeerState as (env: Envelope) => void)
       client.off('signal', handleSignal)
       pendingSignals.clear()
+      for (const timer of restartTimers.values()) clearTimeout(timer)
+      restartTimers.clear()
+      restartAttempts.clear()
       store.getState().clearAll()
     }
     // Intentionally excluding userName/initialAudio/initialVideo: they're
