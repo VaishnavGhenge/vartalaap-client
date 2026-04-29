@@ -42,6 +42,7 @@ interface PeerConnection {
 
 interface PeerState {
   localStream: MediaStream | null
+  screenTrack: MediaStreamTrack | null
   facingMode: 'user' | 'environment'
   peerConnections: Map<string, PeerConnection>
   peerStats: Map<string, PeerStats>
@@ -169,6 +170,7 @@ const replaceAudioSenderOnPeers = (
 export const usePeerStore = create<PeerState>()(
   devtools((set, get) => ({
     localStream: null,
+    screenTrack: null,
     facingMode: 'user',
     peerConnections: new Map(),
     peerStats: new Map(),
@@ -352,6 +354,7 @@ export const usePeerStore = create<PeerState>()(
         if (!track) return null
         // Push the screen track to peers via replaceTrack — no renegotiation.
         replaceVideoTrackOnPeers(track, get().peerConnections)
+        set({ screenTrack: track })
         return track
       } catch (e) {
         // User cancelled the picker — not an error worth logging.
@@ -361,6 +364,7 @@ export const usePeerStore = create<PeerState>()(
     },
 
     stopScreenShare: () => {
+      set({ screenTrack: null })
       // Restore peers to the current local camera track, or a black placeholder
       // if the camera is currently off.
       const stream = get().localStream
@@ -396,13 +400,17 @@ export const usePeerStore = create<PeerState>()(
       })
 
       // Replace placeholders with live tracks once the RTCPeerConnection exists.
+      // If a screen share is in progress, send that as the video track so
+      // late-joining peers immediately see the shared screen.
       if (localStream) {
         queueMicrotask(() => {
           const pc = (peer as unknown as { _pc?: RTCPeerConnection })._pc
           if (!pc) return
+          const { screenTrack } = get()
           for (const track of localStream.getTracks()) {
-            const sender = pc.getSenders().find(s => s.track?.kind === track.kind)
-            if (sender) void sender.replaceTrack(track)
+            const liveTrack = track.kind === 'video' && screenTrack ? screenTrack : track
+            const sender = pc.getSenders().find(s => s.track?.kind === liveTrack.kind)
+            if (sender) void sender.replaceTrack(liveTrack)
           }
         })
       }
@@ -423,6 +431,7 @@ export const usePeerStore = create<PeerState>()(
       peerConnections.forEach((c) => c.peer.destroy())
       set({
         localStream: null,
+        screenTrack: null,
         peerConnections: new Map(),
         peerStats: new Map(),
       })

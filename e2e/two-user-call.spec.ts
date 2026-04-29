@@ -7,7 +7,7 @@ const LAUNCH_ARGS = {
   args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'],
 }
 const CTX_OPTS = {
-  permissions: ['camera', 'microphone'] as const,
+  permissions: ['camera', 'microphone'] as string[],
   baseURL: 'http://localhost:3000',
 }
 

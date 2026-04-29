@@ -124,6 +124,7 @@ beforeEach(() => {
 
   usePeerStore.setState({
     localStream: null,
+    screenTrack: null,
     facingMode: 'user',
     peerConnections: new Map(),
     peerStats: new Map(),
@@ -433,5 +434,103 @@ describe('disableCamera → enableCamera cycle', () => {
     // enableCamera finds the sender via track.kind==='video' and replaces with the real track
     expect(sender.replaceTrack).toHaveBeenLastCalledWith(newTrack)
     expect(peer.addTrack).not.toHaveBeenCalled()
+  })
+})
+
+// ─── startScreenShare / stopScreenShare ───────────────────────────────────────
+
+describe('startScreenShare', () => {
+  it('replaces video sender on existing peers with the screen track', async () => {
+    const { peer, sender } = await makePeerWithVideoSender()
+    usePeerStore.setState({
+      peerConnections: new Map([
+        ['p1', { id: 'p1', peer: peer as never, name: '', audio: false, video: false, speaking: false }],
+      ]),
+    })
+    const screenTrack = makeTrack('video')
+    vi.stubGlobal('navigator', {
+      mediaDevices: {
+        getDisplayMedia: vi.fn().mockResolvedValue(makeStream([screenTrack])),
+      },
+    })
+
+    await usePeerStore.getState().startScreenShare()
+
+    expect(sender.replaceTrack).toHaveBeenCalledWith(screenTrack)
+    expect(usePeerStore.getState().screenTrack).toBe(screenTrack)
+  })
+
+  it('stores screenTrack so late-joining peers receive the screen', async () => {
+    const screenTrack = makeTrack('video')
+    vi.stubGlobal('navigator', {
+      mediaDevices: {
+        getDisplayMedia: vi.fn().mockResolvedValue(makeStream([screenTrack])),
+      },
+    })
+    const cameraTrack = makeTrack('audio') // audio only local stream
+    usePeerStore.setState({ localStream: makeStream([cameraTrack]) })
+
+    await usePeerStore.getState().startScreenShare()
+
+    expect(usePeerStore.getState().screenTrack).toBe(screenTrack)
+  })
+
+  it('returns null and does not set screenTrack when user cancels', async () => {
+    vi.stubGlobal('navigator', {
+      mediaDevices: {
+        getDisplayMedia: vi.fn().mockRejectedValue(Object.assign(new Error('denied'), { name: 'NotAllowedError' })),
+      },
+    })
+
+    const result = await usePeerStore.getState().startScreenShare()
+
+    expect(result).toBeNull()
+    expect(usePeerStore.getState().screenTrack).toBeNull()
+  })
+})
+
+describe('stopScreenShare', () => {
+  it('clears screenTrack', async () => {
+    const screenTrack = makeTrack('video')
+    usePeerStore.setState({ screenTrack })
+
+    usePeerStore.getState().stopScreenShare()
+
+    expect(usePeerStore.getState().screenTrack).toBeNull()
+  })
+
+  it('restores camera track on peers when camera is on', async () => {
+    const { peer, sender } = await makePeerWithVideoSender()
+    const cameraTrack = makeTrack('video')
+    const stream = makeStream([cameraTrack])
+    const screenTrack = makeTrack('video')
+    usePeerStore.setState({
+      screenTrack,
+      localStream: stream,
+      peerConnections: new Map([
+        ['p1', { id: 'p1', peer: peer as never, name: '', audio: false, video: true, speaking: false }],
+      ]),
+    })
+
+    usePeerStore.getState().stopScreenShare()
+
+    expect(sender.replaceTrack).toHaveBeenCalledWith(cameraTrack)
+  })
+
+  it('restores black placeholder on peers when camera is off', async () => {
+    const { peer, sender } = await makePeerWithVideoSender()
+    const placeholder = stubCanvasCaptureStream()
+    const screenTrack = makeTrack('video')
+    usePeerStore.setState({
+      screenTrack,
+      localStream: null,
+      peerConnections: new Map([
+        ['p1', { id: 'p1', peer: peer as never, name: '', audio: false, video: false, speaking: false }],
+      ]),
+    })
+
+    usePeerStore.getState().stopScreenShare()
+
+    expect(sender.replaceTrack).toHaveBeenCalledWith(placeholder)
   })
 })
