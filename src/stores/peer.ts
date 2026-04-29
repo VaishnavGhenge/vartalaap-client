@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
 import Peer from 'simple-peer'
 import type { IceServer } from '@/src/services/api/ice'
+import { getSharedAudioContext } from '@/src/lib/audio-context'
 
 const VIDEO_WIDTH_IDEAL = 960
 const VIDEO_HEIGHT_IDEAL = 540
@@ -105,35 +106,6 @@ const tunePeerVideoSendersForCongestion = (peer: Peer.Instance) => {
   }
 }
 
-const addTrackToPeers = (
-  track: MediaStreamTrack,
-  stream: MediaStream,
-  peers: Map<string, PeerConnection>,
-) => {
-  peers.forEach((c) => {
-    try {
-      c.peer.addTrack(track, stream)
-      if (track.kind === 'video') tunePeerVideoSendersForCongestion(c.peer)
-    } catch (e) {
-      console.error('peer.addTrack failed', c.id, e)
-    }
-  })
-}
-
-const removeTrackFromPeers = (
-  track: MediaStreamTrack,
-  stream: MediaStream,
-  peers: Map<string, PeerConnection>,
-) => {
-  peers.forEach((c) => {
-    try {
-      c.peer.removeTrack(track, stream)
-    } catch (e) {
-      console.error('peer.removeTrack failed', c.id, e)
-    }
-  })
-}
-
 // Replace video track on all peers without renegotiation; uses _pc directly.
 const replaceVideoTrackOnPeers = (
   newTrack: MediaStreamTrack,
@@ -162,6 +134,33 @@ const createBlackVideoTrack = (): MediaStreamTrack | null => {
   } catch {
     return null
   }
+}
+
+// Silent audio placeholder so the audio sender is pre-negotiated at peer creation.
+// Avoids mid-call addTrack() renegotiation when the user enables the mic later.
+const createSilentAudioTrack = (): MediaStreamTrack | null => {
+  try {
+    const ctx = getSharedAudioContext()
+    if (!ctx) return null
+    return ctx.createMediaStreamDestination().stream.getAudioTracks()[0] ?? null
+  } catch {
+    return null
+  }
+}
+
+const replaceAudioSenderOnPeers = (
+  track: MediaStreamTrack,
+  peers: Map<string, PeerConnection>,
+) => {
+  peers.forEach((c) => {
+    try {
+      const pc = (c.peer as unknown as { _pc?: RTCPeerConnection })._pc
+      const sender = pc?.getSenders().find(s => s.track?.kind === 'audio')
+      if (sender) void sender.replaceTrack(track)
+    } catch (e) {
+      console.error('replaceAudioSender failed', c.id, e)
+    }
+  })
 }
 
 export const usePeerStore = create<PeerState>()(
@@ -239,7 +238,8 @@ export const usePeerStore = create<PeerState>()(
         stream.getAudioTracks().forEach((t) => { t.stop(); stream.removeTrack(t) })
         stream.addTrack(track)
         if (!existing) set({ localStream: stream })
-        addTrackToPeers(track, stream, get().peerConnections)
+        // Replace the silent placeholder on all peers — no renegotiation.
+        replaceAudioSenderOnPeers(track, get().peerConnections)
         return track
       } catch (e) {
         console.error('enableMic failed', e)
@@ -251,11 +251,11 @@ export const usePeerStore = create<PeerState>()(
       const stream = get().localStream
       if (!stream) return
       const peers = get().peerConnections
-      stream.getAudioTracks().forEach((t) => {
-        removeTrackFromPeers(t, stream, peers)
-        t.stop()
-        stream.removeTrack(t)
-      })
+      // Replace sender with silent placeholder BEFORE stopping the track, so
+      // the sender never becomes track-less (avoids negotiation glitches).
+      const silent = createSilentAudioTrack()
+      if (silent) replaceAudioSenderOnPeers(silent, peers)
+      stream.getAudioTracks().forEach(t => { t.stop(); stream.removeTrack(t) })
       if (stream.getTracks().length === 0) set({ localStream: null })
     },
 
@@ -277,23 +277,8 @@ export const usePeerStore = create<PeerState>()(
         stream.getVideoTracks().forEach((t) => { t.stop(); stream.removeTrack(t) })
         stream.addTrack(track)
         if (!existing) set({ localStream: stream })
-        // Reuse the placeholder sender left by disableCamera; first-timers fall back to addTrack.
-        const peers = get().peerConnections
-        peers.forEach((c) => {
-          try {
-            const pc = (c.peer as unknown as { _pc: RTCPeerConnection })._pc
-            const sender = pc?.getSenders().find(isVideoSender)
-            if (sender) {
-              sender.replaceTrack(track)
-              void tuneVideoSenderForCongestion(sender)
-            } else {
-              c.peer.addTrack(track, stream)
-              tunePeerVideoSendersForCongestion(c.peer)
-            }
-          } catch (e) {
-            console.error('enableCamera peer track failed', c.id, e)
-          }
-        })
+        // Sender always exists (placeholder pre-negotiated at peer creation).
+        replaceVideoTrackOnPeers(track, get().peerConnections)
         return track
       } catch (e) {
         console.error('enableCamera failed', e)
@@ -351,14 +336,37 @@ export const usePeerStore = create<PeerState>()(
       }
     },
 
-    createPeer: (initiator, stream) => {
+    createPeer: (initiator, localStream) => {
       const { iceServers } = get()
+
+      // Always start with placeholder audio+video so both senders are
+      // pre-negotiated. Real tracks are swapped in via replaceTrack() which
+      // never triggers renegotiation, regardless of when the user enables media.
+      const initStream = new MediaStream()
+      const silentTrack = createSilentAudioTrack()
+      const blackTrack  = createBlackVideoTrack()
+      if (silentTrack) initStream.addTrack(silentTrack)
+      if (blackTrack)  initStream.addTrack(blackTrack)
+
       const peer = new Peer({
         initiator,
         trickle: true,
-        stream,
+        stream: initStream,
         config: { iceServers: iceServers as RTCIceServer[] },
       })
+
+      // Replace placeholders with live tracks once the RTCPeerConnection exists.
+      if (localStream) {
+        queueMicrotask(() => {
+          const pc = (peer as unknown as { _pc?: RTCPeerConnection })._pc
+          if (!pc) return
+          for (const track of localStream.getTracks()) {
+            const sender = pc.getSenders().find(s => s.track?.kind === track.kind)
+            if (sender) void sender.replaceTrack(track)
+          }
+        })
+      }
+
       queueMicrotask(() => tunePeerVideoSendersForCongestion(peer))
       return peer
     },

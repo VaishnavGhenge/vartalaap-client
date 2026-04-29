@@ -8,6 +8,7 @@ vi.mock('simple-peer', () => {
     private _listeners = new Map<string, ((...args: unknown[]) => void)[]>()
     _pc = {
       getSenders: vi.fn(() => [
+        { track: { kind: 'audio' }, replaceTrack: vi.fn().mockResolvedValue(undefined) },
         { track: { kind: 'video' }, replaceTrack: vi.fn().mockResolvedValue(undefined) },
       ]),
     }
@@ -125,6 +126,7 @@ beforeEach(() => {
     localStream: null,
     facingMode: 'user',
     peerConnections: new Map(),
+    peerStats: new Map(),
     iceServers: [],
   })
 })
@@ -390,22 +392,6 @@ describe('enableCamera — peer sender reuse', () => {
     expect(peer.addTrack).not.toHaveBeenCalled()
   })
 
-  it('falls back to peer.addTrack when no video sender exists yet (first enable)', async () => {
-    const { peer } = await makePeerWithoutVideoSender()
-    const newTrack = makeTrack('video')
-    stubGetUserMedia(newTrack)
-    const stream = makeStream([makeTrack('audio')])
-    usePeerStore.setState({
-      localStream: stream,
-      peerConnections: new Map([
-        ['peer-1', { id: 'peer-1', peer: peer as never, name: 'Alice', audio: true, video: false, speaking: false }],
-      ]),
-    })
-
-    await usePeerStore.getState().enableCamera()
-
-    expect(peer.addTrack).toHaveBeenCalledWith(newTrack, expect.any(Object))
-  })
 })
 
 // ─── disableCamera → enableCamera full cycle ─────────────────────────────────

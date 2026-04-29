@@ -5,6 +5,9 @@ import { usePeerStore } from '@/src/stores/peer'
 import type { SignalingClient } from '@/src/services/signaling/client'
 import type { Envelope } from '@/src/services/signaling/protocol'
 
+// Captured before any vi.spyOn so the canvas stub fallback never recurses.
+const origCreateElement = document.createElement.bind(document)
+
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
 // simple-peer creates real RTCPeerConnections in jsdom — replace with a minimal fake
@@ -15,6 +18,16 @@ vi.mock('simple-peer', () => {
     signal = vi.fn()
     addTrack = vi.fn()
     removeTrack = vi.fn()
+    _pc = {
+      connectionState: 'connected',
+      restartIce: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      getSenders: vi.fn(() => [
+        { track: { kind: 'audio' }, replaceTrack: vi.fn().mockResolvedValue(undefined) },
+        { track: { kind: 'video' }, replaceTrack: vi.fn().mockResolvedValue(undefined) },
+      ]),
+    }
 
     on(event: string, listener: (...args: unknown[]) => void) {
       const arr = this._listeners.get(event) ?? []
@@ -73,7 +86,24 @@ function makeClient() {
 // ─── Store reset ─────────────────────────────────────────────────────────────
 
 beforeEach(() => {
-  usePeerStore.setState({ peerConnections: new Map(), localStream: null, iceServers: [] })
+  vi.stubGlobal('MediaStream', class {
+    private _tracks: MediaStreamTrack[] = []
+    getTracks() { return [...this._tracks] }
+    getVideoTracks() { return this._tracks.filter(t => t.kind === 'video') }
+    getAudioTracks() { return this._tracks.filter(t => t.kind === 'audio') }
+    addTrack(t: MediaStreamTrack) { this._tracks.push(t) }
+    removeTrack(t: MediaStreamTrack) { this._tracks = this._tracks.filter(x => x !== t) }
+  })
+  vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+    if (tag === 'canvas') {
+      return {
+        width: 0, height: 0,
+        captureStream: vi.fn(() => ({ getVideoTracks: () => [{ kind: 'video', stop: vi.fn() }] })),
+      } as unknown as HTMLElement
+    }
+    return origCreateElement(tag)
+  })
+  usePeerStore.setState({ peerConnections: new Map(), peerStats: new Map(), localStream: null, iceServers: [] })
 })
 
 afterEach(() => {
@@ -327,6 +357,80 @@ describe('useCall — reconnect', () => {
     expect(usePeerStore.getState().peerConnections.size).toBe(0)
     const joinCountAfter = client.sent.filter(m => m.type === 'join').length
     expect(joinCountAfter).toBe(joinCountBefore + 1)
+  })
+})
+
+describe('useCall — ICE restart', () => {
+  it('schedules restartIce on the initiator side after 2 s disconnected', async () => {
+    vi.useFakeTimers()
+    const client = makeClient()
+
+    await act(async () => {
+      renderHook(() => useCall({
+        client, roomId: 'room-1', enabled: true,
+        userName: 'Alice', initialAudio: true, initialVideo: true,
+      }))
+    })
+
+    // Simulate a remote peer joining (Alice is initiator here)
+    await act(async () => {
+      client.emit('joined', { data: { peers: [{ id: 'peer-bob', name: 'Bob', audio: true, video: true }] } })
+    })
+
+    const bobConn = usePeerStore.getState().peerConnections.get('peer-bob')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fakePc = (bobConn!.peer as unknown as { _pc: any })._pc
+
+    // Capture the connectionstatechange listener registered by the hook
+    const listener = fakePc.addEventListener.mock.calls.find(
+      ([evt]: [string]) => evt === 'connectionstatechange'
+    )?.[1] as (() => void) | undefined
+    expect(listener).toBeDefined()
+
+    // Simulate 'disconnected' → should schedule a 2 s timer
+    fakePc.connectionState = 'disconnected'
+    listener!()
+
+    expect(fakePc.restartIce).not.toHaveBeenCalled()
+    await act(async () => { vi.advanceTimersByTime(2000) })
+    expect(fakePc.restartIce).toHaveBeenCalledTimes(1)
+
+    vi.useRealTimers()
+  })
+
+  it('cancels the restart timer when the connection recovers before 2 s', async () => {
+    vi.useFakeTimers()
+    const client = makeClient()
+
+    await act(async () => {
+      renderHook(() => useCall({
+        client, roomId: 'room-1', enabled: true,
+        userName: 'Alice', initialAudio: true, initialVideo: true,
+      }))
+    })
+
+    await act(async () => {
+      client.emit('joined', { data: { peers: [{ id: 'peer-bob', name: 'Bob', audio: true, video: true }] } })
+    })
+
+    const bobConn = usePeerStore.getState().peerConnections.get('peer-bob')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fakePc = (bobConn!.peer as unknown as { _pc: any })._pc
+
+    const listener = fakePc.addEventListener.mock.calls.find(
+      ([evt]: [string]) => evt === 'connectionstatechange'
+    )?.[1] as (() => void) | undefined
+
+    // Disconnect then immediately reconnect before the grace period
+    fakePc.connectionState = 'disconnected'
+    listener!()
+    fakePc.connectionState = 'connected'
+    listener!()
+
+    await act(async () => { vi.advanceTimersByTime(2000) })
+    expect(fakePc.restartIce).not.toHaveBeenCalled()
+
+    vi.useRealTimers()
   })
 })
 
