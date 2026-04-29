@@ -33,6 +33,7 @@ interface VideoTileProps {
     stream: MediaStream | null;
     quality?: PeerStats['quality'];
     viaRelay?: boolean;
+    isScreenSharing?: boolean;
 }
 
 export const VideoTile = ({
@@ -44,6 +45,7 @@ export const VideoTile = ({
     stream,
     quality,
     viaRelay,
+    isScreenSharing = false,
 }: VideoTileProps) => {
     const name = isLocal ? (userName || 'You') : (participant?.name || 'Participant');
     const videoOff = isLocal ? !!isVideoOff : !!participant?.isVideoOff;
@@ -116,7 +118,7 @@ export const VideoTile = ({
             {/* Name pill */}
             <div aria-hidden="true" className="glass-pill absolute bottom-2.5 left-2.5 gap-1 px-2 py-1 text-[12px]">
                 {muted && <MicOff className="w-3 h-3 text-[hsl(var(--destructive))] shrink-0" />}
-                <span className="truncate max-w-[140px]">{label}</span>
+                <span className="truncate max-w-[140px]">{isScreenSharing ? `${label} • Screen` : label}</span>
             </div>
         </div>
     );

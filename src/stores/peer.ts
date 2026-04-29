@@ -65,6 +65,9 @@ interface PeerState {
   disableCamera: () => void
   switchCamera: () => Promise<boolean>
 
+  startScreenShare: () => Promise<MediaStreamTrack | null>
+  stopScreenShare: () => void
+
   createPeer: (initiator: boolean, stream?: MediaStream) => Peer.Instance
   clearPeers: () => void
   clearAll: () => void
@@ -333,6 +336,37 @@ export const usePeerStore = create<PeerState>()(
       } catch (e) {
         console.error('switchCamera failed', e)
         return false
+      }
+    },
+
+    startScreenShare: async () => {
+      try {
+        const media = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
+        const track = media.getVideoTracks()[0]
+        if (!track) return null
+        // Push the screen track to peers via replaceTrack — no renegotiation.
+        replaceVideoTrackOnPeers(track, get().peerConnections)
+        return track
+      } catch (e) {
+        // User cancelled the picker — not an error worth logging.
+        if ((e as Error).name !== 'NotAllowedError') console.error('startScreenShare failed', e)
+        return null
+      }
+    },
+
+    stopScreenShare: () => {
+      // Restore peers to the current local camera track, or a black placeholder
+      // if the camera is currently off.
+      const stream = get().localStream
+      const cameraTrack = stream?.getVideoTracks()[0] ?? null
+      if (cameraTrack) {
+        replaceVideoTrackOnPeers(cameraTrack, get().peerConnections)
+      } else {
+        const placeholder = createBlackVideoTrack()
+        if (placeholder) {
+          replaceVideoTrackOnPeers(placeholder, get().peerConnections)
+          placeholder.stop()
+        }
       }
     },
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { PhoneOff, Copy, Check, Share2, BarChart2 } from "lucide-react";
+import { PhoneOff, Copy, Check, Share2, BarChart2, Monitor } from "lucide-react";
 import { toast } from "sonner";
 import { resumeSharedAudioContext } from "@/src/lib/audio-context";
 import { playLeaveCall } from "@/src/lib/sounds";
@@ -28,8 +28,8 @@ interface MeetCallProps {
 }
 
 export default function MeetCall({ client, connState, reconnectAttempt, routeMeetCode }: MeetCallProps) {
-    const { isMuted, isVideoOff, toggleMute, toggleVideo, clearMeet } = useMeetStore();
-    const { localStream, enableMic, disableMic, enableCamera, disableCamera, switchCamera, peerConnections, peerStats } = usePeerStore();
+    const { isMuted, isVideoOff, isScreenSharing, toggleMute, toggleVideo, toggleScreenShare, clearMeet } = useMeetStore();
+    const { localStream, enableMic, disableMic, enableCamera, disableCamera, switchCamera, startScreenShare, stopScreenShare, peerConnections, peerStats } = usePeerStore();
     const hasMultipleCameras = useHasMultipleCameras();
     const { userName, meetCode, clearJoinMeet } = useJoinMeetStore();
 
@@ -38,6 +38,8 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
     const [copied, setCopied] = useState(false);
     const [canShare, setCanShare] = useState(false);
     const [showStats, setShowStats] = useState(false);
+    const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
+    const screenTrackRef = useRef<MediaStreamTrack | null>(null);
     useEffect(() => { setCanShare('share' in navigator); }, []);
 
     const remotePeers = useMemo(() => Array.from(peerConnections.values()), [peerConnections]);
@@ -100,7 +102,32 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
         if (!ok) toast.error("Could not switch camera.");
     };
 
+    const doStopScreenShare = () => {
+        screenTrackRef.current?.stop();
+        screenTrackRef.current = null;
+        setScreenStream(null);
+        stopScreenShare();
+        if (isScreenSharing) toggleScreenShare();
+    };
+
+    const handleScreenShare = async () => {
+        if (isScreenSharing) {
+            doStopScreenShare();
+            return;
+        }
+        const track = await startScreenShare();
+        if (!track) return;
+        screenTrackRef.current = track;
+        const stream = new MediaStream([track]);
+        setScreenStream(stream);
+        toggleScreenShare();
+        // Auto-stop when the user clicks the browser's "Stop sharing" button.
+        track.addEventListener('ended', doStopScreenShare, { once: true });
+    };
+
     const handleEndCall = () => {
+        screenTrackRef.current?.stop();
+        screenTrackRef.current = null;
         playLeaveCall();
         clearMeet();
         clearJoinMeet();
@@ -170,9 +197,10 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                             key="local"
                             isLocal
                             userName={userName}
-                            isVideoOff={isVideoOff}
+                            isVideoOff={isVideoOff && !isScreenSharing}
                             isMuted={isMuted}
-                            stream={localStream}
+                            stream={isScreenSharing ? screenStream : localStream}
+                            isScreenSharing={isScreenSharing}
                         />
                         {remotePeers.map((c) => {
                             const stats = peerStats.get(c.id);
@@ -214,6 +242,15 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                     {hasMultipleCameras && !isVideoOff && (
                         <FlipCameraButton onClickFn={handleFlipCamera} />
                     )}
+
+                    <button
+                        type="button"
+                        onClick={handleScreenShare}
+                        aria-label={isScreenSharing ? "Stop sharing screen" : "Share screen"}
+                        className={`ctrl-btn h-9 w-9 sm:h-11 sm:w-11 ${isScreenSharing ? "ctrl-btn-screen" : "ctrl-btn-on"}`}
+                    >
+                        <Monitor className="w-4 h-4 sm:w-5 sm:h-5" />
+                    </button>
 
                     <div className="mx-1 h-5 w-px bg-[hsl(var(--border))]" />
 
