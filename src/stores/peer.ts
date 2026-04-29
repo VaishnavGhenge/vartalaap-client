@@ -8,6 +8,20 @@ const VIDEO_HEIGHT_IDEAL = 540
 const VIDEO_FRAME_RATE_IDEAL = 24
 const VIDEO_MAX_BITRATE_BPS = 900_000
 
+export interface PeerStats {
+  outboundBitrateKbps: number
+  inboundBitrateKbps: number
+  packetLossPercent: number
+  roundTripTimeMs: number   // -1 = not yet known
+  jitterMs: number
+  candidateType: 'host' | 'srflx' | 'relay' | 'unknown'
+  quality: 'good' | 'medium' | 'poor' | 'unknown'
+  timestamp: number
+  frameWidth?: number
+  frameHeight?: number
+  framesPerSecond?: number
+}
+
 interface PeerConnection {
   id: string
   peer: Peer.Instance
@@ -22,6 +36,7 @@ interface PeerState {
   localStream: MediaStream | null
   facingMode: 'user' | 'environment'
   peerConnections: Map<string, PeerConnection>
+  peerStats: Map<string, PeerStats>
   iceServers: IceServer[]
 
   setIceServers: (s: IceServer[]) => void
@@ -34,6 +49,7 @@ interface PeerState {
   removePeerConnection: (id: string) => void
   updatePeerStream: (id: string, stream: MediaStream) => void
   updatePeerMediaState: (id: string, audio: boolean, video: boolean, speaking?: boolean) => void
+  updatePeerStats: (id: string, stats: PeerStats) => void
 
   enableMic: () => Promise<MediaStreamTrack | null>
   disableMic: () => void
@@ -146,6 +162,7 @@ export const usePeerStore = create<PeerState>()(
     localStream: null,
     facingMode: 'user',
     peerConnections: new Map(),
+    peerStats: new Map(),
     iceServers: [],
 
     setIceServers: (s) => set({ iceServers: s }),
@@ -169,7 +186,16 @@ export const usePeerStore = create<PeerState>()(
         const next = new Map(state.peerConnections)
         const c = next.get(id)
         if (c) { c.peer.destroy(); next.delete(id) }
-        return { peerConnections: next }
+        const nextStats = new Map(state.peerStats)
+        nextStats.delete(id)
+        return { peerConnections: next, peerStats: nextStats }
+      }),
+
+    updatePeerStats: (id, stats) =>
+      set((state) => {
+        const next = new Map(state.peerStats)
+        next.set(id, stats)
+        return { peerStats: next }
       }),
 
     updatePeerStream: (id, stream) =>
@@ -333,7 +359,7 @@ export const usePeerStore = create<PeerState>()(
     clearPeers: () => {
       const { peerConnections } = get()
       peerConnections.forEach((c) => c.peer.destroy())
-      set({ peerConnections: new Map() })
+      set({ peerConnections: new Map(), peerStats: new Map() })
     },
 
     clearAll: () => {
@@ -343,6 +369,7 @@ export const usePeerStore = create<PeerState>()(
       set({
         localStream: null,
         peerConnections: new Map(),
+        peerStats: new Map(),
       })
     },
   })),

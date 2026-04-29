@@ -1,6 +1,6 @@
 "use client";
 
-import { PhoneOff, Copy, Check, Share2 } from "lucide-react";
+import { PhoneOff, Copy, Check, Share2, BarChart2 } from "lucide-react";
 import { toast } from "sonner";
 import { resumeSharedAudioContext } from "@/src/lib/audio-context";
 import { playLeaveCall } from "@/src/lib/sounds";
@@ -13,9 +13,11 @@ import { useHasMultipleCameras } from "@/src/hooks/use-has-multiple-cameras";
 import { VideoTile } from "@/src/components/ui/VideoTile";
 import { VideoGrid } from "@/src/components/ui/VideoGrid";
 import { ConnectionBanner } from "@/src/components/ui/ConnectionBanner";
+import { StatsPanel } from "@/src/components/ui/StatsPanel";
 import { useMeetStore } from "@/src/stores/meet";
 import { usePeerStore } from "@/src/stores/peer";
 import { useJoinMeetStore } from "@/src/stores/joinMeet";
+import { usePeerStats } from "@/src/hooks/use-peer-stats";
 import type { SignalingClient, ConnState } from "@/src/services/signaling/client";
 
 interface MeetCallProps {
@@ -27,12 +29,15 @@ interface MeetCallProps {
 
 export default function MeetCall({ client, connState, reconnectAttempt, routeMeetCode }: MeetCallProps) {
     const { isMuted, isVideoOff, toggleMute, toggleVideo, clearMeet } = useMeetStore();
-    const { localStream, enableMic, disableMic, enableCamera, disableCamera, switchCamera, peerConnections } = usePeerStore();
+    const { localStream, enableMic, disableMic, enableCamera, disableCamera, switchCamera, peerConnections, peerStats } = usePeerStore();
     const hasMultipleCameras = useHasMultipleCameras();
     const { userName, meetCode, clearJoinMeet } = useJoinMeetStore();
 
+    usePeerStats(client);
+
     const [copied, setCopied] = useState(false);
     const [canShare, setCanShare] = useState(false);
+    const [showStats, setShowStats] = useState(false);
     useEffect(() => { setCanShare('share' in navigator); }, []);
 
     const remotePeers = useMemo(() => Array.from(peerConnections.values()), [peerConnections]);
@@ -105,6 +110,24 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
     const participantCount = remotePeers.length + 1;
     const displayMeetCode = meetCode || routeMeetCode || '—';
 
+    const statsRows = useMemo(
+        () => remotePeers.map((c) => ({
+            id: c.id,
+            name: c.name || c.id.slice(0, 8),
+            stats: peerStats.get(c.id) ?? {
+                outboundBitrateKbps: 0,
+                inboundBitrateKbps: 0,
+                packetLossPercent: 0,
+                roundTripTimeMs: -1,
+                jitterMs: 0,
+                candidateType: 'unknown' as const,
+                quality: 'unknown' as const,
+                timestamp: 0,
+            },
+        })),
+        [remotePeers, peerStats],
+    );
+
     return (
         <div className="relative min-h-dvh w-full overflow-hidden text-[hsl(var(--foreground))]">
 
@@ -150,19 +173,24 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                             isMuted={isMuted}
                             stream={localStream}
                         />
-                        {remotePeers.map((c) => (
-                            <VideoTile
-                                key={c.id}
-                                participant={{
-                                    id: c.id,
-                                    name: c.name || c.id.slice(0, 6),
-                                    isMuted: !c.audio,
-                                    isVideoOff: !c.video,
-                                    speaking: c.speaking,
-                                }}
-                                stream={c.stream ?? null}
-                            />
-                        ))}
+                        {remotePeers.map((c) => {
+                            const stats = peerStats.get(c.id);
+                            return (
+                                <VideoTile
+                                    key={c.id}
+                                    participant={{
+                                        id: c.id,
+                                        name: c.name || c.id.slice(0, 6),
+                                        isMuted: !c.audio,
+                                        isVideoOff: !c.video,
+                                        speaking: c.speaking,
+                                    }}
+                                    stream={c.stream ?? null}
+                                    quality={stats?.quality}
+                                    viaRelay={stats?.candidateType === 'relay'}
+                                />
+                            );
+                        })}
                     </VideoGrid>
                 </div>
 
@@ -190,6 +218,15 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
 
                     <button
                         type="button"
+                        onClick={() => setShowStats(true)}
+                        aria-label="Network stats"
+                        className="ctrl-btn ctrl-btn-on h-9 w-9 sm:h-11 sm:w-11"
+                    >
+                        <BarChart2 className="w-4 h-4 sm:w-5 sm:h-5" />
+                    </button>
+
+                    <button
+                        type="button"
                         onClick={handleEndCall}
                         aria-label="Leave call"
                         className="ctrl-btn ctrl-btn-off h-9 w-9 sm:h-11 sm:w-11"
@@ -198,6 +235,10 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                     </button>
                 </div>
             </div>
+
+            {showStats && (
+                <StatsPanel rows={statsRows} onClose={() => setShowStats(false)} />
+            )}
         </div>
     );
 }

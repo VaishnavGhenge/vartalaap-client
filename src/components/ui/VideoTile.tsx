@@ -5,8 +5,16 @@ import { useEffect, useRef, useState } from "react";
 import { AudioStream, VideoStream } from "@/src/components/ui/Video";
 import { useAudioLevel } from "@/src/hooks/use-audio-level";
 import { avatarColor, initialsOf } from "@/src/lib/avatar";
+import type { PeerStats } from "@/src/stores/peer";
 
 const REMOTE_HOLD_MS = 280
+
+const QUALITY_DOT_COLOR: Record<PeerStats['quality'], string> = {
+    good: 'bg-emerald-400',
+    medium: 'bg-amber-400',
+    poor: 'bg-red-500',
+    unknown: 'bg-zinc-400',
+}
 
 interface Participant {
     id: string;
@@ -23,6 +31,8 @@ interface VideoTileProps {
     isVideoOff?: boolean;
     isMuted?: boolean;
     stream: MediaStream | null;
+    quality?: PeerStats['quality'];
+    viaRelay?: boolean;
 }
 
 export const VideoTile = ({
@@ -32,6 +42,8 @@ export const VideoTile = ({
     isVideoOff,
     isMuted,
     stream,
+    quality,
+    viaRelay,
 }: VideoTileProps) => {
     const name = isLocal ? (userName || 'You') : (participant?.name || 'Participant');
     const videoOff = isLocal ? !!isVideoOff : !!participant?.isVideoOff;
@@ -87,6 +99,19 @@ export const VideoTile = ({
 
             {!isLocal && stream && <AudioStream stream={stream} />}
             {!videoOff && stream && <VideoStream stream={stream} isLocal={isLocal} />}
+
+            {/* Quality dot — remote tiles only, top-right corner */}
+            {!isLocal && quality && quality !== 'unknown' && (
+                <div aria-hidden="true" className="absolute top-2.5 right-2.5 flex items-center gap-1">
+                    {viaRelay && (
+                        <span className="text-[9px] font-medium px-1 py-0.5 rounded-full leading-none
+                                         bg-amber-400/20 text-amber-500 dark:text-amber-400">
+                            TURN
+                        </span>
+                    )}
+                    <span className={`block w-2 h-2 rounded-full ${QUALITY_DOT_COLOR[quality]}`} />
+                </div>
+            )}
 
             {/* Name pill */}
             <div aria-hidden="true" className="glass-pill absolute bottom-2.5 left-2.5 gap-1 px-2 py-1 text-[12px]">
