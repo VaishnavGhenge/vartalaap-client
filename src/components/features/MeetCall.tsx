@@ -122,6 +122,7 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                 jitterMs: 0,
                 candidateType: 'unknown' as const,
                 quality: 'unknown' as const,
+                encodingLevel: 2 as const,
                 timestamp: 0,
             },
         })),

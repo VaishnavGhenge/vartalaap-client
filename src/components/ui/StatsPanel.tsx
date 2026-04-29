@@ -32,6 +32,12 @@ const PATH_LABEL: Record<PeerStats['candidateType'], string> = {
   unknown: '—',
 }
 
+const ENCODING_LABEL: Record<PeerStats['encodingLevel'], string> = {
+  2: 'Full (900 kbps)',
+  1: 'Medium (500 kbps)',
+  0: 'Reduced (200 kbps)',
+}
+
 export function StatsPanel({ rows, onClose }: StatsPanelProps) {
   return (
     <>
@@ -126,6 +132,11 @@ function PeerStatsBlock({ name, stats }: { name: string; stats: PeerStats }) {
         />
         <StatRow label="Jitter" value={`${stats.jitterMs} ms`} />
         <StatRow label="Path" value={PATH_LABEL[stats.candidateType]} />
+        <StatRow
+          label="Encoding"
+          value={ENCODING_LABEL[stats.encodingLevel]}
+          level={stats.encodingLevel === 0 ? 'bad' : stats.encodingLevel === 1 ? 'warn' : 'ok'}
+        />
         {stats.frameWidth != null && stats.frameHeight != null && (
           <StatRow
             label="Resolution"

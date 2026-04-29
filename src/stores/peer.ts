@@ -8,6 +8,12 @@ const VIDEO_HEIGHT_IDEAL = 540
 const VIDEO_FRAME_RATE_IDEAL = 24
 const VIDEO_MAX_BITRATE_BPS = 900_000
 
+// Encoding level set by the adaptive controller.
+// 2 = full quality (900 kbps, 960×540, 24 fps) — default
+// 1 = medium      (500 kbps, 640×360, 20 fps)
+// 0 = reduced     (200 kbps, 480×270, 15 fps)
+export type EncodingLevel = 0 | 1 | 2
+
 export interface PeerStats {
   outboundBitrateKbps: number
   inboundBitrateKbps: number
@@ -16,6 +22,7 @@ export interface PeerStats {
   jitterMs: number
   candidateType: 'host' | 'srflx' | 'relay' | 'unknown'
   quality: 'good' | 'medium' | 'poor' | 'unknown'
+  encodingLevel: EncodingLevel
   timestamp: number
   frameWidth?: number
   frameHeight?: number
