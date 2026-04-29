@@ -38,11 +38,6 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
     const [copied, setCopied] = useState(false);
     const [canShare, setCanShare] = useState(false);
     const [showStats, setShowStats] = useState(false);
-    const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
-    // 'browser' | 'window' | 'monitor' | 'unknown'
-    // For window/monitor shares the call overlay is hidden from the DOM entirely
-    // so it doesn't appear in the capture.
-    const [screenSurface, setScreenSurface] = useState<string>('unknown');
     const screenTrackRef = useRef<MediaStreamTrack | null>(null);
     useEffect(() => { setCanShare('share' in navigator); }, []);
 
@@ -109,8 +104,6 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
     const doStopScreenShare = () => {
         screenTrackRef.current?.stop();
         screenTrackRef.current = null;
-        setScreenStream(null);
-        setScreenSurface('unknown');
         stopScreenShare();
         if (isScreenSharing) toggleScreenShare();
     };
@@ -120,13 +113,9 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
             doStopScreenShare();
             return;
         }
-        const result = await startScreenShare();
-        if (!result) return;
-        const { track, surface } = result;
+        const track = await startScreenShare();
+        if (!track) return;
         screenTrackRef.current = track;
-        const stream = new MediaStream([track]);
-        setScreenStream(stream);
-        setScreenSurface(surface);
         toggleScreenShare();
         // Auto-stop when the user clicks the browser's "Stop sharing" button.
         track.addEventListener('ended', doStopScreenShare, { once: true });
@@ -197,95 +186,39 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
 
             {/* ── Video grid ───────────────────────────────────────────── */}
             <main className="flex flex-col h-dvh">
-                {isScreenSharing ? (
-                    /* ── Screen-share layout ─────────────────────────────
-                       Mirror prevention strategy by surface type:
-                       - 'browser' (tab): selfBrowserSurface:exclude already
-                         removed this tab from the picker — no mirror possible.
-                       - 'window' / 'monitor': ANY element on this page will
-                         appear in the capture, so we remove the participant
-                         strip from the DOM entirely. The control bar stays
-                         (user can drag the browser window so controls are
-                         off-screen, or accept that only the bar is captured).
-                       - 'unknown' (Firefox/Safari): treat conservatively,
-                         same as window/monitor.
-                    ─────────────────────────────────────────────────────── */
-                    <div className="flex-1 relative min-h-0"
-                         style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom, 0px))' }}>
-                        {/* Screen preview — fills the frame */}
-                        {screenStream && (
-                            <video
-                                ref={(el) => { if (el && el.srcObject !== screenStream) { el.srcObject = screenStream; el.play().catch(() => {}); } }}
-                                muted
-                                playsInline
-                                className="absolute inset-0 w-full h-full object-contain bg-black rounded-2xl"
-                                aria-label="Screen share preview"
-                            />
-                        )}
-                        {/* Participant strip — only rendered for tab captures.
-                            For window/monitor captures it's omitted from the DOM
-                            to prevent it from appearing in the shared content. */}
-                        {screenSurface === 'browser' && remotePeers.length > 0 && (
-                            <div className="absolute top-3 right-3 z-10 flex flex-col gap-2"
-                                 style={{ width: 'clamp(100px, 18vw, 160px)' }}>
-                                {remotePeers.map((c) => {
-                                    const stats = peerStats.get(c.id);
-                                    return (
-                                        <div key={c.id} style={{ aspectRatio: '16/9' }}>
-                                            <VideoTile
-                                                participant={{
-                                                    id: c.id,
-                                                    name: c.name || c.id.slice(0, 6),
-                                                    isMuted: !c.audio,
-                                                    isVideoOff: !c.video,
-                                                    speaking: c.speaking,
-                                                }}
-                                                stream={c.stream ?? null}
-                                                quality={stats?.quality}
-                                                viaRelay={stats?.candidateType === 'relay'}
-                                            />
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </div>
-                ) : (
-                    /* ── Normal grid layout ─────────────────────────────── */
-                    <div className="flex-1 p-3 min-h-0"
-                         style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom, 0px))' }}>
-                        <VideoGrid gap={8} tileAspect={16 / 9}>
-                            <VideoTile
-                                key="local"
-                                isLocal
-                                userName={userName}
-                                isVideoOff={isVideoOff}
-                                isMuted={isMuted}
-                                stream={localStream}
-                            />
-                            {remotePeers.map((c) => {
-                                const stats = peerStats.get(c.id);
-                                return (
-                                    <VideoTile
-                                        key={c.id}
-                                        participant={{
-                                            id: c.id,
-                                            name: c.name || c.id.slice(0, 6),
-                                            isMuted: !c.audio,
-                                            isVideoOff: !c.video,
-                                            speaking: c.speaking,
-                                        }}
-                                        stream={c.stream ?? null}
-                                        quality={stats?.quality}
-                                        viaRelay={stats?.candidateType === 'relay'}
-                                    />
-                                );
-                            })}
-                        </VideoGrid>
-                    </div>
-                )}
+                <div className="flex-1 p-3 min-h-0"
+                     style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom, 0px))' }}>
+                    <VideoGrid gap={8} tileAspect={16 / 9}>
+                        <VideoTile
+                            key="local"
+                            isLocal
+                            userName={userName}
+                            isVideoOff={isVideoOff}
+                            isMuted={isMuted}
+                            stream={localStream}
+                        />
+                        {remotePeers.map((c) => {
+                            const stats = peerStats.get(c.id);
+                            return (
+                                <VideoTile
+                                    key={c.id}
+                                    participant={{
+                                        id: c.id,
+                                        name: c.name || c.id.slice(0, 6),
+                                        isMuted: !c.audio,
+                                        isVideoOff: !c.video,
+                                        speaking: c.speaking,
+                                    }}
+                                    stream={c.stream ?? null}
+                                    quality={stats?.quality}
+                                    viaRelay={stats?.candidateType === 'relay'}
+                                />
+                            );
+                        })}
+                    </VideoGrid>
+                </div>
 
-                {alone && !isScreenSharing && (
+                {alone && (
                     <div className="pointer-events-none absolute inset-x-0 flex justify-center px-4"
                          style={{ bottom: 'calc(5.5rem + env(safe-area-inset-bottom, 0px))' }}>
                         <p className="glass-pill px-4 py-2 text-xs text-[hsl(var(--muted-foreground))]">
@@ -294,6 +227,51 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                     </div>
                 )}
             </main>
+
+            {/* ── Screen-share overlay ─────────────────────────────────────
+                Covers the entire page with a solid background while sharing.
+                Whatever surface is captured (tab, window, full screen) only
+                sees this overlay — not the video grid — so infinite mirror is
+                impossible. Remote tiles are safe to show here because they
+                display camera feeds, not the call UI itself.
+            ─────────────────────────────────────────────────────────────── */}
+            {isScreenSharing && (
+                <div className="fixed inset-0 z-50 flex flex-col
+                                bg-[hsl(var(--background))]">
+                    {/* Participant cameras */}
+                    <div className="flex-1 p-3 min-h-0"
+                         style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom, 0px))' }}>
+                        {remotePeers.length > 0 ? (
+                            <VideoGrid gap={8} tileAspect={16 / 9}>
+                                {remotePeers.map((c) => {
+                                    const stats = peerStats.get(c.id);
+                                    return (
+                                        <VideoTile
+                                            key={c.id}
+                                            participant={{
+                                                id: c.id,
+                                                name: c.name || c.id.slice(0, 6),
+                                                isMuted: !c.audio,
+                                                isVideoOff: !c.video,
+                                                speaking: c.speaking,
+                                            }}
+                                            stream={c.stream ?? null}
+                                            quality={stats?.quality}
+                                            viaRelay={stats?.candidateType === 'relay'}
+                                        />
+                                    );
+                                })}
+                            </VideoGrid>
+                        ) : (
+                            <div className="flex h-full items-center justify-center">
+                                <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                                    Sharing your screen
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* ── Floating control bar ──────────────────────────────────── */}
             <div className="absolute left-1/2 -translate-x-1/2 z-20"

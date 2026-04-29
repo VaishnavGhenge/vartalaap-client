@@ -65,7 +65,7 @@ interface PeerState {
   disableCamera: () => void
   switchCamera: () => Promise<boolean>
 
-  startScreenShare: () => Promise<{ track: MediaStreamTrack; surface: string } | null>
+  startScreenShare: () => Promise<MediaStreamTrack | null>
   stopScreenShare: () => void
 
   createPeer: (initiator: boolean, stream?: MediaStream) => Peer.Instance
@@ -350,11 +350,9 @@ export const usePeerStore = create<PeerState>()(
         } as DisplayMediaStreamOptions)
         const track = media.getVideoTracks()[0]
         if (!track) return null
-        // 'browser' | 'window' | 'monitor' — undefined on Firefox/Safari
-        const surface: string = (track.getSettings() as Record<string, unknown>).displaySurface as string ?? 'unknown'
         // Push the screen track to peers via replaceTrack — no renegotiation.
         replaceVideoTrackOnPeers(track, get().peerConnections)
-        return { track, surface }
+        return track
       } catch (e) {
         // User cancelled the picker — not an error worth logging.
         if ((e as Error).name !== 'NotAllowedError') console.error('startScreenShare failed', e)
