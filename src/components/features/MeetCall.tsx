@@ -190,40 +190,87 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
 
             {/* ── Video grid ───────────────────────────────────────────── */}
             <main className="flex flex-col h-dvh">
-                <div className="flex-1 p-3 min-h-0"
-                     style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom, 0px))' }}>
-                    <VideoGrid gap={8} tileAspect={16 / 9}>
-                        <VideoTile
-                            key="local"
-                            isLocal
-                            userName={userName}
-                            isVideoOff={isVideoOff && !isScreenSharing}
-                            isMuted={isMuted}
-                            stream={isScreenSharing ? screenStream : localStream}
-                            isScreenSharing={isScreenSharing}
-                        />
-                        {remotePeers.map((c) => {
-                            const stats = peerStats.get(c.id);
-                            return (
-                                <VideoTile
-                                    key={c.id}
-                                    participant={{
-                                        id: c.id,
-                                        name: c.name || c.id.slice(0, 6),
-                                        isMuted: !c.audio,
-                                        isVideoOff: !c.video,
-                                        speaking: c.speaking,
-                                    }}
-                                    stream={c.stream ?? null}
-                                    quality={stats?.quality}
-                                    viaRelay={stats?.candidateType === 'relay'}
-                                />
-                            );
-                        })}
-                    </VideoGrid>
-                </div>
+                {isScreenSharing ? (
+                    /* ── Screen-share layout ──────────────────────────────
+                       The captured area is just the screen preview (full bleed).
+                       Participant tiles are collapsed to a small overlay strip
+                       so whole-screen captures have the minimum UI footprint,
+                       breaking the infinite-mirror feedback loop.
+                    ────────────────────────────────────────────────────── */
+                    <div className="flex-1 relative min-h-0"
+                         style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom, 0px))' }}>
+                        {/* Screen preview — fills the frame */}
+                        {screenStream && (
+                            <video
+                                ref={(el) => { if (el && el.srcObject !== screenStream) { el.srcObject = screenStream; el.play().catch(() => {}); } }}
+                                muted
+                                playsInline
+                                className="absolute inset-0 w-full h-full object-contain bg-black rounded-2xl"
+                                aria-label="Screen share preview"
+                            />
+                        )}
+                        {/* Compact participant strip — top-right, outside the main capture area */}
+                        {remotePeers.length > 0 && (
+                            <div className="absolute top-3 right-3 z-10 flex flex-col gap-2"
+                                 style={{ width: 'clamp(100px, 18vw, 160px)' }}>
+                                {remotePeers.map((c) => {
+                                    const stats = peerStats.get(c.id);
+                                    return (
+                                        <div key={c.id} style={{ aspectRatio: '16/9' }}>
+                                            <VideoTile
+                                                participant={{
+                                                    id: c.id,
+                                                    name: c.name || c.id.slice(0, 6),
+                                                    isMuted: !c.audio,
+                                                    isVideoOff: !c.video,
+                                                    speaking: c.speaking,
+                                                }}
+                                                stream={c.stream ?? null}
+                                                quality={stats?.quality}
+                                                viaRelay={stats?.candidateType === 'relay'}
+                                            />
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    /* ── Normal grid layout ─────────────────────────────── */
+                    <div className="flex-1 p-3 min-h-0"
+                         style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom, 0px))' }}>
+                        <VideoGrid gap={8} tileAspect={16 / 9}>
+                            <VideoTile
+                                key="local"
+                                isLocal
+                                userName={userName}
+                                isVideoOff={isVideoOff}
+                                isMuted={isMuted}
+                                stream={localStream}
+                            />
+                            {remotePeers.map((c) => {
+                                const stats = peerStats.get(c.id);
+                                return (
+                                    <VideoTile
+                                        key={c.id}
+                                        participant={{
+                                            id: c.id,
+                                            name: c.name || c.id.slice(0, 6),
+                                            isMuted: !c.audio,
+                                            isVideoOff: !c.video,
+                                            speaking: c.speaking,
+                                        }}
+                                        stream={c.stream ?? null}
+                                        quality={stats?.quality}
+                                        viaRelay={stats?.candidateType === 'relay'}
+                                    />
+                                );
+                            })}
+                        </VideoGrid>
+                    </div>
+                )}
 
-                {alone && (
+                {alone && !isScreenSharing && (
                     <div className="pointer-events-none absolute inset-x-0 flex justify-center px-4"
                          style={{ bottom: 'calc(5.5rem + env(safe-area-inset-bottom, 0px))' }}>
                         <p className="glass-pill px-4 py-2 text-xs text-[hsl(var(--muted-foreground))]">

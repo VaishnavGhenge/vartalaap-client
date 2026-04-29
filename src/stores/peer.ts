@@ -341,7 +341,13 @@ export const usePeerStore = create<PeerState>()(
 
     startScreenShare: async () => {
       try {
-        const media = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
+        // selfBrowserSurface: 'exclude' (Chrome 107+) removes the current tab
+        // from the picker, breaking the most common infinite-mirror path.
+        const media = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: false,
+          selfBrowserSurface: 'exclude',
+        } as DisplayMediaStreamOptions)
         const track = media.getVideoTracks()[0]
         if (!track) return null
         // Push the screen track to peers via replaceTrack — no renegotiation.
