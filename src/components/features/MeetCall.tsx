@@ -1,5 +1,8 @@
 "use client";
 
+// Screen sharing is under development — hide from users until fixed.
+const SCREEN_SHARE_ENABLED = false;
+
 import { PhoneOff, Copy, Check, Share2, BarChart2, Monitor } from "lucide-react";
 import { toast } from "sonner";
 import { resumeSharedAudioContext } from "@/src/lib/audio-context";
@@ -232,7 +235,7 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                 Opaque overlay blocks the page from the screen capture so no
                 mirror is possible. All controls live here so nothing is lost.
             ─────────────────────────────────────────────────────────────── */}
-            {isScreenSharing && (
+            {SCREEN_SHARE_ENABLED && isScreenSharing && (
                 <div className="fixed inset-0 z-50 flex flex-col bg-[hsl(var(--background))]">
 
                     {/* ── Participant cameras ─────────────────────────────── */}
@@ -323,8 +326,8 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                 </div>
             )}
 
-            {/* ── Floating control bar (normal mode) ───────────────────── */}
-            {!isScreenSharing && (
+            {/* ── Floating control bar ─────────────────────────────────── */}
+            {(!SCREEN_SHARE_ENABLED || !isScreenSharing) && (
                 <div className="absolute left-1/2 -translate-x-1/2 z-20"
                      style={{ bottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
                     <div className="glass-pill gap-2 px-2 py-2 shadow-xl shadow-[hsl(var(--shadow-color))]/25">
@@ -334,14 +337,16 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                             <FlipCameraButton onClickFn={handleFlipCamera} />
                         )}
 
-                        <button
-                            type="button"
-                            onClick={handleScreenShare}
-                            aria-label="Share screen"
-                            className="ctrl-btn ctrl-btn-on h-9 w-9 sm:h-11 sm:w-11"
-                        >
-                            <Monitor className="w-4 h-4 sm:w-5 sm:h-5" />
-                        </button>
+                        {SCREEN_SHARE_ENABLED && (
+                            <button
+                                type="button"
+                                onClick={handleScreenShare}
+                                aria-label="Share screen"
+                                className="ctrl-btn ctrl-btn-on h-9 w-9 sm:h-11 sm:w-11"
+                            >
+                                <Monitor className="w-4 h-4 sm:w-5 sm:h-5" />
+                            </button>
+                        )}
 
                         <div className="mx-1 h-5 w-px bg-[hsl(var(--border))]" />
 
