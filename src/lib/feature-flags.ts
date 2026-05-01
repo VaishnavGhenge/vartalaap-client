@@ -12,7 +12,11 @@ const DEFAULTS: FeatureFlags = {
 
 const STORAGE_KEY = 'vartalaap:flags'
 
-export function getFlags(): FeatureFlags {
+// Cached snapshot — same reference until a storage event invalidates it.
+// Required by useSyncExternalStore which uses Object.is to detect changes.
+let cachedFlags: FeatureFlags | null = null
+
+function readFlags(): FeatureFlags {
   if (typeof window === 'undefined') return DEFAULTS
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
@@ -22,9 +26,19 @@ export function getFlags(): FeatureFlags {
   }
 }
 
+export function getFlags(): FeatureFlags {
+  if (!cachedFlags) cachedFlags = readFlags()
+  return cachedFlags
+}
+
+export function invalidateFlags(): void {
+  cachedFlags = readFlags()
+}
+
 export function setFlag(key: keyof FeatureFlags, value: boolean): void {
   const flags = getFlags()
-  flags[key] = value
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(flags))
+  const next = { ...flags, [key]: value }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+  cachedFlags = next
   window.dispatchEvent(new StorageEvent('storage', { key: STORAGE_KEY }))
 }
