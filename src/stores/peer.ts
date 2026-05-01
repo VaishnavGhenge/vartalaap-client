@@ -285,7 +285,7 @@ export const usePeerStore = create<PeerState>()(
 
     enableCamera: async () => {
       try {
-        const { facingMode, blurProcessor: activeProcessor } = get()
+        const { facingMode, blurProcessor: activeProcessor, localStream: existingStream } = get()
         const media = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode,
@@ -296,29 +296,24 @@ export const usePeerStore = create<PeerState>()(
         })
         const track = media.getVideoTracks()[0]
         if (!track) return null
-        const existing = get().localStream
-        const stream = existing ?? new MediaStream()
-        stream.getVideoTracks().forEach((t) => { t.stop(); stream.removeTrack(t) })
+
+        // Stop any existing video tracks (raw or canvas).
+        existingStream?.getVideoTracks().forEach((t) => t.stop())
+        const audioTracks = existingStream?.getAudioTracks() ?? []
 
         if (activeProcessor) {
-          // Blur was on — stop old processor, restart with new track.
           activeProcessor.stop()
           try {
             const newProcessor = new BackgroundBlurProcessor()
             const canvasTrack = await newProcessor.start(track)
-            stream.addTrack(canvasTrack)
-            if (!existing) set({ localStream: stream })
+            set({ localStream: new MediaStream([...audioTracks, canvasTrack]), blurProcessor: newProcessor, rawCameraTrack: track })
             replaceVideoTrackOnPeers(canvasTrack, get().peerConnections)
-            set({ blurProcessor: newProcessor, rawCameraTrack: track })
           } catch {
-            stream.addTrack(track)
-            if (!existing) set({ localStream: stream })
+            set({ localStream: new MediaStream([...audioTracks, track]), blurProcessor: null, rawCameraTrack: null })
             replaceVideoTrackOnPeers(track, get().peerConnections)
-            set({ blurProcessor: null, rawCameraTrack: null })
           }
         } else {
-          stream.addTrack(track)
-          if (!existing) set({ localStream: stream })
+          set({ localStream: new MediaStream([...audioTracks, track]) })
           replaceVideoTrackOnPeers(track, get().peerConnections)
         }
 
@@ -336,20 +331,23 @@ export const usePeerStore = create<PeerState>()(
       if (blurProcessor) {
         blurProcessor.stop()
         rawCameraTrack?.stop()
-        set({ blurProcessor: null, rawCameraTrack: null })
       }
 
-      localStream.getVideoTracks().forEach((t) => {
-        // replaceTrack(black) keeps the sender alive; peer.removeTrack crashes Safari.
-        const placeholder = createBlackVideoTrack()
-        if (placeholder) {
-          replaceVideoTrackOnPeers(placeholder, peerConnections)
-          placeholder.stop()
-        }
-        t.stop()
-        localStream.removeTrack(t)
+      localStream.getVideoTracks().forEach((t) => t.stop())
+
+      // replaceTrack(black) keeps the sender alive; peer.removeTrack crashes Safari.
+      const placeholder = createBlackVideoTrack()
+      if (placeholder) {
+        replaceVideoTrackOnPeers(placeholder, peerConnections)
+        placeholder.stop()
+      }
+
+      const audioTracks = localStream.getAudioTracks()
+      set({
+        localStream: audioTracks.length > 0 ? new MediaStream(audioTracks) : null,
+        blurProcessor: null,
+        rawCameraTrack: null,
       })
-      if (localStream.getTracks().length === 0) set({ localStream: null })
     },
 
     switchCamera: async () => {
@@ -370,25 +368,23 @@ export const usePeerStore = create<PeerState>()(
         const newTrack = media.getVideoTracks()[0]
         if (!newTrack) return false
 
-        localStream.getVideoTracks().forEach((t) => { t.stop(); localStream.removeTrack(t) })
+        localStream.getVideoTracks().forEach((t) => t.stop())
+        const audioTracks = localStream.getAudioTracks()
 
         if (activeProcessor) {
           activeProcessor.stop()
           try {
             const newProcessor = new BackgroundBlurProcessor()
             const canvasTrack = await newProcessor.start(newTrack)
-            localStream.addTrack(canvasTrack)
+            set({ localStream: new MediaStream([...audioTracks, canvasTrack]), facingMode: nextFacing, blurProcessor: newProcessor, rawCameraTrack: newTrack })
             replaceVideoTrackOnPeers(canvasTrack, peerConnections)
-            set({ facingMode: nextFacing, blurProcessor: newProcessor, rawCameraTrack: newTrack })
           } catch {
-            localStream.addTrack(newTrack)
+            set({ localStream: new MediaStream([...audioTracks, newTrack]), facingMode: nextFacing, blurProcessor: null, rawCameraTrack: null })
             replaceVideoTrackOnPeers(newTrack, peerConnections)
-            set({ facingMode: nextFacing, blurProcessor: null, rawCameraTrack: null })
           }
         } else {
-          localStream.addTrack(newTrack)
+          set({ localStream: new MediaStream([...audioTracks, newTrack]), facingMode: nextFacing })
           replaceVideoTrackOnPeers(newTrack, peerConnections)
-          set({ facingMode: nextFacing })
         }
 
         return true
@@ -407,10 +403,10 @@ export const usePeerStore = create<PeerState>()(
         try {
           const processor = new BackgroundBlurProcessor()
           const canvasTrack = await processor.start(rawTrack)
-          localStream!.removeTrack(rawTrack)
-          localStream!.addTrack(canvasTrack)
+          // Replace localStream with a new object so useAttachTracks re-syncs the video element.
+          const newStream = new MediaStream([...(localStream!.getAudioTracks()), canvasTrack])
           replaceVideoTrackOnPeers(canvasTrack, get().peerConnections)
-          set({ blurProcessor: processor, rawCameraTrack: rawTrack })
+          set({ localStream: newStream, blurProcessor: processor, rawCameraTrack: rawTrack })
           return true
         } catch (e) {
           console.error('background blur failed', e)
@@ -419,14 +415,16 @@ export const usePeerStore = create<PeerState>()(
       } else {
         const { blurProcessor, rawCameraTrack, localStream } = get()
         if (!blurProcessor) return true
-        const canvasTrack = localStream?.getVideoTracks()[0]
         blurProcessor.stop()
+        const canvasTrack = localStream?.getVideoTracks()[0]
+        canvasTrack?.stop()
         if (rawCameraTrack && localStream) {
-          if (canvasTrack) { localStream.removeTrack(canvasTrack); canvasTrack.stop() }
-          localStream.addTrack(rawCameraTrack)
+          const newStream = new MediaStream([...localStream.getAudioTracks(), rawCameraTrack])
           replaceVideoTrackOnPeers(rawCameraTrack, get().peerConnections)
+          set({ localStream: newStream, blurProcessor: null, rawCameraTrack: null })
+        } else {
+          set({ blurProcessor: null, rawCameraTrack: null })
         }
-        set({ blurProcessor: null, rawCameraTrack: null })
         return true
       }
     },

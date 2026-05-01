@@ -92,7 +92,8 @@ export class BackgroundBlurProcessor {
     const maskValues = mask.getAsUint8Array()
     const fgData = this.fgCtx.getImageData(0, 0, w, h)
     for (let i = 0; i < maskValues.length; i++) {
-      if (maskValues[i] === 0) fgData.data[i * 4 + 3] = 0
+      // selfie_segmenter: 0 = person, non-zero = background
+      if (maskValues[i] !== 0) fgData.data[i * 4 + 3] = 0
     }
     this.fgCtx.putImageData(fgData, 0, 0)
     mask.close()
