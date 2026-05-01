@@ -29,7 +29,12 @@ export function useAudioLevel(
       // Ensure the shared context is running (no-op on desktop, needed on iOS).
       if (ctx.state === 'suspended') ctx.resume().catch(() => {})
 
-      const source = ctx.createMediaStreamSource(stream)
+      // Clone the stream before routing through Web Audio. Chromium may disable
+      // hardware AEC on a getUserMedia track when it is connected to an
+      // AudioContext source node. The clone keeps the original track's AEC
+      // pipeline intact while the copy is used only for level analysis.
+      const analysisStream = stream.clone()
+      const source = ctx.createMediaStreamSource(analysisStream)
       const analyser = ctx.createAnalyser()
       analyser.fftSize = 512
       analyser.smoothingTimeConstant = 0.6
@@ -64,6 +69,7 @@ export function useAudioLevel(
       return () => {
         clearInterval(timer)
         try { source.disconnect() } catch { /* noop */ }
+        analysisStream.getTracks().forEach(t => t.stop())
         // Do NOT close the shared context here.
       }
     }

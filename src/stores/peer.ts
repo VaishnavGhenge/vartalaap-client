@@ -3,6 +3,8 @@ import { devtools } from 'zustand/middleware'
 import Peer from 'simple-peer'
 import type { IceServer } from '@/src/services/api/ice'
 import { getSharedAudioContext } from '@/src/lib/audio-context'
+import { BackgroundBlurProcessor } from '@/src/lib/background-blur'
+import { getFlags } from '@/src/lib/feature-flags'
 
 const VIDEO_WIDTH_IDEAL = 960
 const VIDEO_HEIGHT_IDEAL = 540
@@ -43,6 +45,8 @@ interface PeerConnection {
 interface PeerState {
   localStream: MediaStream | null
   screenTrack: MediaStreamTrack | null
+  blurProcessor: BackgroundBlurProcessor | null
+  rawCameraTrack: MediaStreamTrack | null
   facingMode: 'user' | 'environment'
   peerConnections: Map<string, PeerConnection>
   peerStats: Map<string, PeerStats>
@@ -173,6 +177,8 @@ export const usePeerStore = create<PeerState>()(
   devtools((set, get) => ({
     localStream: null,
     screenTrack: null,
+    blurProcessor: null,
+    rawCameraTrack: null,
     facingMode: 'user',
     peerConnections: new Map(),
     peerStats: new Map(),
@@ -229,6 +235,7 @@ export const usePeerStore = create<PeerState>()(
 
     enableMic: async () => {
       try {
+        const { experimental_echo_cancel } = getFlags()
         const media = await navigator.mediaDevices.getUserMedia({
           audio: {
             echoCancellation: true,
@@ -237,6 +244,15 @@ export const usePeerStore = create<PeerState>()(
             sampleRate: { ideal: 48000 },
             channelCount: { ideal: 1 },
             latency: { ideal: 0 },
+            // Chrome-specific enhanced AEC — enabled via experimental_echo_cancel flag.
+            // These hints activate Chromium's AEC3, experimental NS, and high-pass filter.
+            ...(experimental_echo_cancel && {
+              googEchoCancellation: true,
+              googExperimentalEchoCancellation: true,
+              googNoiseSuppression: true,
+              googHighpassFilter: true,
+              googAudioMirroring: false,
+            }),
           } as MediaTrackConstraints,
         })
         const track = media.getAudioTracks()[0]
@@ -269,7 +285,7 @@ export const usePeerStore = create<PeerState>()(
 
     enableCamera: async () => {
       try {
-        const { facingMode } = get()
+        const { facingMode, blurProcessor: activeProcessor } = get()
         const media = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode,
@@ -283,10 +299,29 @@ export const usePeerStore = create<PeerState>()(
         const existing = get().localStream
         const stream = existing ?? new MediaStream()
         stream.getVideoTracks().forEach((t) => { t.stop(); stream.removeTrack(t) })
-        stream.addTrack(track)
-        if (!existing) set({ localStream: stream })
-        // Sender always exists (placeholder pre-negotiated at peer creation).
-        replaceVideoTrackOnPeers(track, get().peerConnections)
+
+        if (activeProcessor) {
+          // Blur was on — stop old processor, restart with new track.
+          activeProcessor.stop()
+          try {
+            const newProcessor = new BackgroundBlurProcessor()
+            const canvasTrack = await newProcessor.start(track)
+            stream.addTrack(canvasTrack)
+            if (!existing) set({ localStream: stream })
+            replaceVideoTrackOnPeers(canvasTrack, get().peerConnections)
+            set({ blurProcessor: newProcessor, rawCameraTrack: track })
+          } catch {
+            stream.addTrack(track)
+            if (!existing) set({ localStream: stream })
+            replaceVideoTrackOnPeers(track, get().peerConnections)
+            set({ blurProcessor: null, rawCameraTrack: null })
+          }
+        } else {
+          stream.addTrack(track)
+          if (!existing) set({ localStream: stream })
+          replaceVideoTrackOnPeers(track, get().peerConnections)
+        }
+
         return track
       } catch (e) {
         console.error('enableCamera failed', e)
@@ -295,24 +330,30 @@ export const usePeerStore = create<PeerState>()(
     },
 
     disableCamera: () => {
-      const stream = get().localStream
-      if (!stream) return
-      const peers = get().peerConnections
-      stream.getVideoTracks().forEach((t) => {
+      const { localStream, peerConnections, blurProcessor, rawCameraTrack } = get()
+      if (!localStream) return
+
+      if (blurProcessor) {
+        blurProcessor.stop()
+        rawCameraTrack?.stop()
+        set({ blurProcessor: null, rawCameraTrack: null })
+      }
+
+      localStream.getVideoTracks().forEach((t) => {
         // replaceTrack(black) keeps the sender alive; peer.removeTrack crashes Safari.
         const placeholder = createBlackVideoTrack()
         if (placeholder) {
-          replaceVideoTrackOnPeers(placeholder, peers)
+          replaceVideoTrackOnPeers(placeholder, peerConnections)
           placeholder.stop()
         }
         t.stop()
-        stream.removeTrack(t)
+        localStream.removeTrack(t)
       })
-      if (stream.getTracks().length === 0) set({ localStream: null })
+      if (localStream.getTracks().length === 0) set({ localStream: null })
     },
 
     switchCamera: async () => {
-      const { localStream, facingMode, peerConnections } = get()
+      const { localStream, facingMode, peerConnections, blurProcessor: activeProcessor } = get()
       if (!localStream) return false
 
       const nextFacing: 'user' | 'environment' = facingMode === 'user' ? 'environment' : 'user'
@@ -329,14 +370,27 @@ export const usePeerStore = create<PeerState>()(
         const newTrack = media.getVideoTracks()[0]
         if (!newTrack) return false
 
-        // Swap track in the local stream
         localStream.getVideoTracks().forEach((t) => { t.stop(); localStream.removeTrack(t) })
-        localStream.addTrack(newTrack)
 
-        // Replace on existing peer connections — no renegotiation needed
-        replaceVideoTrackOnPeers(newTrack, peerConnections)
+        if (activeProcessor) {
+          activeProcessor.stop()
+          try {
+            const newProcessor = new BackgroundBlurProcessor()
+            const canvasTrack = await newProcessor.start(newTrack)
+            localStream.addTrack(canvasTrack)
+            replaceVideoTrackOnPeers(canvasTrack, peerConnections)
+            set({ facingMode: nextFacing, blurProcessor: newProcessor, rawCameraTrack: newTrack })
+          } catch {
+            localStream.addTrack(newTrack)
+            replaceVideoTrackOnPeers(newTrack, peerConnections)
+            set({ facingMode: nextFacing, blurProcessor: null, rawCameraTrack: null })
+          }
+        } else {
+          localStream.addTrack(newTrack)
+          replaceVideoTrackOnPeers(newTrack, peerConnections)
+          set({ facingMode: nextFacing })
+        }
 
-        set({ facingMode: nextFacing })
         return true
       } catch (e) {
         console.error('switchCamera failed', e)
@@ -345,15 +399,35 @@ export const usePeerStore = create<PeerState>()(
     },
 
     setBackgroundBlur: async (enabled) => {
-      const track = get().localStream?.getVideoTracks()[0]
-      if (!track) return false
-      try {
-        const capabilities = track.getCapabilities() as MediaTrackCapabilities & { backgroundBlur?: boolean[] }
-        if (!capabilities.backgroundBlur?.includes(true)) return false
-        await track.applyConstraints({ advanced: [{ backgroundBlur: enabled } as MediaTrackConstraintSet] })
+      if (enabled) {
+        const { localStream, blurProcessor: existing } = get()
+        if (existing) return true
+        const rawTrack = localStream?.getVideoTracks()[0]
+        if (!rawTrack) return false
+        try {
+          const processor = new BackgroundBlurProcessor()
+          const canvasTrack = await processor.start(rawTrack)
+          localStream!.removeTrack(rawTrack)
+          localStream!.addTrack(canvasTrack)
+          replaceVideoTrackOnPeers(canvasTrack, get().peerConnections)
+          set({ blurProcessor: processor, rawCameraTrack: rawTrack })
+          return true
+        } catch (e) {
+          console.error('background blur failed', e)
+          return false
+        }
+      } else {
+        const { blurProcessor, rawCameraTrack, localStream } = get()
+        if (!blurProcessor) return true
+        const canvasTrack = localStream?.getVideoTracks()[0]
+        blurProcessor.stop()
+        if (rawCameraTrack && localStream) {
+          if (canvasTrack) { localStream.removeTrack(canvasTrack); canvasTrack.stop() }
+          localStream.addTrack(rawCameraTrack)
+          replaceVideoTrackOnPeers(rawCameraTrack, get().peerConnections)
+        }
+        set({ blurProcessor: null, rawCameraTrack: null })
         return true
-      } catch {
-        return false
       }
     },
 
@@ -442,12 +516,16 @@ export const usePeerStore = create<PeerState>()(
     },
 
     clearAll: () => {
-      const { localStream, peerConnections } = get()
+      const { localStream, peerConnections, blurProcessor, rawCameraTrack } = get()
+      blurProcessor?.stop()
+      rawCameraTrack?.stop()
       localStream?.getTracks().forEach((t) => t.stop())
       peerConnections.forEach((c) => c.peer.destroy())
       set({
         localStream: null,
         screenTrack: null,
+        blurProcessor: null,
+        rawCameraTrack: null,
         peerConnections: new Map(),
         peerStats: new Map(),
       })

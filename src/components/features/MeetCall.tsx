@@ -1,8 +1,5 @@
 "use client";
 
-// Screen sharing is under development — hide from users until fixed.
-const SCREEN_SHARE_ENABLED = false;
-
 import { PhoneOff, Copy, Check, Share2, BarChart2, Monitor } from "lucide-react";
 import { toast } from "sonner";
 import { resumeSharedAudioContext } from "@/src/lib/audio-context";
@@ -13,6 +10,7 @@ import { MicButton } from "@/src/components/ui/MicButton";
 import { CameraButton } from "@/src/components/ui/CameraButton";
 import { FlipCameraButton } from "@/src/components/ui/FlipCameraButton";
 import { BlurButton } from "@/src/components/ui/BlurButton";
+import { useFeatureFlags } from "@/src/hooks/use-feature-flags";
 import { useHasMultipleCameras } from "@/src/hooks/use-has-multiple-cameras";
 import { VideoTile } from "@/src/components/ui/VideoTile";
 import { VideoGrid } from "@/src/components/ui/VideoGrid";
@@ -32,6 +30,7 @@ interface MeetCallProps {
 }
 
 export default function MeetCall({ client, connState, reconnectAttempt, routeMeetCode }: MeetCallProps) {
+    const flags = useFeatureFlags();
     const { isMuted, isVideoOff, isScreenSharing, isBlurEnabled, toggleMute, toggleVideo, toggleScreenShare, setBlurEnabled, clearMeet } = useMeetStore();
     const { localStream, enableMic, disableMic, enableCamera, disableCamera, switchCamera, setBackgroundBlur, startScreenShare, stopScreenShare, peerConnections, peerStats } = usePeerStore();
     const hasMultipleCameras = useHasMultipleCameras();
@@ -247,7 +246,7 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                 Opaque overlay blocks the page from the screen capture so no
                 mirror is possible. All controls live here so nothing is lost.
             ─────────────────────────────────────────────────────────────── */}
-            {SCREEN_SHARE_ENABLED && isScreenSharing && (
+            {flags.screen_sharing && isScreenSharing && (
                 <div className="fixed inset-0 z-50 flex flex-col bg-[hsl(var(--background))]">
 
                     {/* ── Participant cameras ─────────────────────────────── */}
@@ -339,20 +338,20 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
             )}
 
             {/* ── Floating control bar ─────────────────────────────────── */}
-            {(!SCREEN_SHARE_ENABLED || !isScreenSharing) && (
+            {(!flags.screen_sharing || !isScreenSharing) && (
                 <div className="absolute left-1/2 -translate-x-1/2 z-20"
                      style={{ bottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
                     <div className="glass-pill gap-2 px-2 py-2 shadow-xl shadow-[hsl(var(--shadow-color))]/25">
                         <MicButton onClickFn={handleMicToggle} action={isMuted ? "close" : "open"} />
                         <CameraButton onClickFn={handleCameraToggle} action={isVideoOff ? "close" : "open"} />
-                        {!isVideoOff && (
+                        {flags.background_blur && !isVideoOff && (
                             <BlurButton enabled={isBlurEnabled} onToggle={handleBlurToggle} />
                         )}
                         {hasMultipleCameras && !isVideoOff && (
                             <FlipCameraButton onClickFn={handleFlipCamera} />
                         )}
 
-                        {SCREEN_SHARE_ENABLED && (
+                        {flags.screen_sharing && (
                             <button
                                 type="button"
                                 onClick={handleScreenShare}
