@@ -17,7 +17,8 @@ interface MeetState {
   isMuted: boolean
   isVideoOff: boolean
   isScreenSharing: boolean
-  
+  isBlurEnabled: boolean
+
   // Actions
   setCurrentMeet: (meetId: string | null) => void
   addParticipant: (participant: Participant) => void
@@ -27,6 +28,7 @@ interface MeetState {
   toggleMute: () => void
   toggleVideo: () => void
   toggleScreenShare: () => void
+  setBlurEnabled: (enabled: boolean) => void
   clearMeet: () => void
 }
 
@@ -38,6 +40,7 @@ export const useMeetStore = create<MeetState>()(
     isMuted: true,
     isVideoOff: true,
     isScreenSharing: false,
+    isBlurEnabled: false,
 
     setCurrentMeet: (meetId) =>
       set(() => ({
@@ -80,7 +83,10 @@ export const useMeetStore = create<MeetState>()(
       set((state) => ({
         isScreenSharing: !state.isScreenSharing,
       })),
-    
+
+    setBlurEnabled: (enabled) =>
+      set(() => ({ isBlurEnabled: enabled })),
+
     clearMeet: () =>
       set(() => ({
         currentMeet: null,
@@ -89,6 +95,7 @@ export const useMeetStore = create<MeetState>()(
         isMuted: true,
         isVideoOff: true,
         isScreenSharing: false,
+        isBlurEnabled: false,
       })),
   }))
 )

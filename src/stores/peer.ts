@@ -66,6 +66,8 @@ interface PeerState {
   disableCamera: () => void
   switchCamera: () => Promise<boolean>
 
+  setBackgroundBlur: (enabled: boolean) => Promise<boolean>
+
   startScreenShare: () => Promise<MediaStreamTrack | null>
   stopScreenShare: () => void
 
@@ -234,7 +236,8 @@ export const usePeerStore = create<PeerState>()(
             autoGainControl: true,
             sampleRate: { ideal: 48000 },
             channelCount: { ideal: 1 },
-          },
+            latency: { ideal: 0 },
+          } as MediaTrackConstraints,
         })
         const track = media.getAudioTracks()[0]
         if (!track) return null
@@ -337,6 +340,19 @@ export const usePeerStore = create<PeerState>()(
         return true
       } catch (e) {
         console.error('switchCamera failed', e)
+        return false
+      }
+    },
+
+    setBackgroundBlur: async (enabled) => {
+      const track = get().localStream?.getVideoTracks()[0]
+      if (!track) return false
+      try {
+        const capabilities = track.getCapabilities() as MediaTrackCapabilities & { backgroundBlur?: boolean[] }
+        if (!capabilities.backgroundBlur?.includes(true)) return false
+        await track.applyConstraints({ advanced: [{ backgroundBlur: enabled } as MediaTrackConstraintSet] })
+        return true
+      } catch {
         return false
       }
     },

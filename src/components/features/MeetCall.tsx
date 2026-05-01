@@ -12,6 +12,7 @@ import { useAudioLevel } from "@/src/hooks/use-audio-level";
 import { MicButton } from "@/src/components/ui/MicButton";
 import { CameraButton } from "@/src/components/ui/CameraButton";
 import { FlipCameraButton } from "@/src/components/ui/FlipCameraButton";
+import { BlurButton } from "@/src/components/ui/BlurButton";
 import { useHasMultipleCameras } from "@/src/hooks/use-has-multiple-cameras";
 import { VideoTile } from "@/src/components/ui/VideoTile";
 import { VideoGrid } from "@/src/components/ui/VideoGrid";
@@ -31,8 +32,8 @@ interface MeetCallProps {
 }
 
 export default function MeetCall({ client, connState, reconnectAttempt, routeMeetCode }: MeetCallProps) {
-    const { isMuted, isVideoOff, isScreenSharing, toggleMute, toggleVideo, toggleScreenShare, clearMeet } = useMeetStore();
-    const { localStream, enableMic, disableMic, enableCamera, disableCamera, switchCamera, startScreenShare, stopScreenShare, peerConnections, peerStats } = usePeerStore();
+    const { isMuted, isVideoOff, isScreenSharing, isBlurEnabled, toggleMute, toggleVideo, toggleScreenShare, setBlurEnabled, clearMeet } = useMeetStore();
+    const { localStream, enableMic, disableMic, enableCamera, disableCamera, switchCamera, setBackgroundBlur, startScreenShare, stopScreenShare, peerConnections, peerStats } = usePeerStore();
     const hasMultipleCameras = useHasMultipleCameras();
     const { userName, meetCode, clearJoinMeet } = useJoinMeetStore();
 
@@ -80,9 +81,20 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
         } else {
             const track = await enableCamera();
             if (!track) { toast.error("Camera unavailable. Check browser permissions."); return; }
+            if (isBlurEnabled) void setBackgroundBlur(true);
         }
         toggleVideo();
         broadcastState(!isMuted, !nextVideoOff);
+    };
+
+    const handleBlurToggle = async () => {
+        const next = !isBlurEnabled;
+        const ok = await setBackgroundBlur(next);
+        if (!ok && next) {
+            toast.error("Background blur is not supported in this browser.");
+            return;
+        }
+        setBlurEnabled(next);
     };
 
     const handleShare = async () => {
@@ -333,6 +345,9 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                     <div className="glass-pill gap-2 px-2 py-2 shadow-xl shadow-[hsl(var(--shadow-color))]/25">
                         <MicButton onClickFn={handleMicToggle} action={isMuted ? "close" : "open"} />
                         <CameraButton onClickFn={handleCameraToggle} action={isVideoOff ? "close" : "open"} />
+                        {!isVideoOff && (
+                            <BlurButton enabled={isBlurEnabled} onToggle={handleBlurToggle} />
+                        )}
                         {hasMultipleCameras && !isVideoOff && (
                             <FlipCameraButton onClickFn={handleFlipCamera} />
                         )}
