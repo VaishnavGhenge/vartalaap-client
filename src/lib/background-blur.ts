@@ -30,8 +30,9 @@ function getSegmenter(): Promise<ImageSegmenter> {
 
 export class BackgroundBlurProcessor {
   private video: HTMLVideoElement | null = null
-  private bgCanvas: HTMLCanvasElement | null = null
-  private fgCanvas: HTMLCanvasElement | null = null
+  private bgCtx: CanvasRenderingContext2D | null = null
+  private fgCtx: CanvasRenderingContext2D | null = null
+  private outCtx: CanvasRenderingContext2D | null = null
   private outCanvas: HTMLCanvasElement | null = null
   private timer: ReturnType<typeof setInterval> | null = null
   private running = false
@@ -49,15 +50,18 @@ export class BackgroundBlurProcessor {
     this.video.playsInline = true
     await this.video.play()
 
-    const make = (width: number, height: number) => {
+    const make = (width: number, height: number, willReadFrequently = false) => {
       const c = document.createElement('canvas')
       c.width = width
       c.height = height
-      return c
+      return c.getContext('2d', { willReadFrequently })!
     }
-    this.bgCanvas = make(w, h)
-    this.fgCanvas = make(w, h)
-    this.outCanvas = make(w, h)
+
+    this.bgCtx = make(w, h)
+    // willReadFrequently: getImageData is called every frame on this canvas
+    this.fgCtx = make(w, h, true)
+    this.outCtx = make(w, h)
+    this.outCanvas = this.outCtx.canvas
 
     this.running = true
 
@@ -74,32 +78,28 @@ export class BackgroundBlurProcessor {
   }
 
   private composite(result: ImageSegmenterResult, w: number, h: number) {
-    if (!this.bgCanvas || !this.fgCanvas || !this.outCanvas || !this.video) return
+    if (!this.bgCtx || !this.fgCtx || !this.outCtx || !this.video) return
     const mask = result.categoryMask
     if (!mask) return
 
-    const bgCtx = this.bgCanvas.getContext('2d')!
-    const fgCtx = this.fgCanvas.getContext('2d')!
-    const outCtx = this.outCanvas.getContext('2d')!
-
     // Blurred background
-    bgCtx.filter = `blur(${BLUR_RADIUS}px)`
-    bgCtx.drawImage(this.video, 0, 0, w, h)
-    bgCtx.filter = 'none'
+    this.bgCtx.filter = `blur(${BLUR_RADIUS}px)`
+    this.bgCtx.drawImage(this.video, 0, 0, w, h)
+    this.bgCtx.filter = 'none'
 
     // Sharp foreground — zero alpha on background pixels
-    fgCtx.drawImage(this.video, 0, 0, w, h)
+    this.fgCtx.drawImage(this.video, 0, 0, w, h)
     const maskValues = mask.getAsUint8Array()
-    const fgData = fgCtx.getImageData(0, 0, w, h)
+    const fgData = this.fgCtx.getImageData(0, 0, w, h)
     for (let i = 0; i < maskValues.length; i++) {
       if (maskValues[i] === 0) fgData.data[i * 4 + 3] = 0
     }
-    fgCtx.putImageData(fgData, 0, 0)
+    this.fgCtx.putImageData(fgData, 0, 0)
     mask.close()
 
     // Compose
-    outCtx.drawImage(this.bgCanvas, 0, 0)
-    outCtx.drawImage(this.fgCanvas, 0, 0)
+    this.outCtx.drawImage(this.bgCtx.canvas, 0, 0)
+    this.outCtx.drawImage(this.fgCtx.canvas, 0, 0)
   }
 
   stop() {
@@ -107,6 +107,6 @@ export class BackgroundBlurProcessor {
     if (this.timer) { clearInterval(this.timer); this.timer = null }
     this.video?.pause()
     this.video = null
-    this.bgCanvas = this.fgCanvas = this.outCanvas = null
+    this.bgCtx = this.fgCtx = this.outCtx = this.outCanvas = null
   }
 }
