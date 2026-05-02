@@ -17,7 +17,9 @@ function getAudioCtor(): typeof AudioContext | null {
 export function getSharedAudioContext(): AudioContext | null {
   const Ctor = getAudioCtor()
   if (!Ctor) return null
-  if (!sharedCtx || sharedCtx.state === 'closed') sharedCtx = new Ctor()
+  if (!sharedCtx || sharedCtx.state === 'closed') {
+    sharedCtx = new Ctor({ latencyHint: 'interactive', sampleRate: 48000 })
+  }
   return sharedCtx
 }
 

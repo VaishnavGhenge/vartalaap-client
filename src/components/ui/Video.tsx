@@ -1,5 +1,6 @@
-import {useEffect, useRef} from "react";
+import { useEffect, useRef } from "react";
 import type { RefObject } from "react";
+import { getSharedAudioContext } from "@/src/lib/audio-context";
 
 
 interface VideoProps {
@@ -54,15 +55,21 @@ export const VideoStream = ({stream, isLocal}: VideoProps) => {
 }
 
 
-export const AudioStream = ({stream}: { stream: MediaStream | null }) => {
-    const ref = useRef<HTMLAudioElement>(null);
+export const AudioStream = ({ stream }: { stream: MediaStream | null }) => {
+    useEffect(() => {
+        if (!stream) return
+        const ctx = getSharedAudioContext()
+        if (!ctx) return
+        // Resume if user interaction hasn't unlocked the context yet.
+        if (ctx.state === 'suspended') ctx.resume().catch(() => {})
+        // Route remote audio through the interactive-latency AudioContext so
+        // playout delay is minimised — shorter delay helps the remote peer's
+        // AEC3 correlate their speaker output with their mic and converge faster,
+        // which is the primary cause of the brief echo at the start of calls.
+        const source = ctx.createMediaStreamSource(stream)
+        source.connect(ctx.destination)
+        return () => { try { source.disconnect() } catch { /* noop */ } }
+    }, [stream])
 
-    useAttachTracks(ref, stream, 'audio');
-
-    return <audio
-        ref={ref}
-        autoPlay
-        hidden
-        playsInline
-    />
+    return null
 }
