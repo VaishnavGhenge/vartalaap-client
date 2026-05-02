@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Copy, Check, Share2 } from "lucide-react";
+import { Copy, Check, Share2, Settings } from "lucide-react";
+import { SettingsPanel } from "@/src/components/ui/SettingsPanel";
 import { resumeSharedAudioContext } from "@/src/lib/audio-context";
 import { playJoinCall } from "@/src/lib/sounds";
 import { MicButton } from "@/src/components/ui/MicButton";
@@ -24,6 +25,7 @@ export default function JoinMeet() {
     const [meetCode, setMeetCode] = useState("");
     const [copied, setCopied] = useState(false);
     const [canShare, setCanShare] = useState(false);
+    const [showSettings, setShowSettings] = useState(false);
     useEffect(() => { setCanShare('share' in navigator); }, []);
 
     const { localStream, enableMic, disableMic, enableCamera, disableCamera, switchCamera } = usePeerStore();
@@ -144,6 +146,18 @@ export default function JoinMeet() {
                     <div className="lg:col-span-2 flex flex-col justify-center">
                         <div className="app-panel rounded-2xl p-5 sm:p-6">
 
+                            {/* Settings gear — top-right of the panel */}
+                            <div className="flex justify-end mb-3 -mt-1 -mr-1">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowSettings(true)}
+                                    aria-label="Open settings"
+                                    className="ctrl-btn ctrl-btn-on w-7 h-7 text-[hsl(var(--muted-foreground))]"
+                                >
+                                    <Settings className="w-3.5 h-3.5" />
+                                </button>
+                            </div>
+
                             {/* Meeting code row */}
                             <div className="flex items-center justify-between gap-3
                                             rounded-xl border border-[hsl(var(--border))]
@@ -197,6 +211,8 @@ export default function JoinMeet() {
 
                 </div>
             </div>
+
+        {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
         </main>
     );
 }

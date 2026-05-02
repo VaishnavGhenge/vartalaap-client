@@ -12,9 +12,13 @@ const DEFAULTS: FeatureFlags = {
 
 const STORAGE_KEY = 'vartalaap:flags'
 
-// Cached snapshot — same reference until a storage event invalidates it.
-// Required by useSyncExternalStore which uses Object.is to detect changes.
+// In-memory cache — same reference between calls so useSyncExternalStore
+// can detect changes via Object.is.
 let cachedFlags: FeatureFlags | null = null
+
+// In-memory subscribers — notified synchronously when setFlag is called.
+// Avoids relying on StorageEvent which does not fire on the originating window.
+const subscribers = new Set<() => void>()
 
 function readFlags(): FeatureFlags {
   if (typeof window === 'undefined') return DEFAULTS
@@ -31,14 +35,14 @@ export function getFlags(): FeatureFlags {
   return cachedFlags
 }
 
-export function invalidateFlags(): void {
-  cachedFlags = readFlags()
+export function subscribeToFlags(cb: () => void): () => void {
+  subscribers.add(cb)
+  return () => subscribers.delete(cb)
 }
 
 export function setFlag(key: keyof FeatureFlags, value: boolean): void {
-  const flags = getFlags()
-  const next = { ...flags, [key]: value }
+  const next = { ...getFlags(), [key]: value }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
   cachedFlags = next
-  window.dispatchEvent(new StorageEvent('storage', { key: STORAGE_KEY }))
+  subscribers.forEach((cb) => cb())
 }

@@ -297,12 +297,13 @@ export const usePeerStore = create<PeerState>()(
         const track = media.getVideoTracks()[0]
         if (!track) return null
 
-        // Stop any existing video tracks (raw or canvas).
         existingStream?.getVideoTracks().forEach((t) => t.stop())
         const audioTracks = existingStream?.getAudioTracks() ?? []
 
-        if (activeProcessor) {
-          activeProcessor.stop()
+        // Auto-apply blur if the feature flag is on, or if a processor was already running.
+        const wantBlur = activeProcessor !== null || getFlags().background_blur
+        if (wantBlur) {
+          activeProcessor?.stop()
           try {
             const newProcessor = new BackgroundBlurProcessor()
             const canvasTrack = await newProcessor.start(track)

@@ -17,7 +17,6 @@ interface MeetState {
   isMuted: boolean
   isVideoOff: boolean
   isScreenSharing: boolean
-  isBlurEnabled: boolean
 
   // Actions
   setCurrentMeet: (meetId: string | null) => void
@@ -28,7 +27,6 @@ interface MeetState {
   toggleMute: () => void
   toggleVideo: () => void
   toggleScreenShare: () => void
-  setBlurEnabled: (enabled: boolean) => void
   clearMeet: () => void
 }
 
@@ -40,52 +38,29 @@ export const useMeetStore = create<MeetState>()(
     isMuted: true,
     isVideoOff: true,
     isScreenSharing: false,
-    isBlurEnabled: false,
 
-    setCurrentMeet: (meetId) =>
-      set(() => ({
-        currentMeet: meetId,
-      })),
-    
+    setCurrentMeet: (meetId) => set(() => ({ currentMeet: meetId })),
+
     addParticipant: (participant) =>
-      set((state) => ({
-        participants: [...state.participants, participant],
-      })),
-    
+      set((state) => ({ participants: [...state.participants, participant] })),
+
     removeParticipant: (participantId) =>
-      set((state) => ({
-        participants: state.participants.filter((p) => p.id !== participantId),
-      })),
-    
+      set((state) => ({ participants: state.participants.filter((p) => p.id !== participantId) })),
+
     updateParticipant: (participantId, updates) =>
       set((state) => ({
         participants: state.participants.map((p) =>
           p.id === participantId ? { ...p, ...updates } : p
         ),
       })),
-    
-    setConnectionStatus: (connected) =>
-      set(() => ({
-        isConnected: connected,
-      })),
-    
-    toggleMute: () =>
-      set((state) => ({
-        isMuted: !state.isMuted,
-      })),
-    
-    toggleVideo: () =>
-      set((state) => ({
-        isVideoOff: !state.isVideoOff,
-      })),
-    
-    toggleScreenShare: () =>
-      set((state) => ({
-        isScreenSharing: !state.isScreenSharing,
-      })),
 
-    setBlurEnabled: (enabled) =>
-      set(() => ({ isBlurEnabled: enabled })),
+    setConnectionStatus: (connected) => set(() => ({ isConnected: connected })),
+
+    toggleMute: () => set((state) => ({ isMuted: !state.isMuted })),
+
+    toggleVideo: () => set((state) => ({ isVideoOff: !state.isVideoOff })),
+
+    toggleScreenShare: () => set((state) => ({ isScreenSharing: !state.isScreenSharing })),
 
     clearMeet: () =>
       set(() => ({
@@ -95,7 +70,6 @@ export const useMeetStore = create<MeetState>()(
         isMuted: true,
         isVideoOff: true,
         isScreenSharing: false,
-        isBlurEnabled: false,
       })),
   }))
 )

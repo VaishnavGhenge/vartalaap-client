@@ -1,12 +1,6 @@
 import { useSyncExternalStore } from 'react'
-import { getFlags, invalidateFlags, type FeatureFlags } from '@/src/lib/feature-flags'
-
-function subscribe(cb: () => void) {
-  const handler = () => { invalidateFlags(); cb() }
-  window.addEventListener('storage', handler)
-  return () => window.removeEventListener('storage', handler)
-}
+import { getFlags, subscribeToFlags, type FeatureFlags } from '@/src/lib/feature-flags'
 
 export function useFeatureFlags(): FeatureFlags {
-  return useSyncExternalStore(subscribe, getFlags, getFlags)
+  return useSyncExternalStore(subscribeToFlags, getFlags, getFlags)
 }
