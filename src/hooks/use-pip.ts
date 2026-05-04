@@ -36,8 +36,8 @@ export function usePip() {
     const [pipActive, setPipActive] = useState(false);
     const [pipWindow, setPipWindow] = useState<Window | null>(null);
 
-    const enterPip = useCallback(async () => {
-        if (pipActive) return;
+    const enterPip = useCallback(async (): Promise<boolean> => {
+        if (pipActive) return false;
 
         if (pipMode === 'document') {
             try {
@@ -52,18 +52,23 @@ export function usePip() {
                     setPipActive(false);
                     setPipWindow(null);
                 }, { once: true });
+                return true;
             } catch {
-                // User dismissed or browser denied
+                return false;
             }
         } else if (pipMode === 'element') {
             const video = findBestVideo();
-            if (!video) return;
+            if (!video) return false;
             try {
                 await video.requestPictureInPicture();
                 setPipActive(true);
                 video.addEventListener('leavepictureinpicture', () => setPipActive(false), { once: true });
-            } catch {}
+                return true;
+            } catch {
+                return false;
+            }
         }
+        return false;
     }, [pipActive, pipMode]);
 
     const exitPip = useCallback(async () => {

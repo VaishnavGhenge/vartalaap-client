@@ -51,20 +51,6 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
 
     const { pipActive, pipWindow, pipMode, enterPip, exitPip } = usePip();
 
-    // Auto-enter PiP when the user switches tabs (only with remote participants present).
-    useEffect(() => {
-        if (pipMode === 'none') return;
-        const handleVisibility = () => {
-            if (document.hidden && remotePeers.length > 0) {
-                enterPip();
-            } else if (!document.hidden) {
-                exitPip();
-            }
-        };
-        document.addEventListener('visibilitychange', handleVisibility);
-        return () => document.removeEventListener('visibilitychange', handleVisibility);
-    }, [pipMode, remotePeers.length, enterPip, exitPip]);
-
     // Clear pin when the pinned peer leaves.
     useEffect(() => {
         if (!pinnedId || pinnedId === LOCAL_TILE_ID) return;
@@ -366,14 +352,32 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                     </button>
 
                     {pipMode !== 'none' && (
-                        <button
-                            type="button"
-                            onClick={() => pipActive ? exitPip() : enterPip()}
-                            aria-label={pipActive ? "Close picture-in-picture" : "Picture-in-picture"}
-                            className={`ctrl-btn h-9 w-9 sm:h-11 sm:w-11 ${pipActive ? 'ctrl-btn-screen' : 'ctrl-btn-on'}`}
-                        >
-                            <PictureInPicture2 className="w-4 h-4 sm:w-5 sm:h-5" />
-                        </button>
+                        <div className="relative group/pip">
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    if (pipActive) {
+                                        exitPip();
+                                    } else {
+                                        const opened = await enterPip();
+                                        if (opened) toast.success("Call pinned — switch tabs or apps freely");
+                                    }
+                                }}
+                                aria-label={pipActive ? "Close picture-in-picture" : "Picture-in-picture"}
+                                className={`ctrl-btn h-9 w-9 sm:h-11 sm:w-11 ${pipActive ? 'ctrl-btn-screen' : 'ctrl-btn-on'}`}
+                            >
+                                <PictureInPicture2 className="w-4 h-4 sm:w-5 sm:h-5" />
+                            </button>
+                            {/* Tooltip — explains you need to click first before switching */}
+                            {!pipActive && (
+                                <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2
+                                                opacity-0 group-hover/pip:opacity-100 transition-opacity
+                                                whitespace-nowrap glass-pill px-2.5 py-1 text-[11px]
+                                                text-[hsl(var(--muted-foreground))]">
+                                    Click to keep call visible when you switch tabs
+                                </div>
+                            )}
+                        </div>
                     )}
 
                     <div className="mx-1 h-5 w-px bg-[hsl(var(--border))]" />
