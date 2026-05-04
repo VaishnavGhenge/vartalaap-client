@@ -1,0 +1,59 @@
+name: Tests
+
+on:
+  push:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: Unit tests & coverage
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Run unit tests with coverage
+        run: npm run test:coverage
+
+      - name: Post coverage summary
+        if: always() && github.ref == 'refs/heads/main'
+        run: |
+          if [ ! -f coverage/coverage-summary.json ]; then
+            echo "## Test Coverage" >> $GITHUB_STEP_SUMMARY
+            echo "Coverage report not generated (tests may have failed)." >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
+          echo "## Test Coverage" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | % |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|---|" >> $GITHUB_STEP_SUMMARY
+          node -e "
+            const s = JSON.parse(require('fs').readFileSync('./coverage/coverage-summary.json')).total;
+            ['statements','branches','functions','lines'].forEach(k => {
+              console.log('| ' + k.charAt(0).toUpperCase() + k.slice(1) + ' | ' + s[k].pct.toFixed(1) + '% |');
+            });
+          " >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload coverage report
+        if: always() && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 14

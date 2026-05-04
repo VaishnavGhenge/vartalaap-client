@@ -221,6 +221,5 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
     }
     // Intentionally excluding userName/initialAudio/initialVideo: they're
     // captured via joinArgs ref so mute toggles don't rejoin the room.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, roomId, enabled])
 }
