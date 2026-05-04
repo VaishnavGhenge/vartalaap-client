@@ -19,43 +19,50 @@ const BASE = {
   latency: { ideal: 0 },
 } satisfies Record<string, unknown>
 
-// Chrome/Chromium proprietary constraint hints — silently ignored by Firefox
-// and Safari, so spreading them unconditionally on Chromium is safe.
-//
-// googExperimentalEchoCancellation — activates AEC3, Chrome's 3rd-generation
-//   echo canceller (delay-agnostic, suppresses non-linear echo, handles
-//   near-end noise better than AEC2).
-// googExperimentalNoiseSuppression — neural-net noise suppressor (RNNoise-based)
-//   vs the older spectral-subtraction suppressor.
-// googHighpassFilter — 80 Hz high-pass removes HVAC / low-frequency room rumble
-//   before the AEC reference signal is computed.
-// googTypingNoiseDetection — classifier that suppresses keystroke bursts.
-// googAudioMirroring: false — prevents the capture pipeline from routing mic
-//   audio back to the output device (would create an acoustic echo path).
-// googEchoCancellationMobileMode: false — forces the desktop-quality AEC pipeline
-//   even on mobile Chrome (more CPU, but significantly cleaner suppression).
-const CHROMIUM_HINTS: Record<string, unknown> = {
+// Safe Chrome/Chromium hints — applied on all Chromium browsers.
+// These reinforce the standard W3C constraints with Chrome's internal names
+// and are well-tested across devices.
+const CHROMIUM_SAFE: Record<string, unknown> = {
   googEchoCancellation: true,
-  googExperimentalEchoCancellation: true,
   googNoiseSuppression: true,
+  googHighpassFilter: true,   // 80 Hz high-pass removes HVAC / low-frequency room rumble
+  googAudioMirroring: false,  // prevent mic audio routing back to output device
+}
+
+// Experimental Chrome hints — only applied when the user opts in via the
+// "Enhanced Echo Cancellation" toggle.
+//
+// googExperimentalEchoCancellation — AEC3, Chrome's 3rd-generation echo
+//   canceller (delay-agnostic, handles non-linear echo better than AEC2).
+// googExperimentalNoiseSuppression — neural-net noise suppressor. Can
+//   over-suppress and produce silence in some acoustic environments; keep
+//   behind a flag until behaviour is validated across devices.
+// googTypingNoiseDetection — keystroke-burst suppressor; can misfire on
+//   non-typing sounds in some environments.
+// googEchoCancellationMobileMode: false — forces the desktop AEC pipeline on
+//   mobile Chrome. Significantly higher CPU cost; can stall audio processing
+//   on weaker devices, resulting in silence at the remote end.
+const CHROMIUM_EXPERIMENTAL: Record<string, unknown> = {
+  googExperimentalEchoCancellation: true,
   googExperimentalNoiseSuppression: true,
-  googHighpassFilter: true,
   googTypingNoiseDetection: true,
   googAutoGainControl: true,
-  googAudioMirroring: false,
   googEchoCancellationMobileMode: false,
 }
 
 /**
- * Returns the best available microphone constraints for the current browser.
+ * Returns microphone constraints for the current browser.
  *
- * On Chromium browsers, activates AEC3 and the experimental neural noise
- * suppressor via Chrome's proprietary constraint hints. On all browsers,
- * requests 48 kHz mono with the lowest possible capture latency.
+ * Pass `experimental = true` to additionally enable Chrome's AEC3, neural
+ * noise suppressor, and typing-noise detector (the "Enhanced Echo
+ * Cancellation" opt-in). Those hints are safe on most desktop hardware but
+ * can suppress audio entirely on mobile or in unusual acoustic environments,
+ * so they are off by default.
  */
-export function getMicConstraints(): MediaTrackConstraints {
+export function getMicConstraints(experimental = false): MediaTrackConstraints {
   return {
     ...BASE,
-    ...(isChromium() ? CHROMIUM_HINTS : {}),
+    ...(isChromium() ? CHROMIUM_SAFE : {}),
+    ...(isChromium() && experimental ? CHROMIUM_EXPERIMENTAL : {}),
   } as MediaTrackConstraints
 }

@@ -84,6 +84,16 @@ async function makePeerWithAudioSender() {
   return { peer, sender }
 }
 
+async function makePeerWithoutAudioSender() {
+  const Peer = (await import('simple-peer')).default
+  const peer = new (Peer as unknown as new () => {
+    _pc: { getSenders: ReturnType<typeof vi.fn> }
+    addTrack: ReturnType<typeof vi.fn>
+  })()
+  peer._pc.getSenders = vi.fn(() => [])
+  return { peer }
+}
+
 // ─── Setup ────────────────────────────────────────────────────────────────────
 
 const origCreateElement = document.createElement.bind(document)
@@ -167,6 +177,23 @@ describe('enableMic', () => {
 
     expect(sender.replaceTrack).toHaveBeenCalledWith(track)
     expect(peer.addTrack).not.toHaveBeenCalled()
+  })
+
+  it('adds the audio track when the peer has no audio sender to replace', async () => {
+    const { peer } = await makePeerWithoutAudioSender()
+    usePeerStore.setState({
+      peerConnections: new Map([
+        ['p1', { id: 'p1', peer: peer as never, name: '', audio: false, video: false, speaking: false, screenSharing: false }],
+      ]),
+    })
+    const track = makeTrack('audio')
+    stubGetUserMedia(track)
+
+    await usePeerStore.getState().enableMic()
+
+    const stream = usePeerStore.getState().localStream
+    expect(stream).not.toBeNull()
+    expect(peer.addTrack).toHaveBeenCalledWith(track, stream)
   })
 
   it('returns null when getUserMedia rejects', async () => {

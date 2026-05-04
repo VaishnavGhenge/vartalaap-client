@@ -1,6 +1,6 @@
 "use client";
 
-import { PhoneOff, Copy, Check, Share2, BarChart2, Monitor } from "lucide-react";
+import { PhoneOff, Copy, Check, Share2, BarChart2, Monitor, PictureInPicture2 } from "lucide-react";
 import { toast } from "sonner";
 import { resumeSharedAudioContext } from "@/src/lib/audio-context";
 import { playLeaveCall, playScreenShareStart, playScreenShareStop } from "@/src/lib/sounds";
@@ -14,6 +14,8 @@ import { VideoTile } from "@/src/components/ui/VideoTile";
 import { VideoGrid } from "@/src/components/ui/VideoGrid";
 import { ConnectionBanner } from "@/src/components/ui/ConnectionBanner";
 import { StatsPanel } from "@/src/components/ui/StatsPanel";
+import { PipWindow } from "@/src/components/ui/PipWindow";
+import { usePip } from "@/src/hooks/use-pip";
 import { useMeetStore } from "@/src/stores/meet";
 import { usePeerStore } from "@/src/stores/peer";
 import { useJoinMeetStore } from "@/src/stores/joinMeet";
@@ -46,6 +48,22 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
     useEffect(() => { setCanShare('share' in navigator); }, []);
 
     const remotePeers = useMemo(() => Array.from(peerConnections.values()), [peerConnections]);
+
+    const { pipActive, pipWindow, pipMode, enterPip, exitPip } = usePip();
+
+    // Auto-enter PiP when the user switches tabs (only with remote participants present).
+    useEffect(() => {
+        if (pipMode === 'none') return;
+        const handleVisibility = () => {
+            if (document.hidden && remotePeers.length > 0) {
+                enterPip();
+            } else if (!document.hidden) {
+                exitPip();
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibility);
+        return () => document.removeEventListener('visibilitychange', handleVisibility);
+    }, [pipMode, remotePeers.length, enterPip, exitPip]);
 
     // Clear pin when the pinned peer leaves.
     useEffect(() => {
@@ -347,6 +365,17 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                         <Monitor className="w-4 h-4 sm:w-5 sm:h-5" />
                     </button>
 
+                    {pipMode !== 'none' && (
+                        <button
+                            type="button"
+                            onClick={() => pipActive ? exitPip() : enterPip()}
+                            aria-label={pipActive ? "Close picture-in-picture" : "Picture-in-picture"}
+                            className={`ctrl-btn h-9 w-9 sm:h-11 sm:w-11 ${pipActive ? 'ctrl-btn-screen' : 'ctrl-btn-on'}`}
+                        >
+                            <PictureInPicture2 className="w-4 h-4 sm:w-5 sm:h-5" />
+                        </button>
+                    )}
+
                     <div className="mx-1 h-5 w-px bg-[hsl(var(--border))]" />
 
                     <button
@@ -372,6 +401,89 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
             {showStats && (
                 <StatsPanel rows={statsRows} onClose={() => setShowStats(false)} />
             )}
+
+            {/* Document PiP: render a compact video grid in the floating mini-window */}
+            {pipActive && pipWindow && (
+                <PipWindow pipWindow={pipWindow}>
+                    <PipCallView
+                        localStream={localDisplayStream}
+                        isVideoOff={isScreenSharing ? false : isVideoOff}
+                        isMuted={isMuted}
+                        userName={userName}
+                        remotePeers={remotePeers}
+                    />
+                </PipWindow>
+            )}
+        </div>
+    );
+}
+
+// ── Compact call view rendered inside the Document PiP window ─────────────────
+
+interface PipCallViewProps {
+    localStream: MediaStream | null;
+    isVideoOff: boolean;
+    isMuted: boolean;
+    userName: string;
+    remotePeers: Array<{
+        id: string;
+        name?: string;
+        audio?: boolean;
+        video?: boolean;
+        speaking?: boolean;
+        stream?: MediaStream;
+        screenSharing?: boolean;
+    }>;
+}
+
+function PipCallView({ localStream, isVideoOff, isMuted, userName, remotePeers }: PipCallViewProps) {
+    // Show up to 3 remote peers + local; remote peers are higher priority.
+    const tiles: Array<{ id: string; isLocal: boolean; peer?: PipCallViewProps['remotePeers'][number] }> = [
+        ...remotePeers.slice(0, 3).map(p => ({ id: p.id, isLocal: false, peer: p })),
+        { id: 'local', isLocal: true },
+    ];
+
+    const count = tiles.length;
+    const cols = count === 1 ? 1 : 2;
+    const rows = count <= 2 ? 1 : 2;
+
+    return (
+        <div
+            style={{
+                width: '100vw',
+                height: '100vh',
+                display: 'grid',
+                gridTemplateColumns: `repeat(${cols}, 1fr)`,
+                gridTemplateRows: `repeat(${rows}, 1fr)`,
+                gap: '2px',
+                background: '#000',
+            }}
+        >
+            {tiles.map(t => (
+                t.isLocal ? (
+                    <VideoTile
+                        key="local"
+                        isLocal
+                        userName={userName}
+                        isVideoOff={isVideoOff}
+                        isMuted={isMuted}
+                        stream={localStream}
+                    />
+                ) : (
+                    <VideoTile
+                        key={t.id}
+                        participant={{
+                            id: t.peer!.id,
+                            name: t.peer!.name || t.peer!.id.slice(0, 6),
+                            isMuted: !t.peer!.audio,
+                            isVideoOff: !t.peer!.video,
+                            speaking: t.peer!.speaking,
+                        }}
+                        stream={t.peer!.stream ?? null}
+                        isScreenSharing={t.peer!.screenSharing}
+                    />
+                )
+            ))}
         </div>
     );
 }

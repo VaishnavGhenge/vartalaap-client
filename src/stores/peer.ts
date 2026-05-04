@@ -255,6 +255,30 @@ const replaceAudioSenderOnPeers = (
   })
 }
 
+const publishAudioTrackToPeers = (
+  track: MediaStreamTrack,
+  stream: MediaStream,
+  peers: Map<string, PeerConnection>,
+) => {
+  peers.forEach((c) => {
+    try {
+      const pc = (c.peer as unknown as { _pc?: RTCPeerConnection })._pc
+      const sender = pc?.getSenders().find(s => s.track?.kind === 'audio')
+      if (sender) {
+        sender.replaceTrack(track)
+          .catch(e => console.error('[publishAudioTrack] replaceTrack failed for peer', c.id, e))
+        return
+      }
+
+      // Recovery path for peers created before an audio placeholder existed.
+      // simple-peer will renegotiate; without this, unmute has no sender to replace.
+      c.peer.addTrack(track, stream)
+    } catch (e) {
+      console.error('[publishAudioTrack] failed for peer', c.id, e)
+    }
+  })
+}
+
 export const usePeerStore = create<PeerState>()(
   devtools((set, get) => {
     const savedDevices = getDevicePreferences()
@@ -344,8 +368,7 @@ export const usePeerStore = create<PeerState>()(
         stream.getAudioTracks().forEach((t) => { t.stop(); stream.removeTrack(t) })
         stream.addTrack(track)
         if (!existing) set({ localStream: stream })
-        // Replace the silent placeholder on all peers — no renegotiation.
-        replaceAudioSenderOnPeers(track, get().peerConnections)
+        publishAudioTrackToPeers(track, stream, get().peerConnections)
         return track
       } catch (e) {
         console.error('enableMic failed', e)
@@ -504,7 +527,7 @@ export const usePeerStore = create<PeerState>()(
         if (!track) return
         localStream.getAudioTracks().forEach(t => { t.stop(); localStream.removeTrack(t) })
         localStream.addTrack(track)
-        replaceAudioSenderOnPeers(track, peerConnections)
+        publishAudioTrackToPeers(track, localStream, peerConnections)
       } catch (e) {
         console.error('setAudioInput failed', e)
       }
