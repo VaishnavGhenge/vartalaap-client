@@ -497,20 +497,32 @@ export const usePeerStore = create<PeerState>()(
       })
 
       // Replace placeholders with live tracks once the RTCPeerConnection exists.
-      // If a screen share is in progress, send that as the video track so
-      // late-joining peers immediately see the shared screen.
-      if (localStream) {
-        queueMicrotask(() => {
-          const pc = (peer as unknown as { _pc?: RTCPeerConnection })._pc
-          if (!pc) return
-          const { screenTrack } = get()
-          for (const track of localStream.getTracks()) {
-            const liveTrack = track.kind === 'video' && screenTrack ? screenTrack : track
-            const sender = pc.getSenders().find(s => s.track?.kind === liveTrack.kind)
-            if (sender) void sender.replaceTrack(liveTrack)
+      //
+      // When the camera is off, localStream has only audio tracks (no video).
+      // We must handle video (especially screen share) independently of localStream
+      // so late-joining peers always receive the correct video track.
+      queueMicrotask(() => {
+        const pc = (peer as unknown as { _pc?: RTCPeerConnection })._pc
+        if (!pc) return
+        const { screenTrack } = get()
+
+        // Audio — replace only if localStream has a live audio track.
+        if (localStream) {
+          const audioTrack = localStream.getAudioTracks()[0]
+          if (audioTrack) {
+            const audioSender = pc.getSenders().find(s => s.track?.kind === 'audio')
+            if (audioSender) void audioSender.replaceTrack(audioTrack)
           }
-        })
-      }
+        }
+
+        // Video — prefer screen track when sharing; fall back to camera track.
+        // This handles the case where localStream has no video (camera off).
+        const videoTrack = screenTrack ?? localStream?.getVideoTracks()[0] ?? null
+        if (videoTrack) {
+          const videoSender = pc.getSenders().find(isVideoSender)
+          if (videoSender) void videoSender.replaceTrack(videoTrack)
+        }
+      })
 
       queueMicrotask(() => tunePeerVideoSendersForCongestion(peer))
       return peer

@@ -55,6 +55,18 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
         if (!peerConnections.has(pinnedId)) setPinnedId(null);
     }, [peerConnections, pinnedId]);
 
+    // Re-broadcast our media state whenever the peer list changes so late-joining
+    // peers immediately learn about active screen sharing (or mute state).
+    const prevPeerCount = useRef(0);
+    useEffect(() => {
+        const count = peerConnections.size;
+        if (count > prevPeerCount.current && client) {
+            client.send('peer-state', { audio: !isMuted, video: !isVideoOff, screenSharing: isScreenSharing });
+        }
+        prevPeerCount.current = count;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [peerConnections]);
+
     // While screen sharing, show the screen track in the local tile.
     const localDisplayStream = useMemo(() => {
         if (!screenTrack) return localStream;

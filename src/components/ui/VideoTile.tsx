@@ -55,7 +55,11 @@ export const VideoTile = ({
     compact = false,
 }: VideoTileProps) => {
     const name = isLocal ? (userName || 'You') : (participant?.name || 'Participant');
-    const videoOff = isLocal ? !!isVideoOff : !!participant?.isVideoOff;
+    // When a remote peer is screen sharing their video track IS the screen —
+    // never hide it based on camera state.
+    const videoOff = isLocal
+        ? !!isVideoOff
+        : (isScreenSharing ? false : !!participant?.isVideoOff);
     const muted = isLocal ? !!isMuted : !!participant?.isMuted;
     const label = isLocal ? `${name} (you)` : name;
 
