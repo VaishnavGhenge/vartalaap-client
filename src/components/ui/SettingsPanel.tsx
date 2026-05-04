@@ -1,8 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { X, Plus, FlaskConical, Check } from 'lucide-react'
-import { getFlags, setFlag } from '@/src/lib/feature-flags'
+import { X, Plus, Check } from 'lucide-react'
 import {
   getBackgroundEffectPreference,
   type BackgroundEffectMode,
@@ -164,42 +163,6 @@ function BackgroundEffectsGrid({ onChange }: { onChange: (pref: BackgroundEffect
   )
 }
 
-function EchoToggle() {
-  const [on, setOn] = useState(() => getFlags()['experimental_echo_cancel'])
-
-  const toggle = () => {
-    const next = !on
-    setOn(next)
-    setFlag('experimental_echo_cancel', next)
-  }
-
-  return (
-    <div className="flex items-start justify-between gap-4 rounded-xl border border-[hsl(var(--border)/0.4)]
-                    bg-[hsl(var(--surface-2))]/60 px-4 py-3.5">
-      <div className="flex flex-col gap-1 min-w-0">
-        <span className="text-sm font-medium leading-tight">Enhanced Echo Cancellation</span>
-        <span className="text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
-          Activates Chrome-specific AEC3 hints. Re-enable mic after toggling.
-        </span>
-      </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={on}
-        onClick={toggle}
-        className={`relative mt-0.5 inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors
-                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]/50
-                    ${on ? 'bg-[hsl(var(--primary))]' : 'bg-[hsl(var(--border))]'}`}
-      >
-        <span
-          className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-200
-                      ${on ? 'translate-x-[18px]' : 'translate-x-[3px]'}`}
-        />
-      </button>
-    </div>
-  )
-}
-
 export function SettingsPanel({ onClose, isVideoOff }: SettingsPanelProps) {
   const setBackgroundEffect = usePeerStore((s) => s.setBackgroundEffect)
 
@@ -238,17 +201,6 @@ export function SettingsPanel({ onClose, isVideoOff }: SettingsPanelProps) {
             ) : (
               <BackgroundEffectsGrid onChange={(pref) => { void setBackgroundEffect(pref) }} />
             )}
-          </section>
-
-          {/* ── Experimental ───────────────────────────── */}
-          <section className="flex flex-col gap-3">
-            <div className="flex items-center gap-1.5">
-              <FlaskConical className="h-3.5 w-3.5 text-amber-500" aria-hidden />
-              <h2 className="text-xs font-semibold uppercase tracking-widest text-amber-600 dark:text-amber-400">
-                Experimental
-              </h2>
-            </div>
-            <EchoToggle />
           </section>
 
         </div>

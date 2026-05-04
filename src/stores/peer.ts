@@ -4,7 +4,7 @@ import Peer from 'simple-peer'
 import type { IceServer } from '@/src/services/api/ice'
 import { getSharedAudioContext } from '@/src/lib/audio-context'
 import { BackgroundBlurProcessor } from '@/src/lib/background-blur'
-import { getFlags } from '@/src/lib/feature-flags'
+import { getMicConstraints } from '@/src/lib/audio-constraints'
 import {
   getBackgroundEffectPreference,
   setBackgroundEffectPreference,
@@ -318,26 +318,7 @@ export const usePeerStore = create<PeerState>()(
 
     enableMic: async () => {
       try {
-        const { experimental_echo_cancel } = getFlags()
-        const media = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-            sampleRate: { ideal: 48000 },
-            channelCount: { ideal: 1 },
-            latency: { ideal: 0 },
-            // Chrome-specific enhanced AEC — enabled via experimental_echo_cancel flag.
-            // These hints activate Chromium's AEC3, experimental NS, and high-pass filter.
-            ...(experimental_echo_cancel && {
-              googEchoCancellation: true,
-              googExperimentalEchoCancellation: true,
-              googNoiseSuppression: true,
-              googHighpassFilter: true,
-              googAudioMirroring: false,
-            }),
-          } as MediaTrackConstraints,
-        })
+        const media = await navigator.mediaDevices.getUserMedia({ audio: getMicConstraints() })
         const track = media.getAudioTracks()[0]
         if (!track) return null
         const existing = get().localStream

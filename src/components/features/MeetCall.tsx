@@ -351,9 +351,9 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
 
                     <button
                         type="button"
-                        onClick={() => setShowStats(true)}
+                        onClick={() => setShowStats(v => !v)}
                         aria-label="Network stats"
-                        className="ctrl-btn ctrl-btn-on h-9 w-9 sm:h-11 sm:w-11"
+                        className={`ctrl-btn h-9 w-9 sm:h-11 sm:w-11 ${showStats ? 'ctrl-btn-screen' : 'ctrl-btn-on'}`}
                     >
                         <BarChart2 className="w-4 h-4 sm:w-5 sm:h-5" />
                     </button>
