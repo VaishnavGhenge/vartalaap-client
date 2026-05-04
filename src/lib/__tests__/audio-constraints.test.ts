@@ -31,18 +31,18 @@ describe('getMicConstraints', () => {
       vi.stubGlobal('window', { ...globalThis.window, chrome: {} })
     })
 
-    it('includes AEC3 and neural noise suppressor hints', () => {
+    it('includes safe Chromium echo and noise suppressor hints by default', () => {
       const c = getMicConstraints() as Record<string, unknown>
       expect(c['googEchoCancellation']).toBe(true)
-      expect(c['googExperimentalEchoCancellation']).toBe(true)
       expect(c['googNoiseSuppression']).toBe(true)
-      expect(c['googExperimentalNoiseSuppression']).toBe(true)
+      expect(c['googExperimentalEchoCancellation']).toBeUndefined()
+      expect(c['googExperimentalNoiseSuppression']).toBeUndefined()
     })
 
-    it('enables high-pass filter and typing noise detection', () => {
+    it('enables safe high-pass filtering by default', () => {
       const c = getMicConstraints() as Record<string, unknown>
       expect(c['googHighpassFilter']).toBe(true)
-      expect(c['googTypingNoiseDetection']).toBe(true)
+      expect(c['googTypingNoiseDetection']).toBeUndefined()
     })
 
     it('disables audio mirroring to prevent loopback echo', () => {
@@ -50,8 +50,16 @@ describe('getMicConstraints', () => {
       expect(c['googAudioMirroring']).toBe(false)
     })
 
-    it('forces desktop-quality AEC pipeline on mobile Chrome', () => {
+    it('does not force the desktop-quality AEC pipeline by default', () => {
       const c = getMicConstraints() as Record<string, unknown>
+      expect(c['googEchoCancellationMobileMode']).toBeUndefined()
+    })
+
+    it('includes experimental AEC hints when explicitly enabled', () => {
+      const c = getMicConstraints(true) as Record<string, unknown>
+      expect(c['googExperimentalEchoCancellation']).toBe(true)
+      expect(c['googExperimentalNoiseSuppression']).toBe(true)
+      expect(c['googTypingNoiseDetection']).toBe(true)
       expect(c['googEchoCancellationMobileMode']).toBe(false)
     })
   })
