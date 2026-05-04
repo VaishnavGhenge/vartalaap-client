@@ -1,6 +1,6 @@
 "use client";
 
-import { MicOff } from "lucide-react";
+import { MicOff, Pin, PinOff } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { AudioStream, VideoStream } from "@/src/components/ui/Video";
 import { useAudioLevel } from "@/src/hooks/use-audio-level";
@@ -34,6 +34,10 @@ interface VideoTileProps {
     quality?: PeerStats['quality'];
     viaRelay?: boolean;
     isScreenSharing?: boolean;
+    onPin?: () => void;
+    isPinned?: boolean;
+    /** Compact mode for small thumbnail tiles — abbreviates the name pill. */
+    compact?: boolean;
 }
 
 export const VideoTile = ({
@@ -46,16 +50,19 @@ export const VideoTile = ({
     quality,
     viaRelay,
     isScreenSharing = false,
+    onPin,
+    isPinned = false,
+    compact = false,
 }: VideoTileProps) => {
     const name = isLocal ? (userName || 'You') : (participant?.name || 'Participant');
-    const videoOff = isLocal ? !!isVideoOff : !!participant?.isVideoOff;
+    // When a remote peer is screen sharing their video track IS the screen —
+    // never hide it based on camera state.
+    const videoOff = isLocal
+        ? !!isVideoOff
+        : (isScreenSharing ? false : !!participant?.isVideoOff);
     const muted = isLocal ? !!isMuted : !!participant?.isMuted;
     const label = isLocal ? `${name} (you)` : name;
 
-    // Local: detect from own mic stream (reliable).
-    // Remote: use the speaking flag broadcast by the remote peer, held for
-    // REMOTE_HOLD_MS so rapid true→false transitions don't get swallowed by
-    // React batching before they can render.
     const localSpeaking = useAudioLevel(isLocal ? stream : null, isLocal && !muted);
     const [remoteSpeaking, setRemoteSpeaking] = useState(false);
     const holdTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -77,30 +84,45 @@ export const VideoTile = ({
     return (
         <div
             aria-label={speaking ? `${label}, speaking` : label}
-            className={`tile-in relative h-full w-full overflow-hidden rounded-2xl
+            className={`group tile-in relative h-full w-full overflow-hidden rounded-2xl
                          border border-[hsl(var(--border))]/50
                          bg-[linear-gradient(160deg,hsl(var(--surface-2)),hsl(var(--surface-3)))]
-                         ${speaking ? 'speaking-ring' : ''}`}
+                         ${speaking ? 'speaking-ring' : ''}
+                         ${isPinned ? 'ring-2 ring-[hsl(var(--primary))]/60' : ''}`}
         >
 
             {/* Avatar (camera off or no stream yet) */}
             {(videoOff || !stream) && (
                 <div aria-hidden="true" className="absolute inset-0 flex items-center justify-center">
-                    <div className={`flex items-center justify-center rounded-full ${color} text-white font-semibold`}
-                         style={{
-                             width: '22%',
-                             aspectRatio: '1/1',
-                             minWidth: 44, minHeight: 44,
-                             maxWidth: 108, maxHeight: 108,
-                             fontSize: 'clamp(16px, 3.8vw, 38px)',
-                         }}>
-                        {initials}
-                    </div>
+                    {compact ? (
+                        // Fixed 32 px circle for thumbnail strip tiles
+                        <div className={`flex items-center justify-center rounded-full ${color} text-white font-semibold text-xs`}
+                             style={{ width: 32, height: 32 }}>
+                            {initials}
+                        </div>
+                    ) : (
+                        <div className={`flex items-center justify-center rounded-full ${color} text-white font-semibold`}
+                             style={{
+                                 width: '22%',
+                                 aspectRatio: '1/1',
+                                 minWidth: 44, minHeight: 44,
+                                 maxWidth: 108, maxHeight: 108,
+                                 fontSize: 'clamp(16px, 3.8vw, 38px)',
+                             }}>
+                            {initials}
+                        </div>
+                    )}
                 </div>
             )}
 
             {!isLocal && stream && <AudioStream stream={stream} />}
-            {!videoOff && stream && <VideoStream stream={stream} isLocal={isLocal} />}
+            {!videoOff && stream && (
+                <VideoStream
+                    stream={stream}
+                    isLocal={isLocal}
+                    objectFit={isScreenSharing ? 'contain' : 'cover'}
+                />
+            )}
 
             {/* Quality dot — remote tiles only, top-right corner */}
             {!isLocal && quality && quality !== 'unknown' && (
@@ -115,10 +137,35 @@ export const VideoTile = ({
                 </div>
             )}
 
-            {/* Name pill */}
-            <div aria-hidden="true" className="glass-pill absolute bottom-2.5 left-2.5 gap-1 px-2 py-1 text-[12px]">
-                {muted && <MicOff className="w-3 h-3 text-[hsl(var(--destructive))] shrink-0" />}
-                <span className="truncate max-w-[140px]">{isScreenSharing ? `${label} • Screen` : label}</span>
+            {/* Pin / unpin button — bottom-right, visible on hover or always when pinned.
+                Kept away from the top bar (top-left) so it is always reachable. */}
+            {onPin && (
+                <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onPin(); }}
+                    aria-label={isPinned ? 'Unpin' : 'Pin'}
+                    className={`absolute bottom-2.5 right-2.5 z-10 flex items-center justify-center
+                                w-7 h-7 rounded-full glass-pill transition-opacity cursor-pointer
+                                ${isPinned
+                                    ? 'opacity-100 text-[hsl(var(--primary))]'
+                                    : 'opacity-0 group-hover:opacity-100 text-[hsl(var(--foreground))]'
+                                }`}
+                >
+                    {isPinned
+                        ? <PinOff className="w-3.5 h-3.5" />
+                        : <Pin className="w-3.5 h-3.5" />
+                    }
+                </button>
+            )}
+
+            {/* Name pill — compact tiles show initials so the pill never overflows. */}
+            <div aria-hidden="true"
+                 className={`glass-pill absolute bottom-2 left-2 gap-1 px-2 py-0.5 ${compact ? 'text-[10px]' : 'text-[12px] overflow-hidden max-w-[calc(100%-1rem)]'}`}>
+                {muted && <MicOff className={`shrink-0 text-[hsl(var(--destructive))] ${compact ? 'w-2.5 h-2.5' : 'w-3 h-3'}`} />}
+                {compact
+                    ? <span>{initials}</span>
+                    : <span className="truncate min-w-0">{isScreenSharing ? `${label} • Screen` : label}</span>
+                }
             </div>
         </div>
     );

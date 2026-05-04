@@ -4,8 +4,9 @@ import { getSharedAudioContext } from "@/src/lib/audio-context";
 
 
 interface VideoProps {
-    stream : MediaStream | null;
-    isLocal : boolean;
+    stream: MediaStream | null;
+    isLocal: boolean;
+    objectFit?: 'cover' | 'contain';
 }
 
 
@@ -40,14 +41,14 @@ function useAttachTracks<T extends HTMLMediaElement>(
 }
 
 
-export const VideoStream = ({stream, isLocal}: VideoProps) => {
+export const VideoStream = ({stream, isLocal, objectFit = 'cover'}: VideoProps) => {
     const ref = useRef<HTMLVideoElement>(null);
 
     useAttachTracks(ref, stream, 'video');
 
     return <video
         ref={ref}
-        className='absolute inset-0 w-full h-full object-cover'
+        className={`absolute inset-0 w-full h-full pointer-events-none ${objectFit === 'contain' ? 'object-contain' : 'object-cover'}`}
         autoPlay
         muted={isLocal}
         playsInline

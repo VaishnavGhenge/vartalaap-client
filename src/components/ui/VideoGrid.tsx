@@ -20,8 +20,6 @@ function computeLayout(count: number, width: number, height: number, gap: number
     return { cols: 1, rows: 1, tileWidth: 0, tileHeight: 0 };
   }
 
-  // In portrait orientation fill height first so tiles span the screen
-  // rather than leaving dead space above/below (video uses object-cover to crop).
   const portrait = height > width;
 
   let best: Layout | null = null;
@@ -35,11 +33,9 @@ function computeLayout(count: number, width: number, height: number, gap: number
     let tileHeight: number;
 
     if (portrait) {
-      // Height-first: divide height evenly among rows, constrain width by aspect ratio
       tileHeight = Math.floor(availH / rows);
       tileWidth = Math.min(Math.floor(availW / cols), Math.floor(tileHeight * tileAspect));
     } else {
-      // Width-first: maximize tile size while preserving aspect ratio
       const byW = availW / cols;
       const byH = (availH / rows) * tileAspect;
       tileWidth = Math.floor(Math.min(byW, byH));
@@ -72,27 +68,93 @@ export function VideoGrid({ children, gap = 12, tileAspect = 16 / 9 }: VideoGrid
   }, []);
 
   const count = React.Children.count(children);
+  const portrait = size.h > size.w;
   const layout = useMemo(
     () => computeLayout(count, size.w, size.h, gap, tileAspect),
     [count, size.w, size.h, gap, tileAspect],
   );
 
-  const portrait = size.h > size.w;
+  // ── Special case: 3 tiles in landscape → 2 on top, 1 centred below ──────────
+  //
+  // Generic 2×2 grid would leave an empty bottom-right cell.
+  // Instead render two explicit rows so the lone tile is always centred.
+  if (count === 3 && !portrait && size.w > 0 && size.h > 0) {
+    const tileW = Math.floor(Math.min(
+      (size.w - gap) / 2,
+      ((size.h - gap) / 2) * tileAspect,
+    ))
+    const tileH = Math.floor(tileW / tileAspect)
+    const kids = React.Children.toArray(children)
+
+    return (
+      <div ref={ref} className="w-full h-full flex flex-col items-center justify-center"
+           style={{ gap }}>
+        <div className="flex" style={{ gap }}>
+          <div style={{ width: tileW, height: tileH }}>{kids[0]}</div>
+          <div style={{ width: tileW, height: tileH }}>{kids[1]}</div>
+        </div>
+        <div style={{ width: tileW, height: tileH }}>{kids[2]}</div>
+      </div>
+    )
+  }
+
+  // ── Generic grid — centre incomplete last row ────────────────────────────────
+  //
+  // For counts like 5 (3+2) or 7 (3+3+1), the last row would otherwise be
+  // left-aligned. Split children into full rows (rendered in a CSS grid) and
+  // the partial last row (rendered in a centred flex container).
+
+  const { cols, tileWidth: tileW, tileHeight: tileH } = layout
+  const remainder = count % cols
+  const lastRowIncomplete = remainder !== 0
+  const kids = React.Children.toArray(children)
+
+  const colTemplate = portrait
+    ? `repeat(${cols}, 1fr)`
+    : `repeat(${cols}, ${tileW}px)`
+
+  if (!lastRowIncomplete) {
+    // All rows are full — use a single CSS grid (original behaviour).
+    return (
+      <div ref={ref} className="w-full h-full">
+        <div
+          className="w-full h-full grid place-items-center place-content-center"
+          style={{
+            gridTemplateColumns: colTemplate,
+            gridAutoRows: `${tileH}px`,
+            gap,
+          }}
+        >
+          {kids}
+        </div>
+      </div>
+    )
+  }
+
+  // Some full rows + one incomplete last row.
+  const fullKids = kids.slice(0, count - remainder)
+  const lastKids = kids.slice(count - remainder)
 
   return (
-    <div ref={ref} className="w-full h-full">
-      <div
-        className="w-full h-full grid place-items-center place-content-center"
-        style={{
-          gridTemplateColumns: portrait
-            ? `repeat(${layout.cols}, 1fr)`
-            : `repeat(${layout.cols}, ${layout.tileWidth}px)`,
-          gridAutoRows: `${layout.tileHeight}px`,
-          gap: `${gap}px`,
-        }}
-      >
-        {children}
+    <div ref={ref} className="w-full h-full flex flex-col items-center justify-center"
+         style={{ gap }}>
+      {fullKids.length > 0 && (
+        <div
+          className="grid place-items-center"
+          style={{
+            gridTemplateColumns: colTemplate,
+            gridAutoRows: `${tileH}px`,
+            gap,
+          }}
+        >
+          {fullKids}
+        </div>
+      )}
+      <div className="flex justify-center" style={{ gap }}>
+        {lastKids.map((child, i) => (
+          <div key={i} style={{ width: tileW, height: tileH }}>{child}</div>
+        ))}
       </div>
     </div>
-  );
+  )
 }

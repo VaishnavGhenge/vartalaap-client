@@ -6,7 +6,7 @@ import type {
   Envelope, JoinedData, PeerJoinedData, PeerLeftData, PeerStateData,
 } from '@/src/services/signaling/protocol'
 import Peer from 'simple-peer'
-import { playPeerJoined, playPeerLeft } from '@/src/lib/sounds'
+import { playPeerJoined, playPeerLeft, playScreenShareStart, playScreenShareStop } from '@/src/lib/sounds'
 
 interface Args {
   client: SignalingClient | null
@@ -27,6 +27,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
     const store = usePeerStore
     let disposed = false
     const pendingSignals = new Map<string, Peer.SignalData[]>()
+    const prevScreenSharing = new Map<string, boolean>()
 
     // ICE restart state — lives for the duration of the call.
     const restartAttempts = new Map<string, number>()
@@ -36,7 +37,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
     const makePeer = (
       remoteId: string,
       initiator: boolean,
-      info: { name: string; audio: boolean; video: boolean },
+      info: { name: string; audio: boolean; video: boolean; screenSharing?: boolean },
     ) => {
       if (store.getState().peerConnections.has(remoteId)) {
         store.getState().removePeerConnection(remoteId)
@@ -126,7 +127,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       const peers = env.data?.peers ?? []
       for (const p of peers) {
         if (p.id === myId) continue
-        makePeer(p.id, true, { name: p.name, audio: p.audio, video: p.video })
+        makePeer(p.id, true, { name: p.name, audio: p.audio, video: p.video, screenSharing: p.screenSharing ?? false })
       }
     }
 
@@ -134,22 +135,28 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       const d = env.data
       if (!d?.peerId) return
       if (d.peerId === client.getPeerId()) return
-      makePeer(d.peerId, false, { name: d.name, audio: d.audio, video: d.video })
+      makePeer(d.peerId, false, { name: d.name, audio: d.audio, video: d.video, screenSharing: d.screenSharing ?? false })
       playPeerJoined()
     }
 
     const handlePeerLeft = (env: Envelope<PeerLeftData>) => {
       const remoteId = env.data?.peerId
       if (!remoteId) return
+      prevScreenSharing.delete(remoteId)
       store.getState().removePeerConnection(remoteId)
       playPeerLeft()
     }
 
     const handlePeerState = (env: Envelope<PeerStateData>) => {
       if (!env.from || !env.data) return
+      const newScreenSharing = env.data.screenSharing ?? false
+      const oldScreenSharing = prevScreenSharing.get(env.from) ?? false
+      if (newScreenSharing && !oldScreenSharing) playScreenShareStart()
+      else if (!newScreenSharing && oldScreenSharing) playScreenShareStop()
+      prevScreenSharing.set(env.from, newScreenSharing)
       // Treat absent speaking field as false — server omits it when null/missing,
       // so we can't use ?? to fall back to the previous value.
-      store.getState().updatePeerMediaState(env.from, env.data.audio, env.data.video, env.data.speaking ?? false)
+      store.getState().updatePeerMediaState(env.from, env.data.audio, env.data.video, env.data.speaking ?? false, newScreenSharing)
     }
 
     const handleSignal = (env: Envelope) => {

@@ -40,6 +40,7 @@ interface PeerConnection {
   audio: boolean
   video: boolean
   speaking: boolean
+  screenSharing: boolean
 }
 
 interface PeerState {
@@ -57,11 +58,11 @@ interface PeerState {
   addPeerConnection: (
     id: string,
     peer: Peer.Instance,
-    info?: { name?: string; audio?: boolean; video?: boolean },
+    info?: { name?: string; audio?: boolean; video?: boolean; screenSharing?: boolean },
   ) => void
   removePeerConnection: (id: string) => void
   updatePeerStream: (id: string, stream: MediaStream) => void
-  updatePeerMediaState: (id: string, audio: boolean, video: boolean, speaking?: boolean) => void
+  updatePeerMediaState: (id: string, audio: boolean, video: boolean, speaking?: boolean, screenSharing?: boolean) => void
   updatePeerStats: (id: string, stats: PeerStats) => void
 
   enableMic: () => Promise<MediaStreamTrack | null>
@@ -123,13 +124,21 @@ const replaceVideoTrackOnPeers = (
 ) => {
   peers.forEach((c) => {
     try {
-      const pc = (c.peer as unknown as { _pc: RTCPeerConnection })._pc
-      const sender = pc?.getSenders().find(isVideoSender)
-      if (!sender) return
+      const pc = (c.peer as unknown as { _pc?: RTCPeerConnection })._pc
+      if (!pc) {
+        console.warn('[replaceVideoTrack] _pc missing for peer', c.id)
+        return
+      }
+      const sender = pc.getSenders().find(isVideoSender)
+      if (!sender) {
+        console.warn('[replaceVideoTrack] no video sender for peer', c.id)
+        return
+      }
       sender.replaceTrack(newTrack)
-      void tuneVideoSenderForCongestion(sender)
+        .then(() => tuneVideoSenderForCongestion(sender))
+        .catch(e => console.error('[replaceVideoTrack] failed for peer', c.id, e))
     } catch (e) {
-      console.error('replaceTrack failed', c.id, e)
+      console.error('[replaceVideoTrack] error for peer', c.id, e)
     }
   })
 }
@@ -165,10 +174,13 @@ const replaceAudioSenderOnPeers = (
   peers.forEach((c) => {
     try {
       const pc = (c.peer as unknown as { _pc?: RTCPeerConnection })._pc
-      const sender = pc?.getSenders().find(s => s.track?.kind === 'audio')
-      if (sender) void sender.replaceTrack(track)
+      if (!pc) return
+      const sender = pc.getSenders().find(s => s.track?.kind === 'audio')
+      if (!sender) return
+      sender.replaceTrack(track)
+        .catch(e => console.error('[replaceAudioSender] failed for peer', c.id, e))
     } catch (e) {
-      console.error('replaceAudioSender failed', c.id, e)
+      console.error('[replaceAudioSender] error for peer', c.id, e)
     }
   })
 }
@@ -196,6 +208,7 @@ export const usePeerStore = create<PeerState>()(
           audio: info?.audio ?? false,
           video: info?.video ?? false,
           speaking: false,
+          screenSharing: info?.screenSharing ?? false,
         })
         return { peerConnections: next }
       }),
@@ -225,11 +238,17 @@ export const usePeerStore = create<PeerState>()(
         return { peerConnections: next }
       }),
 
-    updatePeerMediaState: (id, audio, video, speaking) =>
+    updatePeerMediaState: (id, audio, video, speaking, screenSharing) =>
       set((state) => {
         const next = new Map(state.peerConnections)
         const c = next.get(id)
-        if (c) next.set(id, { ...c, audio, video, speaking: speaking ?? c.speaking })
+        if (c) next.set(id, {
+          ...c,
+          audio,
+          video,
+          speaking: speaking ?? c.speaking,
+          screenSharing: screenSharing ?? c.screenSharing,
+        })
         return { peerConnections: next }
       }),
 
@@ -337,10 +356,13 @@ export const usePeerStore = create<PeerState>()(
       localStream.getVideoTracks().forEach((t) => t.stop())
 
       // replaceTrack(black) keeps the sender alive; peer.removeTrack crashes Safari.
+      // The placeholder is stopped on a timer rather than immediately — replaceTrack is
+      // async, and stopping the source before it resolves leaves senders with a bad track
+      // reference that subsequent replaceTrack calls (e.g. screen share start) cannot find.
       const placeholder = createBlackVideoTrack()
       if (placeholder) {
         replaceVideoTrackOnPeers(placeholder, peerConnections)
-        placeholder.stop()
+        setTimeout(() => placeholder.stop(), 1000)
       }
 
       const audioTracks = localStream.getAudioTracks()
@@ -464,22 +486,36 @@ export const usePeerStore = create<PeerState>()(
         const placeholder = createBlackVideoTrack()
         if (placeholder) {
           replaceVideoTrackOnPeers(placeholder, get().peerConnections)
-          placeholder.stop()
+          setTimeout(() => placeholder.stop(), 1000)
         }
       }
     },
 
     createPeer: (initiator, localStream) => {
-      const { iceServers } = get()
+      const { iceServers, screenTrack } = get()
 
-      // Always start with placeholder audio+video so both senders are
-      // pre-negotiated. Real tracks are swapped in via replaceTrack() which
-      // never triggers renegotiation, regardless of when the user enables media.
+      // Build the initial stream with the tracks that are actually live right now.
+      //
+      // Previous approach: always use placeholder tracks (silent audio + black video),
+      // then swap in the real tracks via replaceTrack() inside a queueMicrotask that
+      // accessed simple-peer's internal _pc property. That was fragile: if
+      // createBlackVideoTrack() returned null no video sender was ever created, and
+      // subsequent replaceVideoTrackOnPeers() calls silently failed because
+      // getSenders().find(isVideoSender) returned undefined.
+      //
+      // This approach: prefer real tracks. Placeholders are only used when no real
+      // track exists, ensuring both senders are always pre-negotiated. The SDP
+      // produced for the initial offer/answer describes the correct media from the
+      // start, and no _pc access is required for new peers.
+      const audioTrack = localStream?.getAudioTracks()[0] ?? createSilentAudioTrack()
+      // When screen sharing, start with the screen track — not the camera.
+      // This guarantees late-joining peers receive the active screen share
+      // without any queueMicrotask / replaceTrack dance.
+      const videoTrack = screenTrack ?? localStream?.getVideoTracks()[0] ?? createBlackVideoTrack()
+
       const initStream = new MediaStream()
-      const silentTrack = createSilentAudioTrack()
-      const blackTrack  = createBlackVideoTrack()
-      if (silentTrack) initStream.addTrack(silentTrack)
-      if (blackTrack)  initStream.addTrack(blackTrack)
+      if (audioTrack) initStream.addTrack(audioTrack)
+      if (videoTrack) initStream.addTrack(videoTrack)
 
       const peer = new Peer({
         initiator,
@@ -487,22 +523,6 @@ export const usePeerStore = create<PeerState>()(
         stream: initStream,
         config: { iceServers: iceServers as RTCIceServer[] },
       })
-
-      // Replace placeholders with live tracks once the RTCPeerConnection exists.
-      // If a screen share is in progress, send that as the video track so
-      // late-joining peers immediately see the shared screen.
-      if (localStream) {
-        queueMicrotask(() => {
-          const pc = (peer as unknown as { _pc?: RTCPeerConnection })._pc
-          if (!pc) return
-          const { screenTrack } = get()
-          for (const track of localStream.getTracks()) {
-            const liveTrack = track.kind === 'video' && screenTrack ? screenTrack : track
-            const sender = pc.getSenders().find(s => s.track?.kind === liveTrack.kind)
-            if (sender) void sender.replaceTrack(liveTrack)
-          }
-        })
-      }
 
       queueMicrotask(() => tunePeerVideoSendersForCongestion(peer))
       return peer
