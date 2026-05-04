@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint src app",
     "scan": "next dev & npx react-scan@latest localhost:3000",
     "test": "vitest run",
     "test:watch": "vitest",
