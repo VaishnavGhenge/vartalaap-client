@@ -1,10 +1,8 @@
 export type FeatureFlags = {
-  background_blur: boolean
   experimental_echo_cancel: boolean
 }
 
 const DEFAULTS: FeatureFlags = {
-  background_blur: false,
   experimental_echo_cancel: false,
 }
 
@@ -22,7 +20,11 @@ function readFlags(): FeatureFlags {
   if (typeof window === 'undefined') return DEFAULTS
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? { ...DEFAULTS, ...JSON.parse(raw) } : DEFAULTS
+    if (!raw) return DEFAULTS
+    const flags = JSON.parse(raw) as Record<string, unknown>
+    delete flags.background_blur
+    delete flags.background_effect
+    return { ...DEFAULTS, ...flags }
   } catch {
     return DEFAULTS
   }
@@ -38,7 +40,7 @@ export function subscribeToFlags(cb: () => void): () => void {
   return () => subscribers.delete(cb)
 }
 
-export function setFlag(key: keyof FeatureFlags, value: boolean): void {
+export function setFlag<K extends keyof FeatureFlags>(key: K, value: FeatureFlags[K]): void {
   const next = { ...getFlags(), [key]: value }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
   cachedFlags = next

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { ImageSegmenter } from '@mediapipe/tasks-vision'
 import { BackgroundBlurProcessor } from '../background-blur'
 
 // MediaPipe is a CDN-loaded WASM module — stub it out entirely.
@@ -93,5 +94,36 @@ describe('BackgroundBlurProcessor', () => {
 
     it('start() resolves for non-default track dimensions', async () => {
         await expect(processor.start(makeTrack(1280, 720))).resolves.toBeDefined()
+    })
+
+    it('requests confidence and category masks for softer compositing', async () => {
+        await processor.start(makeTrack())
+
+        expect(ImageSegmenter.createFromOptions).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.objectContaining({
+                outputCategoryMask: true,
+                outputConfidenceMasks: true,
+            }),
+        )
+    })
+
+    it('starts with a custom background image', async () => {
+        class FakeImage {
+            naturalWidth = 1280
+            naturalHeight = 720
+            width = 1280
+            height = 720
+            onload: (() => void) | null = null
+            onerror: (() => void) | null = null
+            set src(_value: string) {
+                queueMicrotask(() => this.onload?.())
+            }
+        }
+        vi.stubGlobal('Image', FakeImage)
+
+        processor = new BackgroundBlurProcessor({ backgroundImageDataUrl: 'data:image/png;base64,abc' })
+
+        await expect(processor.start(makeTrack())).resolves.toBeDefined()
     })
 })
