@@ -36,9 +36,9 @@ Users can't verify their mic is working before joining. The `use-audio-level` ho
 ## P2 — Architecture ceiling (higher effort, high payoff)
 
 ### 8. `simple-peer` abstraction blocks quality control
-`simple-peer` wraps `RTCPeerConnection` and hides TWCC (Transport-Wide Congestion Control) events, raw RTCP feedback, and fine-grained `getStats()` access. The current code already reaches through `_pc` (a private field) to call `getSenders()` and `applyConstraints`. This is fragile and will break on simple-peer upgrades.
+`simple-peer` wraps `RTCPeerConnection` and hides TWCC (Transport-Wide Congestion Control) events, raw RTCP feedback, fine-grained `getStats()`, sender lifecycle, and renegotiation details. The current code already reaches through `_pc` (a private field) to call `getSenders()`, `replaceTrack()`, and `restartIce()`. This is fragile and will break on simple-peer upgrades.
 
-Migrating to raw `RTCPeerConnection` unlocks: reading TWCC deltas directly, custom congestion response, better ICE restart control, and no dependency on an unmaintained library.
+**Fix:** Replace `simple-peer` with raw `RTCPeerConnection` and explicit audio/video transceivers. Pre-create senders with `sendrecv` transceivers, handle offer/answer glare intentionally, and make `replaceTrack()` the normal path for mic/camera/screen changes. This removes private `_pc` access and makes audio publish, renegotiation, ICE restart, and stats collection reliable by design.
 
 ### 9. P2P mesh degrades fast with 3+ participants
 Each participant opens N-1 peer connections and encodes N-1 independent video streams. At 4 participants that is 6 connections and 3× encode CPU per device. Mobile devices start dropping frames at 3 people.
