@@ -186,14 +186,17 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
 
     ;(async () => {
       try {
-        let iceServers: Awaited<ReturnType<typeof fetchIceServers>> = []
-        try {
-          iceServers = await fetchIceServers()
-        } catch (e) {
-          console.warn('ICE server fetch failed, proceeding without TURN', e)
+        // Skip fetch if ICE servers were pre-fetched on the join screen.
+        if (store.getState().iceServers.length === 0) {
+          try {
+            const iceServers = await fetchIceServers()
+            if (disposed) return
+            store.getState().setIceServers(iceServers)
+          } catch (e) {
+            console.warn('ICE server fetch failed, proceeding without TURN', e)
+          }
         }
         if (disposed) return
-        store.getState().setIceServers(iceServers)
         const a = joinArgs.current
         client.send('join', { name: a.userName, audio: a.initialAudio, video: a.initialVideo }, { room: roomId })
       } catch (e) {
