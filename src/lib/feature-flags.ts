@@ -5,7 +5,7 @@ export type FeatureFlags = {
 }
 
 const DEFAULTS: FeatureFlags = {
-  screen_sharing: false,
+  screen_sharing: true,
   background_blur: false,
   experimental_echo_cancel: false,
 }

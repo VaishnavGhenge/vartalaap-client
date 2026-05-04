@@ -1,6 +1,6 @@
 "use client";
 
-import { MicOff } from "lucide-react";
+import { MicOff, Pin, PinOff } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { AudioStream, VideoStream } from "@/src/components/ui/Video";
 import { useAudioLevel } from "@/src/hooks/use-audio-level";
@@ -34,6 +34,8 @@ interface VideoTileProps {
     quality?: PeerStats['quality'];
     viaRelay?: boolean;
     isScreenSharing?: boolean;
+    onPin?: () => void;
+    isPinned?: boolean;
 }
 
 export const VideoTile = ({
@@ -46,16 +48,14 @@ export const VideoTile = ({
     quality,
     viaRelay,
     isScreenSharing = false,
+    onPin,
+    isPinned = false,
 }: VideoTileProps) => {
     const name = isLocal ? (userName || 'You') : (participant?.name || 'Participant');
     const videoOff = isLocal ? !!isVideoOff : !!participant?.isVideoOff;
     const muted = isLocal ? !!isMuted : !!participant?.isMuted;
     const label = isLocal ? `${name} (you)` : name;
 
-    // Local: detect from own mic stream (reliable).
-    // Remote: use the speaking flag broadcast by the remote peer, held for
-    // REMOTE_HOLD_MS so rapid true→false transitions don't get swallowed by
-    // React batching before they can render.
     const localSpeaking = useAudioLevel(isLocal ? stream : null, isLocal && !muted);
     const [remoteSpeaking, setRemoteSpeaking] = useState(false);
     const holdTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -77,10 +77,11 @@ export const VideoTile = ({
     return (
         <div
             aria-label={speaking ? `${label}, speaking` : label}
-            className={`tile-in relative h-full w-full overflow-hidden rounded-2xl
+            className={`group tile-in relative h-full w-full overflow-hidden rounded-2xl
                          border border-[hsl(var(--border))]/50
                          bg-[linear-gradient(160deg,hsl(var(--surface-2)),hsl(var(--surface-3)))]
-                         ${speaking ? 'speaking-ring' : ''}`}
+                         ${speaking ? 'speaking-ring' : ''}
+                         ${isPinned ? 'ring-2 ring-[hsl(var(--primary))]/60' : ''}`}
         >
 
             {/* Avatar (camera off or no stream yet) */}
@@ -113,6 +114,26 @@ export const VideoTile = ({
                     )}
                     <span className={`block w-2 h-2 rounded-full ${QUALITY_DOT_COLOR[quality]}`} />
                 </div>
+            )}
+
+            {/* Pin / unpin button — top-left, visible on hover or when pinned */}
+            {onPin && (
+                <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onPin(); }}
+                    aria-label={isPinned ? 'Unpin' : 'Pin'}
+                    className={`absolute top-2 left-2 z-10 flex items-center justify-center
+                                w-7 h-7 rounded-full glass-pill transition-opacity
+                                ${isPinned
+                                    ? 'opacity-100 text-[hsl(var(--primary))]'
+                                    : 'opacity-0 group-hover:opacity-100 text-[hsl(var(--foreground))]'
+                                }`}
+                >
+                    {isPinned
+                        ? <PinOff className="w-3.5 h-3.5" />
+                        : <Pin className="w-3.5 h-3.5" />
+                    }
+                </button>
             )}
 
             {/* Name pill */}

@@ -21,6 +21,9 @@ import { useJoinMeetStore } from "@/src/stores/joinMeet";
 import { usePeerStats } from "@/src/hooks/use-peer-stats";
 import type { SignalingClient, ConnState } from "@/src/services/signaling/client";
 
+// Sentinel used for the local tile pin ID
+const LOCAL_TILE_ID = 'local'
+
 interface MeetCallProps {
     client: SignalingClient | null;
     connState: ConnState;
@@ -31,7 +34,7 @@ interface MeetCallProps {
 export default function MeetCall({ client, connState, reconnectAttempt, routeMeetCode }: MeetCallProps) {
     const flags = useFeatureFlags();
     const { isMuted, isVideoOff, isScreenSharing, toggleMute, toggleVideo, toggleScreenShare, clearMeet } = useMeetStore();
-    const { localStream, enableMic, disableMic, enableCamera, disableCamera, switchCamera, startScreenShare, stopScreenShare, peerConnections, peerStats } = usePeerStore();
+    const { localStream, screenTrack, enableMic, disableMic, enableCamera, disableCamera, switchCamera, startScreenShare, stopScreenShare, peerConnections, peerStats } = usePeerStore();
     const hasMultipleCameras = useHasMultipleCameras();
     const { userName, meetCode, clearJoinMeet } = useJoinMeetStore();
 
@@ -40,16 +43,35 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
     const [copied, setCopied] = useState(false);
     const [canShare, setCanShare] = useState(false);
     const [showStats, setShowStats] = useState(false);
+    const [pinnedId, setPinnedId] = useState<string | null>(null);
+    // Briefly blanks the page while the OS picker is open so that if the user
+    // picks "Entire Screen" or the app window, capture starts on a blank view
+    // rather than the live call UI (prevents the infinite mirror effect).
+    const [isPicking, setIsPicking] = useState(false);
     const screenTrackRef = useRef<MediaStreamTrack | null>(null);
     useEffect(() => { setCanShare('share' in navigator); }, []);
 
     const remotePeers = useMemo(() => Array.from(peerConnections.values()), [peerConnections]);
 
+    // Clear pin when the pinned peer leaves the call.
+    useEffect(() => {
+        if (!pinnedId || pinnedId === LOCAL_TILE_ID) return;
+        if (!peerConnections.has(pinnedId)) setPinnedId(null);
+    }, [peerConnections, pinnedId]);
+
+    // While screen sharing, wrap the screen track in its own MediaStream so the
+    // local tile shows what remote peers are actually receiving.
+    const localDisplayStream = useMemo(() => {
+        if (!screenTrack) return localStream;
+        const s = new MediaStream();
+        s.addTrack(screenTrack);
+        return s;
+    }, [screenTrack, localStream]);
+
     const broadcastState = (audio: boolean, video: boolean, speaking?: boolean) => {
         client?.send('peer-state', { audio, video, speaking });
     };
 
-    // Detect local speaking and broadcast so remote peers can show the ring.
     const localSpeaking = useAudioLevel(localStream, !isMuted);
     const prevSpeakingRef = useRef(localSpeaking);
     useEffect(() => {
@@ -115,11 +137,14 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
             doStopScreenShare();
             return;
         }
+        // Blank the page before the OS picker opens so any "Entire Screen" or
+        // window capture starts on a blank background, not the live call UI.
+        setIsPicking(true);
         const track = await startScreenShare();
+        setIsPicking(false);
         if (!track) return;
         screenTrackRef.current = track;
         toggleScreenShare();
-        // Auto-stop when the user clicks the browser's "Stop sharing" button.
         track.addEventListener('ended', doStopScreenShare, { once: true });
     };
 
@@ -129,6 +154,10 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
         playLeaveCall();
         clearMeet();
         clearJoinMeet();
+    };
+
+    const togglePin = (id: string) => {
+        setPinnedId(prev => prev === id ? null : id);
     };
 
     const alone = remotePeers.length === 0;
@@ -154,8 +183,65 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
         [remotePeers, peerStats],
     );
 
+    // ── Spotlight helpers ─────────────────────────────────────────────────────
+
+    const renderLocalTile = (opts: { onPin?: () => void; isPinned?: boolean } = {}) => (
+        <VideoTile
+            key="local"
+            isLocal
+            userName={userName}
+            isVideoOff={isScreenSharing ? false : isVideoOff}
+            isMuted={isMuted}
+            stream={localDisplayStream}
+            onPin={opts.onPin}
+            isPinned={opts.isPinned}
+        />
+    );
+
+    const renderRemoteTile = (c: typeof remotePeers[number], opts: { onPin?: () => void; isPinned?: boolean } = {}) => {
+        const stats = peerStats.get(c.id);
+        return (
+            <VideoTile
+                key={c.id}
+                participant={{
+                    id: c.id,
+                    name: c.name || c.id.slice(0, 6),
+                    isMuted: !c.audio,
+                    isVideoOff: !c.video,
+                    speaking: c.speaking,
+                }}
+                stream={c.stream ?? null}
+                quality={stats?.quality}
+                viaRelay={stats?.candidateType === 'relay'}
+                onPin={opts.onPin}
+                isPinned={opts.isPinned}
+            />
+        );
+    };
+
+    // ── Determine if spotlight mode is active ─────────────────────────────────
+
+    const pinnedPeer = pinnedId && pinnedId !== LOCAL_TILE_ID
+        ? remotePeers.find(c => c.id === pinnedId) ?? null
+        : null;
+    const spotlightActive = pinnedId !== null && (pinnedId === LOCAL_TILE_ID || pinnedPeer !== null);
+
+    // Tiles that go in the thumbnail strip (everyone except the pinned tile)
+    const stripPeers = spotlightActive
+        ? remotePeers.filter(c => c.id !== pinnedId)
+        : [];
+    const localInStrip = spotlightActive && pinnedId !== LOCAL_TILE_ID;
+
     return (
         <div className="relative min-h-dvh w-full overflow-hidden text-[hsl(var(--foreground))]">
+
+            {/* Brief blank overlay while the OS screen-picker is open. */}
+            {isPicking && (
+                <div
+                    className="fixed inset-0 z-[999] bg-[hsl(var(--background))]"
+                    aria-hidden="true"
+                />
+            )}
 
             <ConnectionBanner
                 connState={connState}
@@ -181,44 +267,65 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                     }
                 </button>
 
-                <div className="glass-pill px-3 py-1.5 text-xs text-[hsl(var(--muted-foreground))]">
-                    {participantCount} {participantCount === 1 ? 'participant' : 'participants'}
+                <div className="flex items-center gap-2">
+                    {flags.screen_sharing && isScreenSharing && (
+                        <div className="glass-pill gap-1.5 px-3 py-1.5 text-xs font-medium
+                                        text-[hsl(var(--primary))]">
+                            <Monitor className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                            Presenting
+                        </div>
+                    )}
+                    <div className="glass-pill px-3 py-1.5 text-xs text-[hsl(var(--muted-foreground))]">
+                        {participantCount} {participantCount === 1 ? 'participant' : 'participants'}
+                    </div>
                 </div>
             </div>
 
-            {/* ── Video grid ───────────────────────────────────────────── */}
+            {/* ── Main content area ────────────────────────────────────── */}
             <main className="flex flex-col h-dvh">
-                <div className="flex-1 p-3 min-h-0"
-                     style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom, 0px))' }}>
-                    <VideoGrid gap={8} tileAspect={16 / 9}>
-                        <VideoTile
-                            key="local"
-                            isLocal
-                            userName={userName}
-                            isVideoOff={isVideoOff}
-                            isMuted={isMuted}
-                            stream={localStream}
-                        />
-                        {remotePeers.map((c) => {
-                            const stats = peerStats.get(c.id);
-                            return (
-                                <VideoTile
-                                    key={c.id}
-                                    participant={{
-                                        id: c.id,
-                                        name: c.name || c.id.slice(0, 6),
-                                        isMuted: !c.audio,
-                                        isVideoOff: !c.video,
-                                        speaking: c.speaking,
-                                    }}
-                                    stream={c.stream ?? null}
-                                    quality={stats?.quality}
-                                    viaRelay={stats?.candidateType === 'relay'}
-                                />
-                            );
-                        })}
-                    </VideoGrid>
-                </div>
+                {spotlightActive ? (
+                    // ── Spotlight layout ────────────────────────────────
+                    <>
+                        {/* Large pinned tile */}
+                        <div
+                            className="flex-1 p-3 min-h-0"
+                            style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom, 0px) + 88px)' }}
+                        >
+                            <div className="w-full h-full">
+                                {pinnedId === LOCAL_TILE_ID
+                                    ? renderLocalTile({ onPin: () => togglePin(LOCAL_TILE_ID), isPinned: true })
+                                    : pinnedPeer && renderRemoteTile(pinnedPeer, { onPin: () => togglePin(pinnedId!), isPinned: true })
+                                }
+                            </div>
+                        </div>
+
+                        {/* Thumbnail strip — above the control bar */}
+                        <div
+                            className="absolute left-0 right-0 z-10 px-3 flex gap-2 overflow-x-auto"
+                            style={{ bottom: 'calc(5.5rem + env(safe-area-inset-bottom, 0px))', height: '80px' }}
+                        >
+                            {localInStrip && (
+                                <div className="shrink-0 rounded-xl overflow-hidden" style={{ width: '142px', height: '80px' }}>
+                                    {renderLocalTile({ onPin: () => togglePin(LOCAL_TILE_ID), isPinned: false })}
+                                </div>
+                            )}
+                            {stripPeers.map(c => (
+                                <div key={c.id} className="shrink-0 rounded-xl overflow-hidden" style={{ width: '142px', height: '80px' }}>
+                                    {renderRemoteTile(c, { onPin: () => togglePin(c.id), isPinned: false })}
+                                </div>
+                            ))}
+                        </div>
+                    </>
+                ) : (
+                    // ── Normal grid layout ──────────────────────────────
+                    <div className="flex-1 p-3 min-h-0"
+                         style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom, 0px))' }}>
+                        <VideoGrid gap={8} tileAspect={16 / 9}>
+                            {renderLocalTile({ onPin: remotePeers.length > 0 ? () => togglePin(LOCAL_TILE_ID) : undefined })}
+                            {remotePeers.map((c) => renderRemoteTile(c, { onPin: () => togglePin(c.id) }))}
+                        </VideoGrid>
+                    </div>
+                )}
 
                 {alone && (
                     <div className="pointer-events-none absolute inset-x-0 flex justify-center px-4"
@@ -230,145 +337,48 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                 )}
             </main>
 
-            {/* ── Screen-share overlay ─────────────────────────────────────
-                Opaque overlay blocks the page from the screen capture so no
-                mirror is possible. All controls live here so nothing is lost.
-            ─────────────────────────────────────────────────────────────── */}
-            {flags.screen_sharing && isScreenSharing && (
-                <div className="fixed inset-0 z-50 flex flex-col bg-[hsl(var(--background))]">
-
-                    {/* ── Participant cameras ─────────────────────────────── */}
-                    <div className="flex-1 p-3 min-h-0"
-                         style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom, 0px))' }}>
-                        {remotePeers.length > 0 ? (
-                            <VideoGrid gap={8} tileAspect={16 / 9}>
-                                {remotePeers.map((c) => {
-                                    const stats = peerStats.get(c.id);
-                                    return (
-                                        <VideoTile
-                                            key={c.id}
-                                            participant={{
-                                                id: c.id,
-                                                name: c.name || c.id.slice(0, 6),
-                                                isMuted: !c.audio,
-                                                isVideoOff: !c.video,
-                                                speaking: c.speaking,
-                                            }}
-                                            stream={c.stream ?? null}
-                                            quality={stats?.quality}
-                                            viaRelay={stats?.candidateType === 'relay'}
-                                        />
-                                    );
-                                })}
-                            </VideoGrid>
-                        ) : (
-                            <div className="flex h-full items-center justify-center">
-                                <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                                    Sharing your screen — waiting for others to join
-                                </p>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* ── Self-view ───────────────────────────────────────── */}
-                    {!isVideoOff && localStream && (
-                        <div className="absolute bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))] right-3 z-10
-                                        rounded-xl overflow-hidden shadow-lg border border-[hsl(var(--border)/0.5)]"
-                             style={{ width: 'clamp(80px, 14vw, 140px)', aspectRatio: '16/9' }}>
-                            <VideoTile
-                                isLocal
-                                userName={userName}
-                                isVideoOff={false}
-                                isMuted={isMuted}
-                                stream={localStream}
-                            />
-                        </div>
+            {/* ── Floating control bar ─────────────────────────────────── */}
+            <div className="absolute left-1/2 -translate-x-1/2 z-20"
+                 style={{ bottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
+                <div className="glass-pill gap-2 px-2 py-2 shadow-xl shadow-[hsl(var(--shadow-color))]/25">
+                    <MicButton onClickFn={handleMicToggle} action={isMuted ? "close" : "open"} />
+                    <CameraButton onClickFn={handleCameraToggle} action={isVideoOff ? "close" : "open"} />
+                    {hasMultipleCameras && !isVideoOff && !isScreenSharing && (
+                        <FlipCameraButton onClickFn={handleFlipCamera} />
                     )}
 
-                    {/* ── "Sharing your screen" banner ────────────────────── */}
-                    <div className="absolute left-4 top-4 z-10">
-                        <div className="glass-pill gap-2 px-3 py-1.5 text-xs font-medium
-                                        text-[hsl(var(--primary))]">
-                            <Monitor className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-                            Sharing your screen
-                        </div>
-                    </div>
-
-                    {/* ── Control bar (full, inside the overlay) ──────────── */}
-                    <div className="absolute left-1/2 -translate-x-1/2 z-20"
-                         style={{ bottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
-                        <div className="glass-pill gap-2 px-2 py-2 shadow-xl shadow-[hsl(var(--shadow-color))]/25">
-                            <MicButton onClickFn={handleMicToggle} action={isMuted ? "close" : "open"} />
-                            <CameraButton onClickFn={handleCameraToggle} action={isVideoOff ? "close" : "open"} />
-
-                            <button
-                                type="button"
-                                onClick={handleScreenShare}
-                                aria-label="Stop sharing screen"
-                                className="ctrl-btn ctrl-btn-screen h-9 w-9 sm:h-11 sm:w-11"
-                            >
-                                <Monitor className="w-4 h-4 sm:w-5 sm:h-5" />
-                            </button>
-
-                            <div className="mx-1 h-5 w-px bg-[hsl(var(--border))]" />
-
-                            <button
-                                type="button"
-                                onClick={handleEndCall}
-                                aria-label="Leave call"
-                                className="ctrl-btn ctrl-btn-off h-9 w-9 sm:h-11 sm:w-11"
-                            >
-                                <PhoneOff className="w-4 h-4 sm:w-5 sm:h-5" />
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* ── Floating control bar ─────────────────────────────────── */}
-            {(!flags.screen_sharing || !isScreenSharing) && (
-                <div className="absolute left-1/2 -translate-x-1/2 z-20"
-                     style={{ bottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
-                    <div className="glass-pill gap-2 px-2 py-2 shadow-xl shadow-[hsl(var(--shadow-color))]/25">
-                        <MicButton onClickFn={handleMicToggle} action={isMuted ? "close" : "open"} />
-                        <CameraButton onClickFn={handleCameraToggle} action={isVideoOff ? "close" : "open"} />
-                        {hasMultipleCameras && !isVideoOff && (
-                            <FlipCameraButton onClickFn={handleFlipCamera} />
-                        )}
-
-                        {flags.screen_sharing && (
-                            <button
-                                type="button"
-                                onClick={handleScreenShare}
-                                aria-label="Share screen"
-                                className="ctrl-btn ctrl-btn-on h-9 w-9 sm:h-11 sm:w-11"
-                            >
-                                <Monitor className="w-4 h-4 sm:w-5 sm:h-5" />
-                            </button>
-                        )}
-
-                        <div className="mx-1 h-5 w-px bg-[hsl(var(--border))]" />
-
+                    {flags.screen_sharing && (
                         <button
                             type="button"
-                            onClick={() => setShowStats(true)}
-                            aria-label="Network stats"
-                            className="ctrl-btn ctrl-btn-on h-9 w-9 sm:h-11 sm:w-11"
+                            onClick={handleScreenShare}
+                            aria-label={isScreenSharing ? "Stop sharing screen" : "Share screen"}
+                            className={`ctrl-btn h-9 w-9 sm:h-11 sm:w-11 ${isScreenSharing ? 'ctrl-btn-screen' : 'ctrl-btn-on'}`}
                         >
-                            <BarChart2 className="w-4 h-4 sm:w-5 sm:h-5" />
+                            <Monitor className="w-4 h-4 sm:w-5 sm:h-5" />
                         </button>
+                    )}
 
-                        <button
-                            type="button"
-                            onClick={handleEndCall}
-                            aria-label="Leave call"
-                            className="ctrl-btn ctrl-btn-off h-9 w-9 sm:h-11 sm:w-11"
-                        >
-                            <PhoneOff className="w-4 h-4 sm:w-5 sm:h-5" />
-                        </button>
-                    </div>
+                    <div className="mx-1 h-5 w-px bg-[hsl(var(--border))]" />
+
+                    <button
+                        type="button"
+                        onClick={() => setShowStats(true)}
+                        aria-label="Network stats"
+                        className="ctrl-btn ctrl-btn-on h-9 w-9 sm:h-11 sm:w-11"
+                    >
+                        <BarChart2 className="w-4 h-4 sm:w-5 sm:h-5" />
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={handleEndCall}
+                        aria-label="Leave call"
+                        className="ctrl-btn ctrl-btn-off h-9 w-9 sm:h-11 sm:w-11"
+                    >
+                        <PhoneOff className="w-4 h-4 sm:w-5 sm:h-5" />
+                    </button>
                 </div>
-            )}
+            </div>
 
             {showStats && (
                 <StatsPanel rows={statsRows} onClose={() => setShowStats(false)} />
