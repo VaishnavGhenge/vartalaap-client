@@ -163,7 +163,7 @@ describe('switchCamera', () => {
     expect(usePeerStore.getState().facingMode).toBe('user')
   })
 
-  it('requests getUserMedia with exact opposite facingMode', async () => {
+  it('requests getUserMedia with ideal opposite facingMode', async () => {
     const stream = makeStream([makeTrack('video', 'user')])
     usePeerStore.setState({ localStream: stream, facingMode: 'user' })
     stubGetUserMedia(makeTrack('video', 'environment'))
@@ -172,7 +172,7 @@ describe('switchCamera', () => {
 
     expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith(
       expect.objectContaining({
-        video: expect.objectContaining({ facingMode: { exact: 'environment' } }),
+        video: expect.objectContaining({ facingMode: { ideal: 'environment' } }),
       })
     )
   })

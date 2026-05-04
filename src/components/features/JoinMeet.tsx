@@ -104,6 +104,16 @@ export default function JoinMeet() {
                         <div className="app-panel relative w-full overflow-hidden rounded-2xl"
                              style={{ aspectRatio: '16/9' }}>
 
+                            {/* Settings — top-right of the preview */}
+                            <button
+                                type="button"
+                                onClick={() => setShowSettings(true)}
+                                aria-label="Open settings"
+                                className="absolute top-2.5 right-2.5 z-10 ctrl-btn ctrl-btn-on w-8 h-8"
+                            >
+                                <Settings className="w-4 h-4" />
+                            </button>
+
                             {/* Avatar placeholder when camera is off */}
                             {isVideoOff && (
                                 <div className="absolute inset-0 flex items-center justify-center
@@ -153,18 +163,6 @@ export default function JoinMeet() {
                     {/* ── Join panel ────────────────────────────────────── */}
                     <div className="lg:col-span-2 flex flex-col justify-center">
                         <div className="app-panel rounded-2xl p-5 sm:p-6">
-
-                            {/* Settings gear — top-right of the panel */}
-                            <div className="flex justify-end mb-3 -mt-1 -mr-1">
-                                <button
-                                    type="button"
-                                    onClick={() => setShowSettings(true)}
-                                    aria-label="Open settings"
-                                    className="ctrl-btn ctrl-btn-on w-7 h-7 text-[hsl(var(--muted-foreground))]"
-                                >
-                                    <Settings className="w-3.5 h-3.5" />
-                                </button>
-                            </div>
 
                             {/* Meeting code row */}
                             <div className="flex items-center justify-between gap-3
@@ -220,7 +218,7 @@ export default function JoinMeet() {
                 </div>
             </div>
 
-        {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
+        {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} isVideoOff={isVideoOff} />}
         </main>
     );
 }

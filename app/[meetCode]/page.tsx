@@ -18,7 +18,7 @@ export default function MeetManager() {
     const { clearMeet, setCurrentMeet, isMuted, isVideoOff } = useMeetStore();
     const { clearAll } = usePeerStore();
 
-    const { client, connState, reconnectAttempt } = useSignaling();
+    const { client, connState, reconnectAttempt } = useSignaling(hasJoinedMeet);
     useCall({
         client,
         roomId: meetCode,
