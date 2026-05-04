@@ -55,7 +55,7 @@ async function applyEncodingLevel(peer: Peer.Instance, level: EncodingLevel) {
 
 // ─── Stats parsing ─────────────────────────────────────────────────────────────
 
-interface PrevEntry { bytesSent: number; bytesReceived: number; ts: number }
+export interface PrevEntry { bytesSent: number; bytesReceived: number; ts: number }
 
 // RTCStatsReport entries are loosely typed in the DOM lib.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -65,7 +65,7 @@ function n(entry: StatsEntry, key: string): number {
   return typeof entry[key] === 'number' ? entry[key] : 0
 }
 
-function parseReport(
+export function parseReport(
   report: RTCStatsReport,
   peerId: string,
   prevMap: Map<string, PrevEntry>,
@@ -158,7 +158,7 @@ function parseReport(
 
 // ─── Adaptive step function ───────────────────────────────────────────────────
 
-function stepAdaptation(
+export function stepAdaptation(
   peerId: string,
   peer: Peer.Instance,
   loss: number,
