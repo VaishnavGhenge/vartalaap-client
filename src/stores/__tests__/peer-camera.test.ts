@@ -57,7 +57,6 @@ function stubCanvasCaptureStream() {
         })),
       } as unknown as HTMLElement
     }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (document.createElement as any).__vitest_original?.(tag) ?? document.createElement(tag)
   })
   return placeholder

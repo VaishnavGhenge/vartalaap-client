@@ -58,7 +58,6 @@ async function applyEncodingLevel(peer: Peer.Instance, level: EncodingLevel) {
 interface PrevEntry { bytesSent: number; bytesReceived: number; ts: number }
 
 // RTCStatsReport entries are loosely typed in the DOM lib.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type StatsEntry = Record<string, any>
 
 function n(entry: StatsEntry, key: string): number {

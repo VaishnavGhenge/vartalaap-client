@@ -1,12 +1,15 @@
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-import { FlatCompat } from "@eslint/eslintrc";
+import { createRequire } from "module";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const compat = new FlatCompat({ baseDirectory: __dirname });
+const require = createRequire(import.meta.url);
+const coreWebVitals = require("eslint-config-next/core-web-vitals");
 
 export default [
-  ...compat.extends("next/core-web-vitals"),
+  ...coreWebVitals,
+  {
+    rules: {
+      // setState inside useEffect is valid for initialization and prop-driven
+      // resets; the rule is too aggressive for this codebase.
+      "react-hooks/set-state-in-effect": "off",
+    },
+  },
 ];

@@ -378,7 +378,6 @@ describe('useCall — ICE restart', () => {
     })
 
     const bobConn = usePeerStore.getState().peerConnections.get('peer-bob')
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const fakePc = (bobConn!.peer as unknown as { _pc: any })._pc
 
     // Capture the connectionstatechange listener registered by the hook
@@ -414,7 +413,6 @@ describe('useCall — ICE restart', () => {
     })
 
     const bobConn = usePeerStore.getState().peerConnections.get('peer-bob')
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const fakePc = (bobConn!.peer as unknown as { _pc: any })._pc
 
     const listener = fakePc.addEventListener.mock.calls.find(
