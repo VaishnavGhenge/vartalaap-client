@@ -281,7 +281,8 @@ describe('disableCamera — peer interaction', () => {
     expect(sender.replaceTrack).toHaveBeenCalledWith(placeholder)
   })
 
-  it('stops the placeholder immediately after handing it to the sender', async () => {
+  it('stops the placeholder after a delay (not synchronously) so replaceTrack can resolve first', async () => {
+    vi.useFakeTimers()
     const { peer } = await makePeerWithVideoSender()
     const placeholder = stubCanvasCaptureStream()
     const stream = makeStream([makeTrack('video')])
@@ -294,7 +295,10 @@ describe('disableCamera — peer interaction', () => {
 
     usePeerStore.getState().disableCamera()
 
+    expect(placeholder.stop).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(1000)
     expect(placeholder.stop).toHaveBeenCalled()
+    vi.useRealTimers()
   })
 
   it('stops the real video track', async () => {

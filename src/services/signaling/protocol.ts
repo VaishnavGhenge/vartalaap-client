@@ -25,6 +25,7 @@ export interface PeerInfo {
   name: string
   audio: boolean
   video: boolean
+  screenSharing?: boolean
 }
 
 export interface JoinData {
@@ -34,7 +35,7 @@ export interface JoinData {
 }
 
 export interface JoinedData { peers: PeerInfo[] }
-export interface PeerJoinedData { peerId: string; name: string; audio: boolean; video: boolean }
+export interface PeerJoinedData { peerId: string; name: string; audio: boolean; video: boolean; screenSharing?: boolean }
 export interface PeerLeftData { peerId: string }
 export interface PeerStateData { audio: boolean; video: boolean; speaking?: boolean; screenSharing?: boolean }
 export interface ErrorData { message: string }

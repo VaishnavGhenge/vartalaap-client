@@ -3,7 +3,7 @@
 import { PhoneOff, Copy, Check, Share2, BarChart2, Monitor } from "lucide-react";
 import { toast } from "sonner";
 import { resumeSharedAudioContext } from "@/src/lib/audio-context";
-import { playLeaveCall } from "@/src/lib/sounds";
+import { playLeaveCall, playScreenShareStart, playScreenShareStop } from "@/src/lib/sounds";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAudioLevel } from "@/src/hooks/use-audio-level";
 import { MicButton } from "@/src/components/ui/MicButton";
@@ -143,6 +143,7 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
         if (useMeetStore.getState().isScreenSharing) {
             toggleScreenShare();
             broadcastState(!isMuted, !isVideoOff, undefined, false);
+            playScreenShareStop();
         }
     };
 
@@ -155,6 +156,7 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
         screenTrackRef.current = track;
         toggleScreenShare();
         broadcastState(!isMuted, !isVideoOff, undefined, true);
+        playScreenShareStart();
         track.addEventListener('ended', doStopScreenShare, { once: true });
     };
 
