@@ -47,7 +47,7 @@ export const VideoStream = ({stream, isLocal}: VideoProps) => {
 
     return <video
         ref={ref}
-        className='absolute inset-0 w-full h-full object-cover'
+        className='absolute inset-0 w-full h-full object-cover pointer-events-none'
         autoPlay
         muted={isLocal}
         playsInline

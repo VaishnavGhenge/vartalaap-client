@@ -21,7 +21,6 @@ import { useJoinMeetStore } from "@/src/stores/joinMeet";
 import { usePeerStats } from "@/src/hooks/use-peer-stats";
 import type { SignalingClient, ConnState } from "@/src/services/signaling/client";
 
-// Sentinel used for the local tile pin ID
 const LOCAL_TILE_ID = 'local'
 
 interface MeetCallProps {
@@ -44,23 +43,19 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
     const [canShare, setCanShare] = useState(false);
     const [showStats, setShowStats] = useState(false);
     const [pinnedId, setPinnedId] = useState<string | null>(null);
-    // Briefly blanks the page while the OS picker is open so that if the user
-    // picks "Entire Screen" or the app window, capture starts on a blank view
-    // rather than the live call UI (prevents the infinite mirror effect).
     const [isPicking, setIsPicking] = useState(false);
     const screenTrackRef = useRef<MediaStreamTrack | null>(null);
     useEffect(() => { setCanShare('share' in navigator); }, []);
 
     const remotePeers = useMemo(() => Array.from(peerConnections.values()), [peerConnections]);
 
-    // Clear pin when the pinned peer leaves the call.
+    // Clear pin when the pinned peer leaves.
     useEffect(() => {
         if (!pinnedId || pinnedId === LOCAL_TILE_ID) return;
         if (!peerConnections.has(pinnedId)) setPinnedId(null);
     }, [peerConnections, pinnedId]);
 
-    // While screen sharing, wrap the screen track in its own MediaStream so the
-    // local tile shows what remote peers are actually receiving.
+    // While screen sharing, show the screen track in the local tile.
     const localDisplayStream = useMemo(() => {
         if (!screenTrack) return localStream;
         const s = new MediaStream();
@@ -133,12 +128,7 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
     };
 
     const handleScreenShare = async () => {
-        if (isScreenSharing) {
-            doStopScreenShare();
-            return;
-        }
-        // Blank the page before the OS picker opens so any "Entire Screen" or
-        // window capture starts on a blank background, not the live call UI.
+        if (isScreenSharing) { doStopScreenShare(); return; }
         setIsPicking(true);
         const track = await startScreenShare();
         setIsPicking(false);
@@ -156,9 +146,7 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
         clearJoinMeet();
     };
 
-    const togglePin = (id: string) => {
-        setPinnedId(prev => prev === id ? null : id);
-    };
+    const togglePin = (id: string) => setPinnedId(prev => prev === id ? null : id);
 
     const alone = remotePeers.length === 0;
     const participantCount = remotePeers.length + 1;
@@ -169,23 +157,18 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
             id: c.id,
             name: c.name || c.id.slice(0, 8),
             stats: peerStats.get(c.id) ?? {
-                outboundBitrateKbps: 0,
-                inboundBitrateKbps: 0,
-                packetLossPercent: 0,
-                roundTripTimeMs: -1,
-                jitterMs: 0,
-                candidateType: 'unknown' as const,
-                quality: 'unknown' as const,
-                encodingLevel: 2 as const,
-                timestamp: 0,
+                outboundBitrateKbps: 0, inboundBitrateKbps: 0,
+                packetLossPercent: 0, roundTripTimeMs: -1,
+                jitterMs: 0, candidateType: 'unknown' as const,
+                quality: 'unknown' as const, encodingLevel: 2 as const, timestamp: 0,
             },
         })),
         [remotePeers, peerStats],
     );
 
-    // ── Spotlight helpers ─────────────────────────────────────────────────────
+    // ── Tile renderers ────────────────────────────────────────────────────────
 
-    const renderLocalTile = (opts: { onPin?: () => void; isPinned?: boolean } = {}) => (
+    const renderLocalTile = (opts: { onPin?: () => void; isPinned?: boolean; compact?: boolean } = {}) => (
         <VideoTile
             key="local"
             isLocal
@@ -195,10 +178,11 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
             stream={localDisplayStream}
             onPin={opts.onPin}
             isPinned={opts.isPinned}
+            compact={opts.compact}
         />
     );
 
-    const renderRemoteTile = (c: typeof remotePeers[number], opts: { onPin?: () => void; isPinned?: boolean } = {}) => {
+    const renderRemoteTile = (c: typeof remotePeers[number], opts: { onPin?: () => void; isPinned?: boolean; compact?: boolean } = {}) => {
         const stats = peerStats.get(c.id);
         return (
             <VideoTile
@@ -215,32 +199,28 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                 viaRelay={stats?.candidateType === 'relay'}
                 onPin={opts.onPin}
                 isPinned={opts.isPinned}
+                compact={opts.compact}
             />
         );
     };
 
-    // ── Determine if spotlight mode is active ─────────────────────────────────
+    // ── Spotlight ─────────────────────────────────────────────────────────────
 
     const pinnedPeer = pinnedId && pinnedId !== LOCAL_TILE_ID
         ? remotePeers.find(c => c.id === pinnedId) ?? null
         : null;
     const spotlightActive = pinnedId !== null && (pinnedId === LOCAL_TILE_ID || pinnedPeer !== null);
 
-    // Tiles that go in the thumbnail strip (everyone except the pinned tile)
-    const stripPeers = spotlightActive
-        ? remotePeers.filter(c => c.id !== pinnedId)
-        : [];
+    const stripPeers = spotlightActive ? remotePeers.filter(c => c.id !== pinnedId) : [];
     const localInStrip = spotlightActive && pinnedId !== LOCAL_TILE_ID;
+    const showStrip = spotlightActive && (localInStrip || stripPeers.length > 0);
 
     return (
-        <div className="relative min-h-dvh w-full overflow-hidden text-[hsl(var(--foreground))]">
+        <div className="flex flex-col h-dvh w-full overflow-hidden text-[hsl(var(--foreground))]">
 
             {/* Brief blank overlay while the OS screen-picker is open. */}
             {isPicking && (
-                <div
-                    className="fixed inset-0 z-[999] bg-[hsl(var(--background))]"
-                    aria-hidden="true"
-                />
+                <div className="fixed inset-0 z-[999] bg-[hsl(var(--background))]" aria-hidden="true" />
             )}
 
             <ConnectionBanner
@@ -249,8 +229,8 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                 onLeave={handleEndCall}
             />
 
-            {/* ── Top bar ──────────────────────────────────────────────── */}
-            <div className="absolute left-4 top-4 right-4 z-20 flex items-center justify-between gap-3">
+            {/* ── Top bar — outside the video layout ───────────────────── */}
+            <header className="shrink-0 flex items-center justify-between gap-3 px-4 pt-4 pb-2 z-20">
                 <button
                     type="button"
                     onClick={handleShare}
@@ -269,8 +249,7 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
 
                 <div className="flex items-center gap-2">
                     {flags.screen_sharing && isScreenSharing && (
-                        <div className="glass-pill gap-1.5 px-3 py-1.5 text-xs font-medium
-                                        text-[hsl(var(--primary))]">
+                        <div className="glass-pill gap-1.5 px-3 py-1.5 text-xs font-medium text-[hsl(var(--primary))]">
                             <Monitor className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
                             Presenting
                         </div>
@@ -279,67 +258,58 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                         {participantCount} {participantCount === 1 ? 'participant' : 'participants'}
                     </div>
                 </div>
-            </div>
+            </header>
 
-            {/* ── Main content area ────────────────────────────────────── */}
-            <main className="flex flex-col h-dvh">
+            {/* ── Video area ───────────────────────────────────────────── */}
+            <main className="flex-1 min-h-0 flex flex-col px-3 gap-2">
                 {spotlightActive ? (
-                    // ── Spotlight layout ────────────────────────────────
                     <>
                         {/* Large pinned tile */}
-                        <div
-                            className="flex-1 p-3 min-h-0"
-                            style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom, 0px) + 88px)' }}
-                        >
-                            <div className="w-full h-full">
-                                {pinnedId === LOCAL_TILE_ID
-                                    ? renderLocalTile({ onPin: () => togglePin(LOCAL_TILE_ID), isPinned: true })
-                                    : pinnedPeer && renderRemoteTile(pinnedPeer, { onPin: () => togglePin(pinnedId!), isPinned: true })
-                                }
-                            </div>
+                        <div className="flex-1 min-h-0">
+                            {pinnedId === LOCAL_TILE_ID
+                                ? renderLocalTile({ onPin: () => togglePin(LOCAL_TILE_ID), isPinned: true })
+                                : pinnedPeer && renderRemoteTile(pinnedPeer, { onPin: () => togglePin(pinnedId!), isPinned: true })
+                            }
                         </div>
 
-                        {/* Thumbnail strip — above the control bar */}
-                        <div
-                            className="absolute left-0 right-0 z-10 px-3 flex gap-2 overflow-x-auto"
-                            style={{ bottom: 'calc(5.5rem + env(safe-area-inset-bottom, 0px))', height: '80px' }}
-                        >
-                            {localInStrip && (
-                                <div className="shrink-0 rounded-xl overflow-hidden" style={{ width: '142px', height: '80px' }}>
-                                    {renderLocalTile({ onPin: () => togglePin(LOCAL_TILE_ID), isPinned: false })}
-                                </div>
-                            )}
-                            {stripPeers.map(c => (
-                                <div key={c.id} className="shrink-0 rounded-xl overflow-hidden" style={{ width: '142px', height: '80px' }}>
-                                    {renderRemoteTile(c, { onPin: () => togglePin(c.id), isPinned: false })}
-                                </div>
-                            ))}
-                        </div>
+                        {/* Thumbnail strip */}
+                        {showStrip && (
+                            <div className="shrink-0 flex gap-2 overflow-x-auto" style={{ height: '80px' }}>
+                                {localInStrip && (
+                                    <div className="shrink-0 rounded-xl overflow-hidden" style={{ width: '142px', height: '80px' }}>
+                                        {renderLocalTile({ onPin: () => togglePin(LOCAL_TILE_ID), compact: true })}
+                                    </div>
+                                )}
+                                {stripPeers.map(c => (
+                                    <div key={c.id} className="shrink-0 rounded-xl overflow-hidden" style={{ width: '142px', height: '80px' }}>
+                                        {renderRemoteTile(c, { onPin: () => togglePin(c.id), compact: true })}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </>
                 ) : (
-                    // ── Normal grid layout ──────────────────────────────
-                    <div className="flex-1 p-3 min-h-0"
-                         style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom, 0px))' }}>
-                        <VideoGrid gap={8} tileAspect={16 / 9}>
-                            {renderLocalTile({ onPin: remotePeers.length > 0 ? () => togglePin(LOCAL_TILE_ID) : undefined })}
-                            {remotePeers.map((c) => renderRemoteTile(c, { onPin: () => togglePin(c.id) }))}
-                        </VideoGrid>
-                    </div>
-                )}
-
-                {alone && (
-                    <div className="pointer-events-none absolute inset-x-0 flex justify-center px-4"
-                         style={{ bottom: 'calc(5.5rem + env(safe-area-inset-bottom, 0px))' }}>
-                        <p className="glass-pill px-4 py-2 text-xs text-[hsl(var(--muted-foreground))]">
-                            Share the code above to invite someone
-                        </p>
-                    </div>
+                    <VideoGrid gap={8} tileAspect={16 / 9}>
+                        {renderLocalTile({ onPin: remotePeers.length > 0 ? () => togglePin(LOCAL_TILE_ID) : undefined })}
+                        {remotePeers.map((c) => renderRemoteTile(c, { onPin: () => togglePin(c.id) }))}
+                    </VideoGrid>
                 )}
             </main>
 
-            {/* ── Floating control bar ─────────────────────────────────── */}
-            <div className="absolute left-1/2 -translate-x-1/2 z-20"
-                 style={{ bottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
+            {/* "Invite someone" hint — shown only when alone */}
+            {alone && (
+                <div className="shrink-0 flex justify-center px-4 py-2">
+                    <p className="glass-pill px-4 py-2 text-xs text-[hsl(var(--muted-foreground))]">
+                        Share the code above to invite someone
+                    </p>
+                </div>
+            )}
+
+            {/* ── Control bar — outside the video layout ────────────────── */}
+            <footer
+                className="shrink-0 flex justify-center py-3"
+                style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+            >
                 <div className="glass-pill gap-2 px-2 py-2 shadow-xl shadow-[hsl(var(--shadow-color))]/25">
                     <MicButton onClickFn={handleMicToggle} action={isMuted ? "close" : "open"} />
                     <CameraButton onClickFn={handleCameraToggle} action={isVideoOff ? "close" : "open"} />
@@ -378,7 +348,7 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                         <PhoneOff className="w-4 h-4 sm:w-5 sm:h-5" />
                     </button>
                 </div>
-            </div>
+            </footer>
 
             {showStats && (
                 <StatsPanel rows={statsRows} onClose={() => setShowStats(false)} />

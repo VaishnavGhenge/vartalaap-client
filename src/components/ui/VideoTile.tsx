@@ -36,6 +36,8 @@ interface VideoTileProps {
     isScreenSharing?: boolean;
     onPin?: () => void;
     isPinned?: boolean;
+    /** Compact mode for small thumbnail tiles — abbreviates the name pill. */
+    compact?: boolean;
 }
 
 export const VideoTile = ({
@@ -50,6 +52,7 @@ export const VideoTile = ({
     isScreenSharing = false,
     onPin,
     isPinned = false,
+    compact = false,
 }: VideoTileProps) => {
     const name = isLocal ? (userName || 'You') : (participant?.name || 'Participant');
     const videoOff = isLocal ? !!isVideoOff : !!participant?.isVideoOff;
@@ -116,14 +119,15 @@ export const VideoTile = ({
                 </div>
             )}
 
-            {/* Pin / unpin button — top-left, visible on hover or when pinned */}
+            {/* Pin / unpin button — bottom-right, visible on hover or always when pinned.
+                Kept away from the top bar (top-left) so it is always reachable. */}
             {onPin && (
                 <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); onPin(); }}
                     aria-label={isPinned ? 'Unpin' : 'Pin'}
-                    className={`absolute top-2 left-2 z-10 flex items-center justify-center
-                                w-7 h-7 rounded-full glass-pill transition-opacity
+                    className={`absolute bottom-2.5 right-2.5 z-10 flex items-center justify-center
+                                w-7 h-7 rounded-full glass-pill transition-opacity cursor-pointer
                                 ${isPinned
                                     ? 'opacity-100 text-[hsl(var(--primary))]'
                                     : 'opacity-0 group-hover:opacity-100 text-[hsl(var(--foreground))]'
@@ -137,9 +141,10 @@ export const VideoTile = ({
             )}
 
             {/* Name pill */}
-            <div aria-hidden="true" className="glass-pill absolute bottom-2.5 left-2.5 gap-1 px-2 py-1 text-[12px]">
-                {muted && <MicOff className="w-3 h-3 text-[hsl(var(--destructive))] shrink-0" />}
-                <span className="truncate max-w-[140px]">{isScreenSharing ? `${label} • Screen` : label}</span>
+            <div aria-hidden="true" className={`glass-pill absolute bottom-2 left-2 gap-1 px-2 py-0.5 overflow-hidden
+                                                  ${compact ? 'text-[10px] max-w-[calc(100%-1rem)]' : 'text-[12px] max-w-[calc(100%-1.25rem)]'}`}>
+                {muted && <MicOff className="w-2.5 h-2.5 text-[hsl(var(--destructive))] shrink-0" />}
+                <span className="truncate">{isScreenSharing ? `${label} • Screen` : label}</span>
             </div>
         </div>
     );
