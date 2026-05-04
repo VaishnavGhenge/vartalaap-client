@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
 import Peer from 'simple-peer'
 import type { IceServer } from '@/src/services/api/ice'
-import { getSharedAudioContext } from '@/src/lib/audio-context'
+import { getSharedAudioContext, setAudioOutputDevice } from '@/src/lib/audio-context'
 import { BackgroundBlurProcessor } from '@/src/lib/background-blur'
 import { getMicConstraints } from '@/src/lib/audio-constraints'
 import {
@@ -11,6 +11,7 @@ import {
   type BackgroundEffectMode,
   type BackgroundEffectPreference,
 } from '@/src/lib/background-effects'
+import { getDevicePreferences, setDevicePreference } from '@/src/lib/device-preferences'
 
 const VIDEO_WIDTH_IDEAL = 960
 const VIDEO_HEIGHT_IDEAL = 540
@@ -57,6 +58,9 @@ interface PeerState {
   backgroundEffect: BackgroundEffectMode
   backgroundImageDataUrl: string | null
   facingMode: 'user' | 'environment'
+  preferredAudioInputId: string
+  preferredVideoInputId: string
+  preferredAudioOutputId: string
   peerConnections: Map<string, PeerConnection>
   peerStats: Map<string, PeerStats>
   iceServers: IceServer[]
@@ -78,6 +82,10 @@ interface PeerState {
   enableCamera: () => Promise<MediaStreamTrack | null>
   disableCamera: () => void
   switchCamera: () => Promise<boolean>
+
+  setAudioInput: (deviceId: string) => Promise<void>
+  setVideoInput: (deviceId: string) => Promise<void>
+  setAudioOutput: (deviceId: string) => Promise<void>
 
   setBackgroundEffect: (preference: BackgroundEffectPreference) => Promise<boolean>
   setBackgroundBlur: (enabled: boolean) => Promise<boolean>
@@ -248,7 +256,9 @@ const replaceAudioSenderOnPeers = (
 }
 
 export const usePeerStore = create<PeerState>()(
-  devtools((set, get) => ({
+  devtools((set, get) => {
+    const savedDevices = getDevicePreferences()
+    return {
     localStream: null,
     screenTrack: null,
     blurProcessor: null,
@@ -256,6 +266,9 @@ export const usePeerStore = create<PeerState>()(
     backgroundEffect: getBackgroundEffectPreference().mode,
     backgroundImageDataUrl: getBackgroundEffectPreference().imageDataUrl ?? null,
     facingMode: 'user',
+    preferredAudioInputId: savedDevices.audioInputId ?? '',
+    preferredVideoInputId: savedDevices.videoInputId ?? '',
+    preferredAudioOutputId: savedDevices.audioOutputId ?? '',
     peerConnections: new Map(),
     peerStats: new Map(),
     iceServers: [],
@@ -318,7 +331,12 @@ export const usePeerStore = create<PeerState>()(
 
     enableMic: async () => {
       try {
-        const media = await navigator.mediaDevices.getUserMedia({ audio: getMicConstraints() })
+        const { preferredAudioInputId } = get()
+        const audioConstraints: MediaTrackConstraints = {
+          ...getMicConstraints(),
+          ...(preferredAudioInputId ? { deviceId: { exact: preferredAudioInputId } } : {}),
+        }
+        const media = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints })
         const track = media.getAudioTracks()[0]
         if (!track) return null
         const existing = get().localStream
@@ -349,15 +367,11 @@ export const usePeerStore = create<PeerState>()(
 
     enableCamera: async () => {
       try {
-        const { facingMode, blurProcessor: activeProcessor, localStream: existingStream, backgroundEffect, backgroundImageDataUrl } = get()
-        const media = await getUserMediaWithFallback({
-          video: {
-            facingMode,
-            width: { ideal: VIDEO_WIDTH_IDEAL },
-            height: { ideal: VIDEO_HEIGHT_IDEAL },
-            frameRate: { ideal: VIDEO_FRAME_RATE_IDEAL },
-          },
-        })
+        const { facingMode, preferredVideoInputId, blurProcessor: activeProcessor, localStream: existingStream, backgroundEffect, backgroundImageDataUrl } = get()
+        const videoConstraints: MediaTrackConstraints = preferredVideoInputId
+          ? { deviceId: { exact: preferredVideoInputId }, width: { ideal: VIDEO_WIDTH_IDEAL }, height: { ideal: VIDEO_HEIGHT_IDEAL }, frameRate: { ideal: VIDEO_FRAME_RATE_IDEAL } }
+          : { facingMode, width: { ideal: VIDEO_WIDTH_IDEAL }, height: { ideal: VIDEO_HEIGHT_IDEAL }, frameRate: { ideal: VIDEO_FRAME_RATE_IDEAL } }
+        const media = await getUserMediaWithFallback({ video: videoConstraints })
         const track = media.getVideoTracks()[0]
         if (!track) return null
 
@@ -473,6 +487,66 @@ export const usePeerStore = create<PeerState>()(
         console.error('switchCamera failed', e)
         return false
       }
+    },
+
+    setAudioInput: async (deviceId) => {
+      setDevicePreference('audioInputId', deviceId)
+      set({ preferredAudioInputId: deviceId })
+      const { localStream, peerConnections } = get()
+      if (!localStream?.getAudioTracks().length) return
+      try {
+        const audioConstraints: MediaTrackConstraints = {
+          ...getMicConstraints(),
+          deviceId: { exact: deviceId },
+        }
+        const media = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints })
+        const track = media.getAudioTracks()[0]
+        if (!track) return
+        localStream.getAudioTracks().forEach(t => { t.stop(); localStream.removeTrack(t) })
+        localStream.addTrack(track)
+        replaceAudioSenderOnPeers(track, peerConnections)
+      } catch (e) {
+        console.error('setAudioInput failed', e)
+      }
+    },
+
+    setVideoInput: async (deviceId) => {
+      setDevicePreference('videoInputId', deviceId)
+      set({ preferredVideoInputId: deviceId })
+      const { localStream, peerConnections, blurProcessor: activeProcessor, backgroundEffect, backgroundImageDataUrl } = get()
+      if (!localStream?.getVideoTracks().length) return
+      try {
+        const media = await navigator.mediaDevices.getUserMedia({
+          video: { deviceId: { exact: deviceId }, width: { ideal: VIDEO_WIDTH_IDEAL }, height: { ideal: VIDEO_HEIGHT_IDEAL }, frameRate: { ideal: VIDEO_FRAME_RATE_IDEAL } },
+        })
+        const newTrack = media.getVideoTracks()[0]
+        if (!newTrack) return
+        const audioTracks = localStream.getAudioTracks()
+        localStream.getVideoTracks().forEach(t => t.stop())
+        if (activeProcessor) {
+          activeProcessor.stop()
+          try {
+            const newProcessor = createBackgroundProcessor({ mode: backgroundEffect, imageDataUrl: backgroundImageDataUrl ?? undefined })
+            if (newProcessor) {
+              const canvasTrack = await newProcessor.start(newTrack)
+              set({ localStream: new MediaStream([...audioTracks, canvasTrack]), blurProcessor: newProcessor, rawCameraTrack: newTrack })
+              replaceVideoTrackOnPeers(canvasTrack, peerConnections)
+              return
+            }
+          } catch { /* fall through to raw track */ }
+          set({ blurProcessor: null, rawCameraTrack: null })
+        }
+        set({ localStream: new MediaStream([...audioTracks, newTrack]) })
+        replaceVideoTrackOnPeers(newTrack, peerConnections)
+      } catch (e) {
+        console.error('setVideoInput failed', e)
+      }
+    },
+
+    setAudioOutput: async (deviceId) => {
+      setDevicePreference('audioOutputId', deviceId)
+      set({ preferredAudioOutputId: deviceId })
+      await setAudioOutputDevice(deviceId)
     },
 
     setBackgroundEffect: async (preference) => {
@@ -617,5 +691,6 @@ export const usePeerStore = create<PeerState>()(
         peerStats: new Map(),
       })
     },
-  })),
+  }
+  }),
 )
