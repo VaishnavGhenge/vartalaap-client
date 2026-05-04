@@ -34,12 +34,17 @@ jobs:
       - name: Post coverage summary
         if: always()
         run: |
+          if [ ! -f coverage/coverage-summary.json ]; then
+            echo "## Test Coverage" >> $GITHUB_STEP_SUMMARY
+            echo "Coverage report not generated (tests may have failed)." >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
           echo "## Test Coverage" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Metric | % |" >> $GITHUB_STEP_SUMMARY
           echo "|--------|---|" >> $GITHUB_STEP_SUMMARY
           node -e "
-            const s = require('./coverage/coverage-summary.json').total;
+            const s = JSON.parse(require('fs').readFileSync('./coverage/coverage-summary.json')).total;
             ['statements','branches','functions','lines'].forEach(k => {
               console.log('| ' + k.charAt(0).toUpperCase() + k.slice(1) + ' | ' + s[k].pct.toFixed(1) + '% |');
             });
