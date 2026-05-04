@@ -2,6 +2,7 @@
 
 import JoinMeet from "@/src/components/features/JoinMeet";
 import MeetCall from "@/src/components/features/MeetCall";
+import { CallErrorBoundary } from "@/src/components/ui/CallErrorBoundary";
 import { useJoinMeetStore } from "@/src/stores/joinMeet";
 import { useMeetStore } from "@/src/stores/meet";
 import { useParams } from "next/navigation";
@@ -43,10 +44,21 @@ export default function MeetManager() {
         };
     }, [clearAll, clearMeet, setHasJoinedMeet, setMeetCode]);
 
+    const handleLeave = () => {
+        clearAll();
+        clearMeet();
+        setHasJoinedMeet(false);
+        setMeetCode("");
+    };
+
     return (
         <div className="flex flex-1 flex-col">
             {hasJoinedMeet
-                ? <MeetCall client={client} connState={connState} reconnectAttempt={reconnectAttempt} routeMeetCode={meetCode} />
+                ? (
+                    <CallErrorBoundary onLeave={handleLeave}>
+                        <MeetCall client={client} connState={connState} reconnectAttempt={reconnectAttempt} routeMeetCode={meetCode} />
+                    </CallErrorBoundary>
+                )
                 : <JoinMeet />}
         </div>
     );
