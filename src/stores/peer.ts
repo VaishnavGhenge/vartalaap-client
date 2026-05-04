@@ -5,6 +5,12 @@ import type { IceServer } from '@/src/services/api/ice'
 import { getSharedAudioContext } from '@/src/lib/audio-context'
 import { BackgroundBlurProcessor } from '@/src/lib/background-blur'
 import { getFlags } from '@/src/lib/feature-flags'
+import {
+  getBackgroundEffectPreference,
+  setBackgroundEffectPreference,
+  type BackgroundEffectMode,
+  type BackgroundEffectPreference,
+} from '@/src/lib/background-effects'
 
 const VIDEO_WIDTH_IDEAL = 960
 const VIDEO_HEIGHT_IDEAL = 540
@@ -48,6 +54,8 @@ interface PeerState {
   screenTrack: MediaStreamTrack | null
   blurProcessor: BackgroundBlurProcessor | null
   rawCameraTrack: MediaStreamTrack | null
+  backgroundEffect: BackgroundEffectMode
+  backgroundImageDataUrl: string | null
   facingMode: 'user' | 'environment'
   peerConnections: Map<string, PeerConnection>
   peerStats: Map<string, PeerStats>
@@ -71,6 +79,7 @@ interface PeerState {
   disableCamera: () => void
   switchCamera: () => Promise<boolean>
 
+  setBackgroundEffect: (preference: BackgroundEffectPreference) => Promise<boolean>
   setBackgroundBlur: (enabled: boolean) => Promise<boolean>
 
   startScreenShare: () => Promise<MediaStreamTrack | null>
@@ -86,6 +95,32 @@ interface AdaptiveVideoSendParameters extends RTCRtpSendParameters {
 }
 
 const isVideoSender = (sender: RTCRtpSender) => sender.track?.kind === 'video'
+
+type BlurEffectMode = Extract<BackgroundEffectMode, 'blur-subtle' | 'blur-medium' | 'blur-strong'>
+
+const BLUR_RADIUS_BY_EFFECT: Record<BlurEffectMode, number> = {
+  'blur-subtle': 8,
+  'blur-medium': 14,
+  'blur-strong': 22,
+}
+
+const isBlurEffect = (mode: BackgroundEffectMode): mode is BlurEffectMode =>
+  mode === 'blur-subtle' || mode === 'blur-medium' || mode === 'blur-strong'
+
+const createBackgroundBlurProcessor = (mode: BlurEffectMode) =>
+  new BackgroundBlurProcessor({ blurRadius: BLUR_RADIUS_BY_EFFECT[mode] })
+
+const createBackgroundImageProcessor = (imageDataUrl: string) =>
+  new BackgroundBlurProcessor({ backgroundImageDataUrl: imageDataUrl })
+
+const canProcessBackgroundEffect = (preference: BackgroundEffectPreference) =>
+  isBlurEffect(preference.mode) || (preference.mode === 'image' && !!preference.imageDataUrl)
+
+const createBackgroundProcessor = (preference: BackgroundEffectPreference) => {
+  if (isBlurEffect(preference.mode)) return createBackgroundBlurProcessor(preference.mode)
+  if (preference.mode === 'image' && preference.imageDataUrl) return createBackgroundImageProcessor(preference.imageDataUrl)
+  return null
+}
 
 const tuneVideoSenderForCongestion = async (sender: RTCRtpSender) => {
   if (!sender.getParameters || !sender.setParameters) return
@@ -155,6 +190,33 @@ const createBlackVideoTrack = (): MediaStreamTrack | null => {
   }
 }
 
+// Old Android devices throw NotReadableError when the camera hardware is still held
+// by a previous track, or NotFoundError when exact constraints aren't supported.
+// Retries with progressively simpler constraints before giving up.
+async function getUserMediaWithFallback(constraints: MediaStreamConstraints): Promise<MediaStream> {
+  try {
+    return await navigator.mediaDevices.getUserMedia(constraints)
+  } catch (e) {
+    const name = (e as DOMException).name
+    if (name !== 'NotReadableError' && name !== 'NotFoundError') throw e
+
+    // Second attempt: keep facingMode preference but strip resolution/framerate hints
+    const videoConstraints = constraints.video
+    const facingMode = typeof videoConstraints === 'object'
+      ? (videoConstraints as MediaTrackConstraints).facingMode
+      : undefined
+    try {
+      return await navigator.mediaDevices.getUserMedia({
+        video: facingMode ? { facingMode: { ideal: facingMode as string } } : true,
+        audio: constraints.audio,
+      })
+    } catch {
+      // Last resort: bare video, no constraints
+      return await navigator.mediaDevices.getUserMedia({ video: true, audio: constraints.audio })
+    }
+  }
+}
+
 // Silent audio placeholder so the audio sender is pre-negotiated at peer creation.
 // Avoids mid-call addTrack() renegotiation when the user enables the mic later.
 const createSilentAudioTrack = (): MediaStreamTrack | null => {
@@ -191,6 +253,8 @@ export const usePeerStore = create<PeerState>()(
     screenTrack: null,
     blurProcessor: null,
     rawCameraTrack: null,
+    backgroundEffect: getBackgroundEffectPreference().mode,
+    backgroundImageDataUrl: getBackgroundEffectPreference().imageDataUrl ?? null,
     facingMode: 'user',
     peerConnections: new Map(),
     peerStats: new Map(),
@@ -304,8 +368,8 @@ export const usePeerStore = create<PeerState>()(
 
     enableCamera: async () => {
       try {
-        const { facingMode, blurProcessor: activeProcessor, localStream: existingStream } = get()
-        const media = await navigator.mediaDevices.getUserMedia({
+        const { facingMode, blurProcessor: activeProcessor, localStream: existingStream, backgroundEffect, backgroundImageDataUrl } = get()
+        const media = await getUserMediaWithFallback({
           video: {
             facingMode,
             width: { ideal: VIDEO_WIDTH_IDEAL },
@@ -319,17 +383,29 @@ export const usePeerStore = create<PeerState>()(
         existingStream?.getVideoTracks().forEach((t) => t.stop())
         const audioTracks = existingStream?.getAudioTracks() ?? []
 
-        // Auto-apply blur if the feature flag is on, or if a processor was already running.
-        const wantBlur = activeProcessor !== null || getFlags().background_blur
-        if (wantBlur) {
+        // Auto-apply the saved background effect, or preserve the active effect
+        // while replacing the camera track.
+        const savedPreference = getBackgroundEffectPreference()
+        const nextPreference = activeProcessor !== null
+          ? { mode: backgroundEffect, imageDataUrl: backgroundImageDataUrl ?? undefined }
+          : savedPreference
+        const processor = canProcessBackgroundEffect(nextPreference)
+          ? createBackgroundProcessor(nextPreference)
+          : null
+        if (processor) {
           activeProcessor?.stop()
           try {
-            const newProcessor = new BackgroundBlurProcessor()
-            const canvasTrack = await newProcessor.start(track)
-            set({ localStream: new MediaStream([...audioTracks, canvasTrack]), blurProcessor: newProcessor, rawCameraTrack: track })
+            const canvasTrack = await processor.start(track)
+            set({
+              localStream: new MediaStream([...audioTracks, canvasTrack]),
+              blurProcessor: processor,
+              rawCameraTrack: track,
+              backgroundEffect: nextPreference.mode,
+              backgroundImageDataUrl: nextPreference.imageDataUrl ?? null,
+            })
             replaceVideoTrackOnPeers(canvasTrack, get().peerConnections)
           } catch {
-            set({ localStream: new MediaStream([...audioTracks, track]), blurProcessor: null, rawCameraTrack: null })
+            set({ localStream: new MediaStream([...audioTracks, track]), blurProcessor: null, rawCameraTrack: null, backgroundEffect: 'off', backgroundImageDataUrl: null })
             replaceVideoTrackOnPeers(track, get().peerConnections)
           }
         } else {
@@ -374,15 +450,15 @@ export const usePeerStore = create<PeerState>()(
     },
 
     switchCamera: async () => {
-      const { localStream, facingMode, peerConnections, blurProcessor: activeProcessor } = get()
+      const { localStream, facingMode, peerConnections, blurProcessor: activeProcessor, backgroundEffect, backgroundImageDataUrl } = get()
       if (!localStream) return false
 
       const nextFacing: 'user' | 'environment' = facingMode === 'user' ? 'environment' : 'user'
 
       try {
-        const media = await navigator.mediaDevices.getUserMedia({
+        const media = await getUserMediaWithFallback({
           video: {
-            facingMode: { exact: nextFacing },
+            facingMode: { ideal: nextFacing },
             width: { ideal: VIDEO_WIDTH_IDEAL },
             height: { ideal: VIDEO_HEIGHT_IDEAL },
             frameRate: { ideal: VIDEO_FRAME_RATE_IDEAL },
@@ -397,7 +473,8 @@ export const usePeerStore = create<PeerState>()(
         if (activeProcessor) {
           activeProcessor.stop()
           try {
-            const newProcessor = new BackgroundBlurProcessor()
+            const newProcessor = createBackgroundProcessor({ mode: backgroundEffect, imageDataUrl: backgroundImageDataUrl ?? undefined })
+              ?? createBackgroundBlurProcessor('blur-medium')
             const canvasTrack = await newProcessor.start(newTrack)
             set({ localStream: new MediaStream([...audioTracks, canvasTrack]), facingMode: nextFacing, blurProcessor: newProcessor, rawCameraTrack: newTrack })
             replaceVideoTrackOnPeers(canvasTrack, peerConnections)
@@ -417,14 +494,19 @@ export const usePeerStore = create<PeerState>()(
       }
     },
 
-    setBackgroundBlur: async (enabled) => {
-      if (enabled) {
-        const { localStream, blurProcessor: existing } = get()
-        if (existing) return true
-        const rawTrack = localStream?.getVideoTracks()[0]
-        if (!rawTrack) return false
+    setBackgroundEffect: async (preference) => {
+      setBackgroundEffectPreference(preference)
+      set({ backgroundEffect: preference.mode, backgroundImageDataUrl: preference.imageDataUrl ?? null })
+
+      const processor = createBackgroundProcessor(preference)
+      if (processor) {
+        const { localStream, blurProcessor: existing, rawCameraTrack } = get()
+        const rawTrack = rawCameraTrack ?? localStream?.getVideoTracks()[0]
+        if (!rawTrack) return true
+        const oldProcessedTrack = existing ? localStream?.getVideoTracks()[0] : null
+        existing?.stop()
+        if (oldProcessedTrack && oldProcessedTrack !== rawTrack) oldProcessedTrack.stop()
         try {
-          const processor = new BackgroundBlurProcessor()
           const canvasTrack = await processor.start(rawTrack)
           // Replace localStream with a new object so useAttachTracks re-syncs the video element.
           const newStream = new MediaStream([...(localStream!.getAudioTracks()), canvasTrack])
@@ -446,7 +528,7 @@ export const usePeerStore = create<PeerState>()(
           replaceVideoTrackOnPeers(rawCameraTrack, get().peerConnections)
           set({ localStream: newStream, blurProcessor: null, rawCameraTrack: null })
         } else {
-          set({ blurProcessor: null, rawCameraTrack: null })
+          set({ blurProcessor: null, rawCameraTrack: null, backgroundEffect: 'off', backgroundImageDataUrl: null })
         }
         return true
       }
@@ -490,6 +572,8 @@ export const usePeerStore = create<PeerState>()(
         }
       }
     },
+
+    setBackgroundBlur: async (enabled) => get().setBackgroundEffect({ mode: enabled ? 'blur-medium' : 'off' }),
 
     createPeer: (initiator, localStream) => {
       const { iceServers, screenTrack } = get()
@@ -536,6 +620,7 @@ export const usePeerStore = create<PeerState>()(
 
     clearAll: () => {
       const { localStream, peerConnections, blurProcessor, rawCameraTrack } = get()
+      const backgroundPreference = getBackgroundEffectPreference()
       blurProcessor?.stop()
       rawCameraTrack?.stop()
       localStream?.getTracks().forEach((t) => t.stop())
@@ -545,6 +630,8 @@ export const usePeerStore = create<PeerState>()(
         screenTrack: null,
         blurProcessor: null,
         rawCameraTrack: null,
+        backgroundEffect: backgroundPreference.mode,
+        backgroundImageDataUrl: backgroundPreference.imageDataUrl ?? null,
         peerConnections: new Map(),
         peerStats: new Map(),
       })
