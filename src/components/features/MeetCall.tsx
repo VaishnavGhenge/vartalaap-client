@@ -136,7 +136,11 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
         screenTrackRef.current?.stop();
         screenTrackRef.current = null;
         stopScreenShare();
-        if (isScreenSharing) {
+        // Read store state directly — this function is registered as a track
+        // 'ended' listener and its closure captures isScreenSharing = false
+        // (the value at the time handleScreenShare ran, before toggleScreenShare
+        // was called). Reading from the store avoids the stale-closure bug.
+        if (useMeetStore.getState().isScreenSharing) {
             toggleScreenShare();
             broadcastState(!isMuted, !isVideoOff, undefined, false);
         }
