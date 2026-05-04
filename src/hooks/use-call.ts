@@ -149,7 +149,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       if (!env.from || !env.data) return
       // Treat absent speaking field as false — server omits it when null/missing,
       // so we can't use ?? to fall back to the previous value.
-      store.getState().updatePeerMediaState(env.from, env.data.audio, env.data.video, env.data.speaking ?? false)
+      store.getState().updatePeerMediaState(env.from, env.data.audio, env.data.video, env.data.speaking ?? false, env.data.screenSharing ?? false)
     }
 
     const handleSignal = (env: Envelope) => {

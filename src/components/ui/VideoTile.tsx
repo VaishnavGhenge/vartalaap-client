@@ -90,21 +90,35 @@ export const VideoTile = ({
             {/* Avatar (camera off or no stream yet) */}
             {(videoOff || !stream) && (
                 <div aria-hidden="true" className="absolute inset-0 flex items-center justify-center">
-                    <div className={`flex items-center justify-center rounded-full ${color} text-white font-semibold`}
-                         style={{
-                             width: '22%',
-                             aspectRatio: '1/1',
-                             minWidth: 44, minHeight: 44,
-                             maxWidth: 108, maxHeight: 108,
-                             fontSize: 'clamp(16px, 3.8vw, 38px)',
-                         }}>
-                        {initials}
-                    </div>
+                    {compact ? (
+                        // Fixed 32 px circle for thumbnail strip tiles
+                        <div className={`flex items-center justify-center rounded-full ${color} text-white font-semibold text-xs`}
+                             style={{ width: 32, height: 32 }}>
+                            {initials}
+                        </div>
+                    ) : (
+                        <div className={`flex items-center justify-center rounded-full ${color} text-white font-semibold`}
+                             style={{
+                                 width: '22%',
+                                 aspectRatio: '1/1',
+                                 minWidth: 44, minHeight: 44,
+                                 maxWidth: 108, maxHeight: 108,
+                                 fontSize: 'clamp(16px, 3.8vw, 38px)',
+                             }}>
+                            {initials}
+                        </div>
+                    )}
                 </div>
             )}
 
             {!isLocal && stream && <AudioStream stream={stream} />}
-            {!videoOff && stream && <VideoStream stream={stream} isLocal={isLocal} />}
+            {!videoOff && stream && (
+                <VideoStream
+                    stream={stream}
+                    isLocal={isLocal}
+                    objectFit={isScreenSharing ? 'contain' : 'cover'}
+                />
+            )}
 
             {/* Quality dot — remote tiles only, top-right corner */}
             {!isLocal && quality && quality !== 'unknown' && (
@@ -140,11 +154,14 @@ export const VideoTile = ({
                 </button>
             )}
 
-            {/* Name pill */}
-            <div aria-hidden="true" className={`glass-pill absolute bottom-2 left-2 gap-1 px-2 py-0.5 overflow-hidden
-                                                  ${compact ? 'text-[10px] max-w-[calc(100%-1rem)]' : 'text-[12px] max-w-[calc(100%-1.25rem)]'}`}>
-                {muted && <MicOff className="w-2.5 h-2.5 text-[hsl(var(--destructive))] shrink-0" />}
-                <span className="truncate">{isScreenSharing ? `${label} • Screen` : label}</span>
+            {/* Name pill — compact tiles show initials so the pill never overflows. */}
+            <div aria-hidden="true"
+                 className={`glass-pill absolute bottom-2 left-2 gap-1 px-2 py-0.5 ${compact ? 'text-[10px]' : 'text-[12px] overflow-hidden max-w-[calc(100%-1rem)]'}`}>
+                {muted && <MicOff className={`shrink-0 text-[hsl(var(--destructive))] ${compact ? 'w-2.5 h-2.5' : 'w-3 h-3'}`} />}
+                {compact
+                    ? <span>{initials}</span>
+                    : <span className="truncate min-w-0">{isScreenSharing ? `${label} • Screen` : label}</span>
+                }
             </div>
         </div>
     );

@@ -40,6 +40,7 @@ interface PeerConnection {
   audio: boolean
   video: boolean
   speaking: boolean
+  screenSharing: boolean
 }
 
 interface PeerState {
@@ -61,7 +62,7 @@ interface PeerState {
   ) => void
   removePeerConnection: (id: string) => void
   updatePeerStream: (id: string, stream: MediaStream) => void
-  updatePeerMediaState: (id: string, audio: boolean, video: boolean, speaking?: boolean) => void
+  updatePeerMediaState: (id: string, audio: boolean, video: boolean, speaking?: boolean, screenSharing?: boolean) => void
   updatePeerStats: (id: string, stats: PeerStats) => void
 
   enableMic: () => Promise<MediaStreamTrack | null>
@@ -196,6 +197,7 @@ export const usePeerStore = create<PeerState>()(
           audio: info?.audio ?? false,
           video: info?.video ?? false,
           speaking: false,
+          screenSharing: false,
         })
         return { peerConnections: next }
       }),
@@ -225,11 +227,17 @@ export const usePeerStore = create<PeerState>()(
         return { peerConnections: next }
       }),
 
-    updatePeerMediaState: (id, audio, video, speaking) =>
+    updatePeerMediaState: (id, audio, video, speaking, screenSharing) =>
       set((state) => {
         const next = new Map(state.peerConnections)
         const c = next.get(id)
-        if (c) next.set(id, { ...c, audio, video, speaking: speaking ?? c.speaking })
+        if (c) next.set(id, {
+          ...c,
+          audio,
+          video,
+          speaking: speaking ?? c.speaking,
+          screenSharing: screenSharing ?? c.screenSharing,
+        })
         return { peerConnections: next }
       }),
 

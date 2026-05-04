@@ -157,7 +157,7 @@ describe('enableMic', () => {
     const { peer, sender } = await makePeerWithAudioSender()
     usePeerStore.setState({
       peerConnections: new Map([
-        ['p1', { id: 'p1', peer: peer as never, name: '', audio: false, video: false, speaking: false }],
+        ['p1', { id: 'p1', peer: peer as never, name: '', audio: false, video: false, speaking: false, screenSharing: false }],
       ]),
     })
     const track = makeTrack('audio')
@@ -210,7 +210,7 @@ describe('disableMic', () => {
     usePeerStore.setState({
       localStream: stream,
       peerConnections: new Map([
-        ['p1', { id: 'p1', peer: peer as never, name: '', audio: true, video: false, speaking: false }],
+        ['p1', { id: 'p1', peer: peer as never, name: '', audio: true, video: false, speaking: false, screenSharing: false }],
       ]),
     })
 
@@ -255,7 +255,7 @@ describe('enableMic → disableMic cycle', () => {
     const { peer, sender } = await makePeerWithAudioSender()
     usePeerStore.setState({
       peerConnections: new Map([
-        ['p1', { id: 'p1', peer: peer as never, name: '', audio: false, video: false, speaking: false }],
+        ['p1', { id: 'p1', peer: peer as never, name: '', audio: false, video: false, speaking: false, screenSharing: false }],
       ]),
     })
     const liveTrack = makeTrack('audio')

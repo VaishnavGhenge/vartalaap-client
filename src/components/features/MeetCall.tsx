@@ -63,8 +63,8 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
         return s;
     }, [screenTrack, localStream]);
 
-    const broadcastState = (audio: boolean, video: boolean, speaking?: boolean) => {
-        client?.send('peer-state', { audio, video, speaking });
+    const broadcastState = (audio: boolean, video: boolean, speaking?: boolean, screenSharing?: boolean) => {
+        client?.send('peer-state', { audio, video, speaking, screenSharing: screenSharing ?? isScreenSharing });
     };
 
     const localSpeaking = useAudioLevel(localStream, !isMuted);
@@ -124,7 +124,10 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
         screenTrackRef.current?.stop();
         screenTrackRef.current = null;
         stopScreenShare();
-        if (isScreenSharing) toggleScreenShare();
+        if (isScreenSharing) {
+            toggleScreenShare();
+            broadcastState(!isMuted, !isVideoOff, undefined, false);
+        }
     };
 
     const handleScreenShare = async () => {
@@ -135,6 +138,7 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
         if (!track) return;
         screenTrackRef.current = track;
         toggleScreenShare();
+        broadcastState(!isMuted, !isVideoOff, undefined, true);
         track.addEventListener('ended', doStopScreenShare, { once: true });
     };
 
@@ -197,6 +201,7 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                 stream={c.stream ?? null}
                 quality={stats?.quality}
                 viaRelay={stats?.candidateType === 'relay'}
+                isScreenSharing={c.screenSharing}
                 onPin={opts.onPin}
                 isPinned={opts.isPinned}
                 compact={opts.compact}

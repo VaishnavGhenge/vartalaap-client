@@ -201,7 +201,7 @@ describe('switchCamera', () => {
       localStream: stream,
       facingMode: 'user',
       peerConnections: new Map([
-        ['peer-1', { id: 'peer-1', peer: fakePeer as never, name: 'Bob', audio: true, video: true, speaking: false }],
+        ['peer-1', { id: 'peer-1', peer: fakePeer as never, name: 'Bob', audio: true, video: true, speaking: false, screenSharing: false }],
       ]),
     })
 
@@ -271,7 +271,7 @@ describe('disableCamera — peer interaction', () => {
     usePeerStore.setState({
       localStream: stream,
       peerConnections: new Map([
-        ['peer-1', { id: 'peer-1', peer: peer as never, name: 'Alice', audio: true, video: true, speaking: false }],
+        ['peer-1', { id: 'peer-1', peer: peer as never, name: 'Alice', audio: true, video: true, speaking: false, screenSharing: false }],
       ]),
     })
 
@@ -288,7 +288,7 @@ describe('disableCamera — peer interaction', () => {
     usePeerStore.setState({
       localStream: stream,
       peerConnections: new Map([
-        ['peer-1', { id: 'peer-1', peer: peer as never, name: 'Alice', audio: true, video: true, speaking: false }],
+        ['peer-1', { id: 'peer-1', peer: peer as never, name: 'Alice', audio: true, video: true, speaking: false, screenSharing: false }],
       ]),
     })
 
@@ -305,7 +305,7 @@ describe('disableCamera — peer interaction', () => {
     usePeerStore.setState({
       localStream: stream,
       peerConnections: new Map([
-        ['peer-1', { id: 'peer-1', peer: peer as never, name: 'Alice', audio: true, video: true, speaking: false }],
+        ['peer-1', { id: 'peer-1', peer: peer as never, name: 'Alice', audio: true, video: true, speaking: false, screenSharing: false }],
       ]),
     })
 
@@ -327,7 +327,7 @@ describe('disableCamera — peer interaction', () => {
     usePeerStore.setState({
       localStream: stream,
       peerConnections: new Map([
-        ['peer-1', { id: 'peer-1', peer: peer as never, name: 'Alice', audio: true, video: true, speaking: false }],
+        ['peer-1', { id: 'peer-1', peer: peer as never, name: 'Alice', audio: true, video: true, speaking: false, screenSharing: false }],
       ]),
     })
 
@@ -343,7 +343,7 @@ describe('disableCamera — peer interaction', () => {
     usePeerStore.setState({
       localStream: stream,
       peerConnections: new Map([
-        ['peer-1', { id: 'peer-1', peer: peer as never, name: 'Alice', audio: true, video: true, speaking: false }],
+        ['peer-1', { id: 'peer-1', peer: peer as never, name: 'Alice', audio: true, video: true, speaking: false, screenSharing: false }],
       ]),
     })
 
@@ -359,7 +359,7 @@ describe('disableCamera — peer interaction', () => {
     usePeerStore.setState({
       localStream: stream,
       peerConnections: new Map([
-        ['peer-1', { id: 'peer-1', peer: peer as never, name: 'Alice', audio: false, video: true, speaking: false }],
+        ['peer-1', { id: 'peer-1', peer: peer as never, name: 'Alice', audio: false, video: true, speaking: false, screenSharing: false }],
       ]),
     })
 
@@ -382,7 +382,7 @@ describe('enableCamera — peer sender reuse', () => {
     usePeerStore.setState({
       localStream: stream,
       peerConnections: new Map([
-        ['peer-1', { id: 'peer-1', peer: peer as never, name: 'Alice', audio: true, video: false, speaking: false }],
+        ['peer-1', { id: 'peer-1', peer: peer as never, name: 'Alice', audio: true, video: false, speaking: false, screenSharing: false }],
       ]),
     })
 
@@ -421,7 +421,7 @@ describe('disableCamera → enableCamera cycle', () => {
     usePeerStore.setState({
       localStream: stream,
       peerConnections: new Map([
-        ['peer-1', { id: 'peer-1', peer: peer as never, name: 'Alice', audio: true, video: true, speaking: false }],
+        ['peer-1', { id: 'peer-1', peer: peer as never, name: 'Alice', audio: true, video: true, speaking: false, screenSharing: false }],
       ]),
     })
 
@@ -443,7 +443,7 @@ describe('startScreenShare', () => {
     const { peer, sender } = await makePeerWithVideoSender()
     usePeerStore.setState({
       peerConnections: new Map([
-        ['p1', { id: 'p1', peer: peer as never, name: '', audio: false, video: false, speaking: false }],
+        ['p1', { id: 'p1', peer: peer as never, name: '', audio: false, video: false, speaking: false, screenSharing: false }],
       ]),
     })
     const screenTrack = makeTrack('video')
@@ -507,7 +507,7 @@ describe('stopScreenShare', () => {
       screenTrack,
       localStream: stream,
       peerConnections: new Map([
-        ['p1', { id: 'p1', peer: peer as never, name: '', audio: false, video: true, speaking: false }],
+        ['p1', { id: 'p1', peer: peer as never, name: '', audio: false, video: true, speaking: false, screenSharing: false }],
       ]),
     })
 
@@ -524,7 +524,7 @@ describe('stopScreenShare', () => {
       screenTrack,
       localStream: null,
       peerConnections: new Map([
-        ['p1', { id: 'p1', peer: peer as never, name: '', audio: false, video: false, speaking: false }],
+        ['p1', { id: 'p1', peer: peer as never, name: '', audio: false, video: false, speaking: false, screenSharing: false }],
       ]),
     })
 
