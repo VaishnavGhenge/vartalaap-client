@@ -22,11 +22,6 @@ function useBetaFeatures(): BetaFeature[] {
       onToggle: (enabled) => { void setBackgroundBlur(enabled) },
     },
     {
-      key: 'screen_sharing',
-      label: 'Screen Sharing',
-      description: 'Share your screen with other participants during a call.',
-    },
-    {
       key: 'experimental_echo_cancel',
       label: 'Enhanced Echo Cancellation',
       description: 'Activates Chrome-specific AEC3 and high-pass filter hints. Re-enable your mic after toggling for it to take effect.',

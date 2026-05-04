@@ -9,7 +9,6 @@ import { useAudioLevel } from "@/src/hooks/use-audio-level";
 import { MicButton } from "@/src/components/ui/MicButton";
 import { CameraButton } from "@/src/components/ui/CameraButton";
 import { FlipCameraButton } from "@/src/components/ui/FlipCameraButton";
-import { useFeatureFlags } from "@/src/hooks/use-feature-flags";
 import { useHasMultipleCameras } from "@/src/hooks/use-has-multiple-cameras";
 import { VideoTile } from "@/src/components/ui/VideoTile";
 import { VideoGrid } from "@/src/components/ui/VideoGrid";
@@ -31,7 +30,6 @@ interface MeetCallProps {
 }
 
 export default function MeetCall({ client, connState, reconnectAttempt, routeMeetCode }: MeetCallProps) {
-    const flags = useFeatureFlags();
     const { isMuted, isVideoOff, isScreenSharing, toggleMute, toggleVideo, toggleScreenShare, clearMeet } = useMeetStore();
     const { localStream, screenTrack, enableMic, disableMic, enableCamera, disableCamera, switchCamera, startScreenShare, stopScreenShare, peerConnections, peerStats } = usePeerStore();
     const hasMultipleCameras = useHasMultipleCameras();
@@ -271,7 +269,7 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                 </button>
 
                 <div className="flex items-center gap-2">
-                    {flags.screen_sharing && isScreenSharing && (
+                    {isScreenSharing && (
                         <div className="glass-pill gap-1.5 px-3 py-1.5 text-xs font-medium text-[hsl(var(--primary))]">
                             <Monitor className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
                             Presenting
@@ -340,16 +338,14 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                         <FlipCameraButton onClickFn={handleFlipCamera} />
                     )}
 
-                    {flags.screen_sharing && (
-                        <button
-                            type="button"
-                            onClick={handleScreenShare}
-                            aria-label={isScreenSharing ? "Stop sharing screen" : "Share screen"}
-                            className={`ctrl-btn h-9 w-9 sm:h-11 sm:w-11 ${isScreenSharing ? 'ctrl-btn-screen' : 'ctrl-btn-on'}`}
-                        >
-                            <Monitor className="w-4 h-4 sm:w-5 sm:h-5" />
-                        </button>
-                    )}
+                    <button
+                        type="button"
+                        onClick={handleScreenShare}
+                        aria-label={isScreenSharing ? "Stop sharing screen" : "Share screen"}
+                        className={`ctrl-btn h-9 w-9 sm:h-11 sm:w-11 ${isScreenSharing ? 'ctrl-btn-screen' : 'ctrl-btn-on'}`}
+                    >
+                        <Monitor className="w-4 h-4 sm:w-5 sm:h-5" />
+                    </button>
 
                     <div className="mx-1 h-5 w-px bg-[hsl(var(--border))]" />
 
