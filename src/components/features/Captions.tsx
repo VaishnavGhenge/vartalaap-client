@@ -8,6 +8,19 @@ interface Props {
 
 export function Captions(props: Props) {
     const pendingTranscriptions = useRef<string[]>([]);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    const stopRecording = () => {
+        if (recordingIntervalRef.current !== null) {
+            clearInterval(recordingIntervalRef.current);
+            recordingIntervalRef.current = null;
+        }
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+            mediaRecorderRef.current.stop();
+        }
+        mediaRecorderRef.current = null;
+    };
 
     const startRecording = async () => {
         if (!props.audioStream) {
@@ -15,7 +28,10 @@ export function Captions(props: Props) {
             return;
         }
 
+        stopRecording();
+
         const mediaRecorder = new MediaRecorder(props.audioStream);
+        mediaRecorderRef.current = mediaRecorder;
         let chunks: Blob[] = [];
 
         mediaRecorder.ondataavailable = (event) => {
@@ -30,15 +46,17 @@ export function Captions(props: Props) {
         };
 
         mediaRecorder.start();
-        setInterval(() => {
-            mediaRecorder.stop();
-            mediaRecorder.start();
+        recordingIntervalRef.current = setInterval(() => {
+            if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+                mediaRecorderRef.current.stop();
+                mediaRecorderRef.current.start();
+            }
         }, 1500);
     };
 
     const transcribe = async (blob: Blob) => {
         const formData = new FormData();
-        formData.append("audio_file", blob, "audio.wav"); // Ensure the file is appended correctly
+        formData.append("audio_file", blob, "audio.wav");
         formData.append("config", JSON.stringify({
             model: "faster-whisper",
             model_size: "tiny",
@@ -67,17 +85,19 @@ export function Captions(props: Props) {
             const task_id = pendingTranscriptions.current[0];
             fetch(`${transcriptionServerUri}/get-transcription/${task_id}`)
                 .then((response) => response.json())
-                .then((data: { status: string, models: any }) => {
+                .then((data: { status: string, models: unknown }) => {
                     if (data.status === "PENDING") {
                         return;
                     }
-
-                    console.log(data.models);
                     pendingTranscriptions.current.shift();
                 })
         }, 1000);
 
-        return () => clearInterval(interval);
+        return () => {
+            clearInterval(interval);
+            stopRecording();
+        };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
 
