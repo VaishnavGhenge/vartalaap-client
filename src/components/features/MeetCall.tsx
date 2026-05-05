@@ -41,11 +41,15 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
 
     const [copied, setCopied] = useState(false);
     const [canShare, setCanShare] = useState(false);
+    const [canScreenShare, setCanScreenShare] = useState(false);
     const [showStats, setShowStats] = useState(false);
     const [pinnedId, setPinnedId] = useState<string | null>(null);
     const [isPicking, setIsPicking] = useState(false);
     const screenTrackRef = useRef<MediaStreamTrack | null>(null);
-    useEffect(() => { setCanShare('share' in navigator); }, []);
+    useEffect(() => {
+        setCanShare('share' in navigator);
+        setCanScreenShare(typeof navigator.mediaDevices?.getDisplayMedia === 'function');
+    }, []);
 
     const remotePeers = useMemo(() => Array.from(peerConnections.values()), [peerConnections]);
 
@@ -342,14 +346,16 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                         <FlipCameraButton onClickFn={handleFlipCamera} />
                     )}
 
-                    <button
-                        type="button"
-                        onClick={handleScreenShare}
-                        aria-label={isScreenSharing ? "Stop sharing screen" : "Share screen"}
-                        className={`ctrl-btn h-9 w-9 sm:h-11 sm:w-11 ${isScreenSharing ? 'ctrl-btn-screen' : 'ctrl-btn-on'}`}
-                    >
-                        <Monitor className="w-4 h-4 sm:w-5 sm:h-5" />
-                    </button>
+                    {canScreenShare && (
+                        <button
+                            type="button"
+                            onClick={handleScreenShare}
+                            aria-label={isScreenSharing ? "Stop sharing screen" : "Share screen"}
+                            className={`ctrl-btn h-9 w-9 sm:h-11 sm:w-11 ${isScreenSharing ? 'ctrl-btn-screen' : 'ctrl-btn-on'}`}
+                        >
+                            <Monitor className="w-4 h-4 sm:w-5 sm:h-5" />
+                        </button>
+                    )}
 
                     {pipMode !== 'none' && (
                         <div className="relative group/pip">

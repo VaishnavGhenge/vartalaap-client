@@ -179,7 +179,10 @@ const replaceVideoTrackOnPeers = (
       }
       sender.replaceTrack(newTrack)
         .then(() => tuneVideoSenderForCongestion(sender))
-        .catch(e => console.error('[replaceVideoTrack] failed for peer', c.id, e))
+        .catch(e => {
+          if ((e as DOMException).name === 'OperationError') return
+          console.error('[replaceVideoTrack] failed for peer', c.id, e)
+        })
     } catch (e) {
       console.error('[replaceVideoTrack] error for peer', c.id, e)
     }
@@ -248,7 +251,10 @@ const replaceAudioSenderOnPeers = (
       const sender = pc.getSenders().find(s => s.track?.kind === 'audio')
       if (!sender) return
       sender.replaceTrack(track)
-        .catch(e => console.error('[replaceAudioSender] failed for peer', c.id, e))
+        .catch(e => {
+          if ((e as DOMException).name === 'OperationError') return
+          console.error('[replaceAudioSender] failed for peer', c.id, e)
+        })
     } catch (e) {
       console.error('[replaceAudioSender] error for peer', c.id, e)
     }
@@ -266,7 +272,10 @@ const publishAudioTrackToPeers = (
       const sender = pc?.getSenders().find(s => s.track?.kind === 'audio')
       if (sender) {
         sender.replaceTrack(track)
-          .catch(e => console.error('[publishAudioTrack] replaceTrack failed for peer', c.id, e))
+          .catch(e => {
+            if ((e as DOMException).name === 'OperationError') return
+            console.error('[publishAudioTrack] replaceTrack failed for peer', c.id, e)
+          })
         return
       }
 
@@ -613,6 +622,7 @@ export const usePeerStore = create<PeerState>()(
     },
 
     startScreenShare: async () => {
+      if (typeof navigator.mediaDevices?.getDisplayMedia !== 'function') return null
       try {
         // selfBrowserSurface: 'exclude' (Chrome 107+) removes the current tab
         // from the picker, breaking the most common infinite-mirror path.

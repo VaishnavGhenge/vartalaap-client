@@ -58,10 +58,13 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
         store.getState().removePeerConnection(remoteId)
       })
       peer.on('error', (err) => {
-        // If the peer is already gone from the store, destroy() was called
-        // intentionally (peer-left cleanup) and the resulting WebRTC abort
-        // surfaces here — not a real error, ignore it.
+        // destroyed=true means destroy() was called intentionally; the
+        // OperationError / abort that follows is expected — not a real error.
+        if (peer.destroyed) return
         if (!store.getState().peerConnections.has(remoteId)) return
+        // OperationError with "Close called" is WebRTC aborting an in-flight
+        // replaceTrack because the connection was torn down — expected on hangup.
+        if ((err as DOMException).name === 'OperationError') return
         console.error('peer error', remoteId, err)
         store.getState().removePeerConnection(remoteId)
       })
