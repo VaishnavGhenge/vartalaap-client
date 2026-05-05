@@ -45,6 +45,7 @@ export class BackgroundBlurProcessor {
   private outCanvas: HTMLCanvasElement | null = null
   private timer: ReturnType<typeof setInterval> | null = null
   private running = false
+  private segmenting = false
 
   constructor(options: BackgroundBlurProcessorOptions = { blurRadius: 14 }) {
     this.blurRadius = options.blurRadius ?? 14
@@ -83,9 +84,11 @@ export class BackgroundBlurProcessor {
     this.running = true
 
     this.timer = setInterval(() => {
-      if (!this.running || !this.video || this.video.readyState < 2) return
+      if (!this.running || !this.video || this.video.readyState < 2 || this.segmenting) return
+      this.segmenting = true
       segmenter.segmentForVideo(this.video, performance.now(), (result) => {
         this.composite(result, w, h)
+        this.segmenting = false
       })
     }, 1000 / PROCESS_FPS)
 
