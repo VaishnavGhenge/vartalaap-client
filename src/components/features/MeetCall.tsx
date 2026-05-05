@@ -196,7 +196,7 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
         toggleScreenShare();
         broadcastState(!isMuted, false, undefined, true);
         playScreenShareStart();
-        track.addEventListener('ended', doStopScreenShare, { once: true });
+        track.addEventListener('ended', () => doStopScreenShare(), { once: true });
     };
 
     const handleEndCall = () => {
