@@ -446,7 +446,7 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
             )}
 
             {/* Document PiP: render a compact video grid in the floating mini-window */}
-            {pipActive && pipWindow && (
+            {pipActive && pipWindow && !pipWindow.closed && (
                 <PipWindow pipWindow={pipWindow}>
                     <PipCallView
                         localStream={localDisplayStream}
