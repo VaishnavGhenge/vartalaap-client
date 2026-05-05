@@ -9,7 +9,20 @@ import { ThemeProvider, useTheme } from '@/src/components/theme-provider'
 function ThemedToaster() {
   const { resolvedTheme } = useTheme()
 
-  return <Toaster richColors closeButton theme={resolvedTheme} />
+  return (
+    <Toaster
+      theme={resolvedTheme}
+      closeButton
+      toastOptions={{
+        classNames: {
+          toast: 'bg-[hsl(var(--card))] text-[hsl(var(--card-foreground))] border border-[hsl(var(--border))] shadow-sm text-sm rounded-lg',
+          description: 'text-[hsl(var(--muted-foreground))]',
+          closeButton: 'bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] border-[hsl(var(--border))]',
+          icon: 'text-[hsl(var(--muted-foreground))]',
+        },
+      }}
+    />
+  )
 }
 
 export function Providers({ children }: { children: React.ReactNode }) {

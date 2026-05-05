@@ -46,6 +46,7 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
     const [pinnedId, setPinnedId] = useState<string | null>(null);
     const [isPicking, setIsPicking] = useState(false);
     const screenTrackRef = useRef<MediaStreamTrack | null>(null);
+    const cameraWasOnBeforeShare = useRef(false);
     useEffect(() => {
         setCanShare('share' in navigator);
         setCanScreenShare(typeof navigator.mediaDevices?.getDisplayMedia === 'function');
@@ -108,6 +109,17 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
     };
 
     const handleCameraToggle = async () => {
+        // While screen sharing, clicking camera stops the screen share and
+        // switches back to the camera feed in one step. suppressCameraRestore=true
+        // because we handle camera enable ourselves right after.
+        if (isScreenSharing) {
+            await doStopScreenShare(true);
+            const track = await enableCamera();
+            if (!track) { toast.error("Camera unavailable. Check browser permissions."); return; }
+            if (useMeetStore.getState().isVideoOff) toggleVideo();
+            broadcastState(!isMuted, true, undefined, false);
+            return;
+        }
         const nextVideoOff = !isVideoOff;
         if (nextVideoOff) {
             disableCamera();
@@ -138,18 +150,31 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
         if (!ok) toast.error("Could not switch camera.");
     };
 
-    const doStopScreenShare = () => {
+    const doStopScreenShare = async (suppressCameraRestore = false) => {
         screenTrackRef.current?.stop();
         screenTrackRef.current = null;
         stopScreenShare();
+        const shouldRestoreCamera = !suppressCameraRestore && cameraWasOnBeforeShare.current;
+        cameraWasOnBeforeShare.current = false;
         // Read store state directly — this function is registered as a track
         // 'ended' listener and its closure captures isScreenSharing = false
         // (the value at the time handleScreenShare ran, before toggleScreenShare
         // was called). Reading from the store avoids the stale-closure bug.
         if (useMeetStore.getState().isScreenSharing) {
             toggleScreenShare();
-            broadcastState(!isMuted, !isVideoOff, undefined, false);
             playScreenShareStop();
+            const storedMuted = useMeetStore.getState().isMuted;
+            if (shouldRestoreCamera) {
+                const track = await enableCamera();
+                if (track) {
+                    toggleVideo();
+                    broadcastState(!storedMuted, true, undefined, false);
+                } else {
+                    broadcastState(!storedMuted, false, undefined, false);
+                }
+            } else {
+                broadcastState(!storedMuted, !useMeetStore.getState().isVideoOff, undefined, false);
+            }
         }
     };
 
@@ -160,8 +185,16 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
         setIsPicking(false);
         if (!track) return;
         screenTrackRef.current = track;
+
+        // Turn off the camera while screen sharing — only one video feed at a time.
+        cameraWasOnBeforeShare.current = !isVideoOff;
+        if (!isVideoOff) {
+            disableCamera();
+            toggleVideo();
+        }
+
         toggleScreenShare();
-        broadcastState(!isMuted, !isVideoOff, undefined, true);
+        broadcastState(!isMuted, false, undefined, true);
         playScreenShareStart();
         track.addEventListener('ended', doStopScreenShare, { once: true });
     };
