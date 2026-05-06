@@ -10,6 +10,7 @@ import {
 import { usePeerStore } from '@/src/stores/peer'
 import { useMediaDevices } from '@/src/hooks/use-media-devices'
 import { supportsAudioOutputSelection } from '@/src/lib/audio-context'
+import { Toggle } from '@/src/components/ui/Toggle'
 
 interface SettingsPanelProps {
   onClose: () => void
@@ -202,6 +203,8 @@ export function SettingsPanel({ onClose, isVideoOff }: SettingsPanelProps) {
   const preferredAudioInputId = usePeerStore((s) => s.preferredAudioInputId)
   const preferredVideoInputId = usePeerStore((s) => s.preferredVideoInputId)
   const preferredAudioOutputId = usePeerStore((s) => s.preferredAudioOutputId)
+  const suppressNoise = usePeerStore((s) => s.suppressNoise)
+  const setSuppressNoise = usePeerStore((s) => s.setSuppressNoise)
   const { audioInputs, videoInputs, audioOutputs } = useMediaDevices()
   const showSpeaker = supportsAudioOutputSelection() && audioOutputs.length > 0
 
@@ -240,6 +243,20 @@ export function SettingsPanel({ onClose, isVideoOff }: SettingsPanelProps) {
             ) : (
               <BackgroundEffectsGrid onChange={(pref) => { void setBackgroundEffect(pref) }} />
             )}
+          </section>
+
+          {/* ── Audio ──────────────────────────────────── */}
+          <section className="flex flex-col gap-3">
+            <h2 className="text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
+              Audio
+            </h2>
+            <Toggle
+              id="noise-suppression"
+              checked={suppressNoise}
+              onChange={(v) => { void setSuppressNoise(v) }}
+              label="Noise suppression"
+              description="Remove background noise with RNNoise AI"
+            />
           </section>
 
           {/* ── Devices ────────────────────────────────── */}
