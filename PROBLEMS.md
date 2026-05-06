@@ -6,10 +6,8 @@ Problems holding us back from being best-in-class. Ordered by impact on the core
 
 ## P0 — Directly hurts call quality
 
-### 1. Browser-native noise/echo suppression is mediocre
-`getUserMedia({ audio: { noiseSuppression: true, echoCancellation: true } })` delegates to the OS/browser pipeline (WebRTC AEC3 + NS). It handles simple cases but fails on mechanical keyboard noise, background TV, fan noise, and double-talk. Users in noisy environments will sound bad.
-
-**Fix:** Integrate [RNNoise](https://jmvalin.ca/demo/rnnoise/) via WebAssembly as a Web Audio processing node. Runs in-browser, no server, ~40 KB WASM binary. Apply it as an AudioWorkletProcessor between `getUserMedia` and the peer sender. This is what Krisp/NVIDIA RTX Voice do at the model level.
+### ~~1. Browser-native noise/echo suppression is mediocre~~ ✅ Resolved
+RNNoise AI noise suppression shipped via `NoiseSuppressor` (`src/lib/noise-suppression.ts`). AudioWorklet pipeline: `getUserMedia` → RNNoise WASM worklet → `MediaStreamAudioDestinationNode`. Toggle in Settings panel, persisted to `localStorage`. Applied automatically on `enableMic` and device switch when active.
 
 ### 3. No pre-call device preview
 Users currently join the call before knowing if their mic or camera is working, which mic/camera is selected, or what they look/sound like. This is a top-3 friction point in all video calling research. A bad setup ruins the first impression.
@@ -75,6 +73,7 @@ Inbound jitter is tracked in `use-peer-stats` but not used to tune playout delay
 
 | # | Problem | Resolution |
 |---|---------|------------|
+| P0-1 | Browser-native noise/echo suppression is mediocre | RNNoise AI noise suppression via `NoiseSuppressor` class + AudioWorklet. Toggle in Settings, persisted, applied on enableMic and device switch. |
 | P0-2 | No background blur | Full background effects system shipped: blur-subtle / blur-medium / blur-strong / custom image upload, canvas compositing via `BackgroundBlurProcessor`, persisted preference, applied on camera enable and camera switch. |
 | P1-5 | Screen share disabled | Screen share fully enabled — button, state management, auto-stop on `track.ended`, and peer `replaceTrack` all live. |
 | P2-10 | ICE server fetch happens after join | `fetchIceServers()` now called on mount in `JoinMeet` so credentials are ready before the user hits Join. |

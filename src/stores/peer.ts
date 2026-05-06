@@ -5,6 +5,7 @@ import type { IceServer } from '@/src/services/api/ice'
 import { getSharedAudioContext, setAudioOutputDevice } from '@/src/lib/audio-context'
 import { BackgroundBlurProcessor } from '@/src/lib/background-blur'
 import { getMicConstraints } from '@/src/lib/audio-constraints'
+import { NoiseSuppressor } from '@/src/lib/noise-suppression'
 import {
   getBackgroundEffectPreference,
   setBackgroundEffectPreference,
@@ -12,6 +13,15 @@ import {
   type BackgroundEffectPreference,
 } from '@/src/lib/background-effects'
 import { getDevicePreferences, setDevicePreference } from '@/src/lib/device-preferences'
+
+const NOISE_SUPPRESSION_KEY = 'suppress-noise'
+
+function getSavedNoiseSuppression(): boolean {
+  try { return localStorage.getItem(NOISE_SUPPRESSION_KEY) === 'true' } catch { return false }
+}
+function saveNoiseSuppression(enabled: boolean): void {
+  try { localStorage.setItem(NOISE_SUPPRESSION_KEY, String(enabled)) } catch { /* noop */ }
+}
 
 const VIDEO_WIDTH_IDEAL = 960
 const VIDEO_HEIGHT_IDEAL = 540
@@ -64,8 +74,12 @@ interface PeerState {
   peerConnections: Map<string, PeerConnection>
   peerStats: Map<string, PeerStats>
   iceServers: IceServer[]
+  noiseSuppressor: NoiseSuppressor | null
+  rawMicTrack: MediaStreamTrack | null
+  suppressNoise: boolean
 
   setIceServers: (s: IceServer[]) => void
+  setSuppressNoise: (enabled: boolean) => Promise<void>
 
   addPeerConnection: (
     id: string,
@@ -305,8 +319,49 @@ export const usePeerStore = create<PeerState>()(
     peerConnections: new Map(),
     peerStats: new Map(),
     iceServers: [],
+    noiseSuppressor: null,
+    rawMicTrack: null,
+    suppressNoise: getSavedNoiseSuppression(),
 
     setIceServers: (s) => set({ iceServers: s }),
+
+    setSuppressNoise: async (enabled) => {
+      saveNoiseSuppression(enabled)
+      // Always update the preference state so the toggle reflects immediately,
+      // even when the mic is currently off. enableMic() will apply suppression
+      // on the next unmute using the saved suppressNoise flag.
+      set({ suppressNoise: enabled })
+
+      const { localStream, noiseSuppressor, rawMicTrack, peerConnections } = get()
+      const activeMicTrack = rawMicTrack ?? localStream?.getAudioTracks()[0]
+
+      if (enabled) {
+        if (!activeMicTrack || noiseSuppressor) return // no mic live, or already active
+        try {
+          const suppressor = new NoiseSuppressor()
+          const processedTrack = await suppressor.start(activeMicTrack)
+          localStream?.getAudioTracks().forEach(t => { if (t !== activeMicTrack) { t.stop(); localStream.removeTrack(t) } })
+          localStream?.removeTrack(activeMicTrack)
+          localStream?.addTrack(processedTrack)
+          publishAudioTrackToPeers(processedTrack, localStream!, peerConnections)
+          set({ noiseSuppressor: suppressor, rawMicTrack: activeMicTrack })
+        } catch (e) {
+          console.error('NoiseSuppressor.start failed', e)
+          set({ suppressNoise: false })
+          saveNoiseSuppression(false)
+        }
+      } else {
+        if (!noiseSuppressor) return
+        noiseSuppressor.stop()
+        // Restore the raw mic track into the stream and peers.
+        if (rawMicTrack && localStream) {
+          localStream.getAudioTracks().forEach(t => { t.stop(); localStream.removeTrack(t) })
+          localStream.addTrack(rawMicTrack)
+          publishAudioTrackToPeers(rawMicTrack, localStream, peerConnections)
+        }
+        set({ noiseSuppressor: null, rawMicTrack: null })
+      }
+    },
 
     addPeerConnection: (id, peer, info) =>
       set((state) => {
@@ -364,21 +419,42 @@ export const usePeerStore = create<PeerState>()(
 
     enableMic: async () => {
       try {
-        const { preferredAudioInputId } = get()
+        const { preferredAudioInputId, suppressNoise, noiseSuppressor } = get()
         const audioConstraints: MediaTrackConstraints = {
           ...getMicConstraints(),
           ...(preferredAudioInputId ? { deviceId: { exact: preferredAudioInputId } } : {}),
         }
         const media = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints })
-        const track = media.getAudioTracks()[0]
-        if (!track) return null
+        const rawTrack = media.getAudioTracks()[0]
+        if (!rawTrack) return null
+
         const existing = get().localStream
         const stream = existing ?? new MediaStream()
         stream.getAudioTracks().forEach((t) => { t.stop(); stream.removeTrack(t) })
-        stream.addTrack(track)
+
+        // Stop any previous noise suppressor before starting a fresh one.
+        noiseSuppressor?.stop()
+
+        if (suppressNoise) {
+          try {
+            const suppressor = new NoiseSuppressor()
+            const processedTrack = await suppressor.start(rawTrack)
+            stream.addTrack(processedTrack)
+            if (!existing) set({ localStream: stream })
+            set({ noiseSuppressor: suppressor, rawMicTrack: rawTrack })
+            publishAudioTrackToPeers(processedTrack, stream, get().peerConnections)
+            return rawTrack
+          } catch (e) {
+            console.error('NoiseSuppressor.start failed on enableMic, falling back', e)
+            // Fall through to publish raw track
+          }
+        }
+
+        stream.addTrack(rawTrack)
         if (!existing) set({ localStream: stream })
-        publishAudioTrackToPeers(track, stream, get().peerConnections)
-        return track
+        set({ noiseSuppressor: null, rawMicTrack: null })
+        publishAudioTrackToPeers(rawTrack, stream, get().peerConnections)
+        return rawTrack
       } catch (e) {
         console.error('enableMic failed', e)
         return null
@@ -386,15 +462,18 @@ export const usePeerStore = create<PeerState>()(
     },
 
     disableMic: () => {
-      const stream = get().localStream
-      if (!stream) return
-      const peers = get().peerConnections
+      const { localStream, peerConnections, noiseSuppressor, rawMicTrack } = get()
+      if (!localStream) return
       // Replace sender with silent placeholder BEFORE stopping the track, so
       // the sender never becomes track-less (avoids negotiation glitches).
       const silent = createSilentAudioTrack()
-      if (silent) replaceAudioSenderOnPeers(silent, peers)
-      stream.getAudioTracks().forEach(t => { t.stop(); stream.removeTrack(t) })
-      if (stream.getTracks().length === 0) set({ localStream: null })
+      if (silent) replaceAudioSenderOnPeers(silent, peerConnections)
+      localStream.getAudioTracks().forEach(t => { t.stop(); localStream.removeTrack(t) })
+      // Stop the noise suppressor and its raw track.
+      noiseSuppressor?.stop()
+      rawMicTrack?.stop()
+      set({ noiseSuppressor: null, rawMicTrack: null })
+      if (localStream.getTracks().length === 0) set({ localStream: null })
     },
 
     enableCamera: async () => {
@@ -524,7 +603,7 @@ export const usePeerStore = create<PeerState>()(
     setAudioInput: async (deviceId) => {
       setDevicePreference('audioInputId', deviceId)
       set({ preferredAudioInputId: deviceId })
-      const { localStream, peerConnections } = get()
+      const { localStream, peerConnections, suppressNoise, noiseSuppressor } = get()
       if (!localStream?.getAudioTracks().length) return
       try {
         const audioConstraints: MediaTrackConstraints = {
@@ -532,11 +611,28 @@ export const usePeerStore = create<PeerState>()(
           deviceId: { exact: deviceId },
         }
         const media = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints })
-        const track = media.getAudioTracks()[0]
-        if (!track) return
+        const rawTrack = media.getAudioTracks()[0]
+        if (!rawTrack) return
+
+        noiseSuppressor?.stop()
         localStream.getAudioTracks().forEach(t => { t.stop(); localStream.removeTrack(t) })
-        localStream.addTrack(track)
-        publishAudioTrackToPeers(track, localStream, peerConnections)
+
+        if (suppressNoise) {
+          try {
+            const suppressor = new NoiseSuppressor()
+            const processedTrack = await suppressor.start(rawTrack)
+            localStream.addTrack(processedTrack)
+            set({ noiseSuppressor: suppressor, rawMicTrack: rawTrack })
+            publishAudioTrackToPeers(processedTrack, localStream, peerConnections)
+            return
+          } catch (e) {
+            console.error('NoiseSuppressor.start failed on setAudioInput, falling back', e)
+          }
+        }
+
+        set({ noiseSuppressor: null, rawMicTrack: null })
+        localStream.addTrack(rawTrack)
+        publishAudioTrackToPeers(rawTrack, localStream, peerConnections)
       } catch (e) {
         console.error('setAudioInput failed', e)
       }
@@ -707,10 +803,12 @@ export const usePeerStore = create<PeerState>()(
     },
 
     clearAll: () => {
-      const { localStream, peerConnections, blurProcessor, rawCameraTrack } = get()
+      const { localStream, peerConnections, blurProcessor, rawCameraTrack, noiseSuppressor, rawMicTrack } = get()
       const backgroundPreference = getBackgroundEffectPreference()
       blurProcessor?.stop()
       rawCameraTrack?.stop()
+      noiseSuppressor?.stop()
+      rawMicTrack?.stop()
       localStream?.getTracks().forEach((t) => t.stop())
       peerConnections.forEach((c) => c.peer.destroy())
       set({
@@ -718,6 +816,8 @@ export const usePeerStore = create<PeerState>()(
         screenTrack: null,
         blurProcessor: null,
         rawCameraTrack: null,
+        noiseSuppressor: null,
+        rawMicTrack: null,
         backgroundEffect: backgroundPreference.mode,
         backgroundImageDataUrl: backgroundPreference.imageDataUrl ?? null,
         peerConnections: new Map(),
