@@ -18,6 +18,12 @@ import { useMeetStore } from "@/src/stores/meet";
 import { useJoinMeetStore } from "@/src/stores/joinMeet";
 import { avatarColor, initialsOf } from "@/src/lib/avatar";
 import { fetchIceServers } from "@/src/services/api/ice";
+import { useAudioLevel } from "@/src/hooks/use-audio-level";
+import { useMediaDevices } from "@/src/hooks/use-media-devices";
+import { supportsAudioOutputSelection } from "@/src/lib/audio-context";
+import { MicLevelMeter } from "@/src/components/ui/MicLevelMeter";
+import { DeviceSelect } from "@/src/components/ui/DeviceSelect";
+import { Collapsible } from "@/src/components/ui/Collapsible";
 
 export default function JoinMeet() {
     const params = useParams<{ meetCode: string }>();
@@ -29,9 +35,14 @@ export default function JoinMeet() {
     const [showSettings, setShowSettings] = useState(false);
     useEffect(() => { setCanShare('share' in navigator); }, []);
 
-    const { localStream, enableMic, disableMic, enableCamera, disableCamera, switchCamera, setIceServers } = usePeerStore();
+    const { localStream, enableMic, disableMic, enableCamera, disableCamera, switchCamera, setIceServers,
+            setAudioInput, setVideoInput, setAudioOutput,
+            preferredAudioInputId, preferredVideoInputId, preferredAudioOutputId } = usePeerStore();
     const hasMultipleCameras = useHasMultipleCameras();
     const { isMuted, isVideoOff, toggleMute, toggleVideo } = useMeetStore();
+    const { audioInputs, videoInputs, audioOutputs } = useMediaDevices();
+    const showSpeaker = supportsAudioOutputSelection() && audioOutputs.length > 0;
+    const { speaking, level } = useAudioLevel(localStream, !isMuted);
     const { userName, setUserName, setMeetCode: setStoredMeetCode, setHasJoinedMeet } = useJoinMeetStore();
 
     useEffect(() => { setMeetCode(params.meetCode); }, [params]);
@@ -143,6 +154,13 @@ export default function JoinMeet() {
                                 {previewName}
                             </div>
 
+                            {/* Mic level meter — shown when mic is on */}
+                            {!isMuted && (
+                                <div className="absolute bottom-14 left-1/2 -translate-x-1/2 w-32 h-5">
+                                    <MicLevelMeter level={level} active={speaking || level > 0} />
+                                </div>
+                            )}
+
                             {/* Mic + camera toggles */}
                             <div className="glass-pill absolute bottom-3 left-1/2 -translate-x-1/2 gap-1.5 px-1.5 py-1.5">
                                 <MicButton onClickFn={handleMicToggle} action={isMuted ? "close" : "open"} size="sm" />
@@ -158,6 +176,42 @@ export default function JoinMeet() {
                                 )}
                             </div>
                         </div>
+
+                        {/* Device selectors — collapsed by default, persisted for power users */}
+                        {(audioInputs.length > 0 || videoInputs.length > 0 || showSpeaker) && (
+                            <Collapsible
+                                label="Audio & video settings"
+                                storageKey="join-devices-open"
+                                className="mt-3"
+                            >
+                                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                    <DeviceSelect
+                                        id="join-mic"
+                                        label="Microphone"
+                                        devices={audioInputs}
+                                        value={preferredAudioInputId}
+                                        onChange={(id) => { void setAudioInput(id) }}
+                                    />
+                                    <DeviceSelect
+                                        id="join-camera"
+                                        label="Camera"
+                                        devices={videoInputs}
+                                        value={preferredVideoInputId}
+                                        onChange={(id) => { void setVideoInput(id) }}
+                                    />
+                                    {showSpeaker && (
+                                        <DeviceSelect
+                                            id="join-speaker"
+                                            label="Speaker"
+                                            devices={audioOutputs}
+                                            value={preferredAudioOutputId}
+                                            onChange={(id) => { void setAudioOutput(id) }}
+                                            className="sm:col-span-2"
+                                        />
+                                    )}
+                                </div>
+                            </Collapsible>
+                        )}
                     </div>
 
                     {/* ── Join panel ────────────────────────────────────── */}

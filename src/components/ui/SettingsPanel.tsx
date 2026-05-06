@@ -11,6 +11,7 @@ import { usePeerStore } from '@/src/stores/peer'
 import { useMediaDevices } from '@/src/hooks/use-media-devices'
 import { supportsAudioOutputSelection } from '@/src/lib/audio-context'
 import { Toggle } from '@/src/components/ui/Toggle'
+import { DeviceSelect } from '@/src/components/ui/DeviceSelect'
 
 interface SettingsPanelProps {
   onClose: () => void
@@ -166,34 +167,6 @@ function BackgroundEffectsGrid({ onChange }: { onChange: (pref: BackgroundEffect
   )
 }
 
-interface DeviceRowProps {
-  label: string
-  devices: { deviceId: string; label: string }[]
-  value: string
-  onChange: (deviceId: string) => void
-}
-
-function DeviceRow({ label, devices, value, onChange }: DeviceRowProps) {
-  if (devices.length === 0) return null
-  return (
-    <div className="flex flex-col gap-1.5">
-      <span className="text-xs text-[hsl(var(--muted-foreground))]">{label}</span>
-      <select
-        value={value || devices[0]?.deviceId}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full cursor-pointer appearance-none rounded-lg border border-[hsl(var(--border))]
-                   bg-[hsl(var(--surface-2))] px-3 py-2 text-sm text-[hsl(var(--foreground))]
-                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))/0.6]"
-      >
-        {devices.map((d) => (
-          <option key={d.deviceId} value={d.deviceId}>
-            {d.label}
-          </option>
-        ))}
-      </select>
-    </div>
-  )
-}
 
 export function SettingsPanel({ onClose, isVideoOff }: SettingsPanelProps) {
   const setBackgroundEffect = usePeerStore((s) => s.setBackgroundEffect)
@@ -266,20 +239,20 @@ export function SettingsPanel({ onClose, isVideoOff }: SettingsPanelProps) {
                 Devices
               </h2>
               <div className="flex flex-col gap-3">
-                <DeviceRow
+                <DeviceSelect
                   label="Microphone"
                   devices={audioInputs}
                   value={preferredAudioInputId}
                   onChange={(id) => { void setAudioInput(id) }}
                 />
-                <DeviceRow
+                <DeviceSelect
                   label="Camera"
                   devices={videoInputs}
                   value={preferredVideoInputId}
                   onChange={(id) => { void setVideoInput(id) }}
                 />
                 {showSpeaker && (
-                  <DeviceRow
+                  <DeviceSelect
                     label="Speaker"
                     devices={audioOutputs}
                     value={preferredAudioOutputId}

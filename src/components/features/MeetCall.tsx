@@ -86,7 +86,7 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
         client?.send('peer-state', { audio, video, speaking, screenSharing: screenSharing ?? isScreenSharing });
     };
 
-    const localSpeaking = useAudioLevel(localStream, !isMuted);
+    const { speaking: localSpeaking } = useAudioLevel(localStream, !isMuted);
     const prevSpeakingRef = useRef(localSpeaking);
     useEffect(() => {
         if (prevSpeakingRef.current === localSpeaking) return;
