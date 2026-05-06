@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
-import Peer from 'simple-peer'
+import { WebRTCSession, type SignalData, type WebRTCSessionOptions } from '@/src/services/webrtc/session'
 import type { IceServer } from '@/src/services/api/ice'
 import { getSharedAudioContext, setAudioOutputDevice } from '@/src/lib/audio-context'
 import { BackgroundBlurProcessor } from '@/src/lib/background-blur'
@@ -51,7 +51,7 @@ export interface PeerStats {
 
 interface PeerConnection {
   id: string
-  peer: Peer.Instance
+  session: WebRTCSession
   stream?: MediaStream
   name: string
   audio: boolean
@@ -83,7 +83,7 @@ interface PeerState {
 
   addPeerConnection: (
     id: string,
-    peer: Peer.Instance,
+    session: WebRTCSession,
     info?: { name?: string; audio?: boolean; video?: boolean; screenSharing?: boolean },
   ) => void
   removePeerConnection: (id: string) => void
@@ -107,16 +107,12 @@ interface PeerState {
   startScreenShare: () => Promise<MediaStreamTrack | null>
   stopScreenShare: () => void
 
-  createPeer: (initiator: boolean, stream?: MediaStream) => Peer.Instance
+  createSession: (
+    options: Pick<WebRTCSessionOptions, 'initiator' | 'onSignal' | 'onRemoteStream' | 'onConnectionStateChange'> & { localStream: MediaStream }
+  ) => WebRTCSession
   clearPeers: () => void
   clearAll: () => void
 }
-
-interface AdaptiveVideoSendParameters extends RTCRtpSendParameters {
-  degradationPreference?: 'maintain-framerate' | 'maintain-resolution' | 'balanced'
-}
-
-const isVideoSender = (sender: RTCRtpSender) => sender.track?.kind === 'video'
 
 type BlurEffectMode = Extract<BackgroundEffectMode, 'blur-subtle' | 'blur-medium' | 'blur-strong'>
 
@@ -144,63 +140,11 @@ const createBackgroundProcessor = (preference: BackgroundEffectPreference) => {
   return null
 }
 
-const tuneVideoSenderForCongestion = async (sender: RTCRtpSender) => {
-  if (!sender.getParameters || !sender.setParameters) return
-
-  try {
-    const params = sender.getParameters() as AdaptiveVideoSendParameters
-    params.degradationPreference = 'maintain-framerate'
-    params.encodings = params.encodings?.length ? params.encodings : [{}]
-    params.encodings = params.encodings.map((encoding) => ({
-      ...encoding,
-      maxBitrate: VIDEO_MAX_BITRATE_BPS,
-      maxFramerate: VIDEO_FRAME_RATE_IDEAL,
-      scaleResolutionDownBy: Math.max(encoding.scaleResolutionDownBy ?? 1, 1),
-    }))
-    await sender.setParameters(params)
-  } catch (e) {
-    console.warn('video sender congestion tuning failed', e)
-  }
-}
-
-const tunePeerVideoSendersForCongestion = (peer: Peer.Instance) => {
-  try {
-    const pc = (peer as unknown as { _pc?: RTCPeerConnection })._pc
-    pc?.getSenders().filter(isVideoSender).forEach((sender) => {
-      void tuneVideoSenderForCongestion(sender)
-    })
-  } catch (e) {
-    console.warn('peer video congestion tuning failed', e)
-  }
-}
-
-// Replace video track on all peers without renegotiation; uses _pc directly.
 const replaceVideoTrackOnPeers = (
   newTrack: MediaStreamTrack,
   peers: Map<string, PeerConnection>,
 ) => {
-  peers.forEach((c) => {
-    try {
-      const pc = (c.peer as unknown as { _pc?: RTCPeerConnection })._pc
-      if (!pc) {
-        console.warn('[replaceVideoTrack] _pc missing for peer', c.id)
-        return
-      }
-      const sender = pc.getSenders().find(isVideoSender)
-      if (!sender) {
-        console.warn('[replaceVideoTrack] no video sender for peer', c.id)
-        return
-      }
-      sender.replaceTrack(newTrack)
-        .then(() => tuneVideoSenderForCongestion(sender))
-        .catch(e => {
-          if ((e as DOMException).name === 'OperationError') return
-          console.error('[replaceVideoTrack] failed for peer', c.id, e)
-        })
-    } catch (e) {
-      console.error('[replaceVideoTrack] error for peer', c.id, e)
-    }
-  })
+  peers.forEach((c) => { void c.session.replaceTrack('video', newTrack) })
 }
 
 // Placeholder sent via replaceTrack when camera is disabled so the video sender survives.
@@ -258,48 +202,16 @@ const replaceAudioSenderOnPeers = (
   track: MediaStreamTrack,
   peers: Map<string, PeerConnection>,
 ) => {
-  peers.forEach((c) => {
-    try {
-      const pc = (c.peer as unknown as { _pc?: RTCPeerConnection })._pc
-      if (!pc) return
-      const sender = pc.getSenders().find(s => s.track?.kind === 'audio')
-      if (!sender) return
-      sender.replaceTrack(track)
-        .catch(e => {
-          if ((e as DOMException).name === 'OperationError') return
-          console.error('[replaceAudioSender] failed for peer', c.id, e)
-        })
-    } catch (e) {
-      console.error('[replaceAudioSender] error for peer', c.id, e)
-    }
-  })
+  peers.forEach((c) => { void c.session.replaceTrack('audio', track) })
 }
 
+// Audio senders are always pre-negotiated at session creation, so replaceTrack
+// is the only publish path — no addTrack fallback needed.
 const publishAudioTrackToPeers = (
   track: MediaStreamTrack,
-  stream: MediaStream,
   peers: Map<string, PeerConnection>,
 ) => {
-  peers.forEach((c) => {
-    try {
-      const pc = (c.peer as unknown as { _pc?: RTCPeerConnection })._pc
-      const sender = pc?.getSenders().find(s => s.track?.kind === 'audio')
-      if (sender) {
-        sender.replaceTrack(track)
-          .catch(e => {
-            if ((e as DOMException).name === 'OperationError') return
-            console.error('[publishAudioTrack] replaceTrack failed for peer', c.id, e)
-          })
-        return
-      }
-
-      // Recovery path for peers created before an audio placeholder existed.
-      // simple-peer will renegotiate; without this, unmute has no sender to replace.
-      c.peer.addTrack(track, stream)
-    } catch (e) {
-      console.error('[publishAudioTrack] failed for peer', c.id, e)
-    }
-  })
+  peers.forEach((c) => { void c.session.replaceTrack('audio', track) })
 }
 
 export const usePeerStore = create<PeerState>()(
@@ -343,7 +255,7 @@ export const usePeerStore = create<PeerState>()(
           localStream?.getAudioTracks().forEach(t => { if (t !== activeMicTrack) { t.stop(); localStream.removeTrack(t) } })
           localStream?.removeTrack(activeMicTrack)
           localStream?.addTrack(processedTrack)
-          publishAudioTrackToPeers(processedTrack, localStream!, peerConnections)
+          publishAudioTrackToPeers(processedTrack, peerConnections)
           set({ noiseSuppressor: suppressor, rawMicTrack: activeMicTrack })
         } catch (e) {
           console.error('NoiseSuppressor.start failed', e)
@@ -357,18 +269,18 @@ export const usePeerStore = create<PeerState>()(
         if (rawMicTrack && localStream) {
           localStream.getAudioTracks().forEach(t => { t.stop(); localStream.removeTrack(t) })
           localStream.addTrack(rawMicTrack)
-          publishAudioTrackToPeers(rawMicTrack, localStream, peerConnections)
+          publishAudioTrackToPeers(rawMicTrack, peerConnections)
         }
         set({ noiseSuppressor: null, rawMicTrack: null })
       }
     },
 
-    addPeerConnection: (id, peer, info) =>
+    addPeerConnection: (id, session, info) =>
       set((state) => {
         const next = new Map(state.peerConnections)
         next.set(id, {
           id,
-          peer,
+          session,
           name: info?.name ?? '',
           audio: info?.audio ?? false,
           video: info?.video ?? false,
@@ -382,7 +294,7 @@ export const usePeerStore = create<PeerState>()(
       set((state) => {
         const next = new Map(state.peerConnections)
         const c = next.get(id)
-        if (c) { c.peer.destroy(); next.delete(id) }
+        if (c) { c.session.close(); next.delete(id) }
         const nextStats = new Map(state.peerStats)
         nextStats.delete(id)
         return { peerConnections: next, peerStats: nextStats }
@@ -442,7 +354,7 @@ export const usePeerStore = create<PeerState>()(
             stream.addTrack(processedTrack)
             if (!existing) set({ localStream: stream })
             set({ noiseSuppressor: suppressor, rawMicTrack: rawTrack })
-            publishAudioTrackToPeers(processedTrack, stream, get().peerConnections)
+            publishAudioTrackToPeers(processedTrack, get().peerConnections)
             return rawTrack
           } catch (e) {
             console.error('NoiseSuppressor.start failed on enableMic, falling back', e)
@@ -453,7 +365,7 @@ export const usePeerStore = create<PeerState>()(
         stream.addTrack(rawTrack)
         if (!existing) set({ localStream: stream })
         set({ noiseSuppressor: null, rawMicTrack: null })
-        publishAudioTrackToPeers(rawTrack, stream, get().peerConnections)
+        publishAudioTrackToPeers(rawTrack, get().peerConnections)
         return rawTrack
       } catch (e) {
         console.error('enableMic failed', e)
@@ -623,7 +535,7 @@ export const usePeerStore = create<PeerState>()(
             const processedTrack = await suppressor.start(rawTrack)
             localStream.addTrack(processedTrack)
             set({ noiseSuppressor: suppressor, rawMicTrack: rawTrack })
-            publishAudioTrackToPeers(processedTrack, localStream, peerConnections)
+            publishAudioTrackToPeers(processedTrack, peerConnections)
             return
           } catch (e) {
             console.error('NoiseSuppressor.start failed on setAudioInput, falling back', e)
@@ -632,7 +544,7 @@ export const usePeerStore = create<PeerState>()(
 
         set({ noiseSuppressor: null, rawMicTrack: null })
         localStream.addTrack(rawTrack)
-        publishAudioTrackToPeers(rawTrack, localStream, peerConnections)
+        publishAudioTrackToPeers(rawTrack, peerConnections)
       } catch (e) {
         console.error('setAudioInput failed', e)
       }
@@ -759,46 +671,34 @@ export const usePeerStore = create<PeerState>()(
 
     setBackgroundBlur: async (enabled) => get().setBackgroundEffect({ mode: enabled ? 'blur-medium' : 'off' }),
 
-    createPeer: (initiator, localStream) => {
+    createSession: ({ initiator, localStream, onSignal, onRemoteStream, onConnectionStateChange }) => {
       const { iceServers, screenTrack } = get()
 
-      // Build the initial stream with the tracks that are actually live right now.
-      //
-      // Previous approach: always use placeholder tracks (silent audio + black video),
-      // then swap in the real tracks via replaceTrack() inside a queueMicrotask that
-      // accessed simple-peer's internal _pc property. That was fragile: if
-      // createBlackVideoTrack() returned null no video sender was ever created, and
-      // subsequent replaceVideoTrackOnPeers() calls silently failed because
-      // getSenders().find(isVideoSender) returned undefined.
-      //
-      // This approach: prefer real tracks. Placeholders are only used when no real
-      // track exists, ensuring both senders are always pre-negotiated. The SDP
-      // produced for the initial offer/answer describes the correct media from the
-      // start, and no _pc access is required for new peers.
-      const audioTrack = localStream?.getAudioTracks()[0] ?? createSilentAudioTrack()
-      // When screen sharing, start with the screen track — not the camera.
-      // This guarantees late-joining peers receive the active screen share
-      // without any queueMicrotask / replaceTrack dance.
-      const videoTrack = screenTrack ?? localStream?.getVideoTracks()[0] ?? createBlackVideoTrack()
+      // Prefer real tracks; placeholders only when nothing live is available.
+      // Senders for both audio and video are pre-negotiated at creation so
+      // replaceTrack() always finds an existing sender — no renegotiation needed.
+      const audioTrack = localStream.getAudioTracks()[0] ?? createSilentAudioTrack()
+      // Screen share takes priority: late-joining peers get the active screen
+      // share without any replaceTrack dance.
+      const videoTrack = screenTrack ?? localStream.getVideoTracks()[0] ?? createBlackVideoTrack()
 
       const initStream = new MediaStream()
       if (audioTrack) initStream.addTrack(audioTrack)
       if (videoTrack) initStream.addTrack(videoTrack)
 
-      const peer = new Peer({
+      return new WebRTCSession({
+        iceServers: iceServers as RTCIceServer[],
         initiator,
-        trickle: true,
-        stream: initStream,
-        config: { iceServers: iceServers as RTCIceServer[] },
+        localStream: initStream,
+        onSignal,
+        onRemoteStream,
+        onConnectionStateChange,
       })
-
-      queueMicrotask(() => tunePeerVideoSendersForCongestion(peer))
-      return peer
     },
 
     clearPeers: () => {
       const { peerConnections } = get()
-      peerConnections.forEach((c) => c.peer.destroy())
+      peerConnections.forEach((c) => c.session.close())
       set({ peerConnections: new Map(), peerStats: new Map() })
     },
 
@@ -810,7 +710,7 @@ export const usePeerStore = create<PeerState>()(
       noiseSuppressor?.stop()
       rawMicTrack?.stop()
       localStream?.getTracks().forEach((t) => t.stop())
-      peerConnections.forEach((c) => c.peer.destroy())
+      peerConnections.forEach((c) => c.session.close())
       set({
         localStream: null,
         screenTrack: null,

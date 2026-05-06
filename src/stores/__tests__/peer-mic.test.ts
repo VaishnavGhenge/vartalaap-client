@@ -1,36 +1,21 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { usePeerStore } from '../peer'
+import { WebRTCSession } from '@/src/services/webrtc/session'
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
-vi.mock('simple-peer', () => {
-  class FakePeer {
-    private _listeners = new Map<string, ((...args: unknown[]) => void)[]>()
-    _pc = {
-      getSenders: vi.fn(() => [
-        { track: { kind: 'audio' }, replaceTrack: vi.fn().mockResolvedValue(undefined) },
-        { track: { kind: 'video' }, replaceTrack: vi.fn().mockResolvedValue(undefined) },
-      ]),
-    }
+vi.mock('@/src/services/webrtc/session', () => {
+  class WebRTCSession {
+    replaceTrack = vi.fn().mockResolvedValue(undefined)
+    applyEncodingLevel = vi.fn().mockResolvedValue(undefined)
+    getStats = vi.fn().mockResolvedValue(new Map())
+    signal = vi.fn().mockResolvedValue(undefined)
+    close = vi.fn()
+    connectionState: RTCPeerConnectionState = 'connected'
     destroyed = false
-    addTrack = vi.fn()
-    removeTrack = vi.fn()
-    on(event: string, listener: (...args: unknown[]) => void) {
-      const arr = this._listeners.get(event) ?? []
-      arr.push(listener)
-      this._listeners.set(event, arr)
-      return this
-    }
-    emit(event: string, ...args: unknown[]) {
-      this._listeners.get(event)?.forEach(l => l(...args))
-    }
-    destroy() {
-      if (this.destroyed) return
-      this.destroyed = true
-      this.emit('close')
-    }
+    constructor(_opts: unknown) {}
   }
-  return { default: FakePeer }
+  return { WebRTCSession, ENCODING_LEVELS: [] }
 })
 
 // AudioContext stub for createSilentAudioTrack
@@ -39,9 +24,7 @@ vi.mock('@/src/lib/audio-context', () => ({
     const silentTrack = { kind: 'audio', stop: vi.fn(), enabled: true } as unknown as MediaStreamTrack
     return {
       createMediaStreamDestination: vi.fn(() => ({
-        stream: {
-          getAudioTracks: () => [silentTrack],
-        },
+        stream: { getAudioTracks: () => [silentTrack] },
       })),
     }
   }),
@@ -73,25 +56,12 @@ function stubGetUserMedia(track: MediaStreamTrack) {
   })
 }
 
-async function makePeerWithAudioSender() {
-  const Peer = (await import('simple-peer')).default
-  const peer = new (Peer as unknown as new () => {
-    _pc: { getSenders: ReturnType<typeof vi.fn> }
-    addTrack: ReturnType<typeof vi.fn>
-  })()
-  const sender = { track: { kind: 'audio' }, replaceTrack: vi.fn().mockResolvedValue(undefined) }
-  peer._pc.getSenders = vi.fn(() => [sender])
-  return { peer, sender }
+function makeSession(): InstanceType<typeof WebRTCSession> {
+  return new WebRTCSession({} as never) as unknown as InstanceType<typeof WebRTCSession>
 }
 
-async function makePeerWithoutAudioSender() {
-  const Peer = (await import('simple-peer')).default
-  const peer = new (Peer as unknown as new () => {
-    _pc: { getSenders: ReturnType<typeof vi.fn> }
-    addTrack: ReturnType<typeof vi.fn>
-  })()
-  peer._pc.getSenders = vi.fn(() => [])
-  return { peer }
+function peerConn(session: InstanceType<typeof WebRTCSession>, id = 'p1') {
+  return { id, session, name: '', audio: false, video: false, speaking: false, screenSharing: false }
 }
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
@@ -163,37 +133,17 @@ describe('enableMic', () => {
     expect(usePeerStore.getState().localStream).toBe(existing)
   })
 
-  it('calls replaceTrack on the audio sender (no addTrack / no renegotiation)', async () => {
-    const { peer, sender } = await makePeerWithAudioSender()
+  it('calls session.replaceTrack to publish the audio track to peers', async () => {
+    const session = makeSession()
     usePeerStore.setState({
-      peerConnections: new Map([
-        ['p1', { id: 'p1', peer: peer as never, name: '', audio: false, video: false, speaking: false, screenSharing: false }],
-      ]),
+      peerConnections: new Map([['p1', peerConn(session)]]),
     })
     const track = makeTrack('audio')
     stubGetUserMedia(track)
 
     await usePeerStore.getState().enableMic()
 
-    expect(sender.replaceTrack).toHaveBeenCalledWith(track)
-    expect(peer.addTrack).not.toHaveBeenCalled()
-  })
-
-  it('adds the audio track when the peer has no audio sender to replace', async () => {
-    const { peer } = await makePeerWithoutAudioSender()
-    usePeerStore.setState({
-      peerConnections: new Map([
-        ['p1', { id: 'p1', peer: peer as never, name: '', audio: false, video: false, speaking: false, screenSharing: false }],
-      ]),
-    })
-    const track = makeTrack('audio')
-    stubGetUserMedia(track)
-
-    await usePeerStore.getState().enableMic()
-
-    const stream = usePeerStore.getState().localStream
-    expect(stream).not.toBeNull()
-    expect(peer.addTrack).toHaveBeenCalledWith(track, stream)
+    expect(session.replaceTrack).toHaveBeenCalledWith('audio', track)
   })
 
   it('returns null when getUserMedia rejects', async () => {
@@ -210,7 +160,7 @@ describe('enableMic', () => {
 // ─── disableMic ───────────────────────────────────────────────────────────────
 
 describe('disableMic', () => {
-  it('stops the live audio track (mic indicator turns off)', async () => {
+  it('stops the live audio track', async () => {
     const track = makeTrack('audio')
     const stream = makeStream([track])
     usePeerStore.setState({ localStream: stream })
@@ -230,22 +180,18 @@ describe('disableMic', () => {
     expect(stream.getAudioTracks()).not.toContain(track)
   })
 
-  it('replaces the sender with a silent placeholder before stopping', async () => {
-    const { peer, sender } = await makePeerWithAudioSender()
+  it('replaces the session audio sender with a silent placeholder before stopping', async () => {
+    const session = makeSession()
     const track = makeTrack('audio')
     const stream = makeStream([track])
     usePeerStore.setState({
       localStream: stream,
-      peerConnections: new Map([
-        ['p1', { id: 'p1', peer: peer as never, name: '', audio: true, video: false, speaking: false, screenSharing: false }],
-      ]),
+      peerConnections: new Map([['p1', { ...peerConn(session), audio: true }]]),
     })
 
     usePeerStore.getState().disableMic()
 
-    // Silent placeholder was put in place — addTrack never called
-    expect(sender.replaceTrack).toHaveBeenCalled()
-    expect(peer.addTrack).not.toHaveBeenCalled()
+    expect(session.replaceTrack).toHaveBeenCalledWith('audio', expect.any(Object))
   })
 
   it('sets localStream to null when no tracks remain', async () => {
@@ -278,24 +224,19 @@ describe('disableMic', () => {
 // ─── enableMic → disableMic cycle ────────────────────────────────────────────
 
 describe('enableMic → disableMic cycle', () => {
-  it('full round trip: enable acquires mic, disable stops track and swaps sender', async () => {
-    const { peer, sender } = await makePeerWithAudioSender()
+  it('enable publishes track to session, disable sends silent placeholder', async () => {
+    const session = makeSession()
     usePeerStore.setState({
-      peerConnections: new Map([
-        ['p1', { id: 'p1', peer: peer as never, name: '', audio: false, video: false, speaking: false, screenSharing: false }],
-      ]),
+      peerConnections: new Map([['p1', peerConn(session)]]),
     })
     const liveTrack = makeTrack('audio')
     stubGetUserMedia(liveTrack)
 
-    // Enable
     await usePeerStore.getState().enableMic()
-    expect(sender.replaceTrack).toHaveBeenCalledWith(liveTrack)
+    expect(session.replaceTrack).toHaveBeenCalledWith('audio', liveTrack)
 
-    // Disable
     usePeerStore.getState().disableMic()
     expect(liveTrack.stop).toHaveBeenCalled()
-    // Sender was replaced again (with silent placeholder)
-    expect(sender.replaceTrack).toHaveBeenCalledTimes(2)
+    expect(session.replaceTrack).toHaveBeenCalledTimes(2)
   })
 })

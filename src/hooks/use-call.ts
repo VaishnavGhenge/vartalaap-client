@@ -5,7 +5,7 @@ import { fetchIceServers } from '@/src/services/api/ice'
 import type {
   Envelope, JoinedData, PeerJoinedData, PeerLeftData, PeerStateData,
 } from '@/src/services/signaling/protocol'
-import Peer from 'simple-peer'
+import type { SignalData } from '@/src/services/webrtc/session'
 import { playPeerJoined, playPeerLeft, playScreenShareStart, playScreenShareStop } from '@/src/lib/sounds'
 
 interface Args {
@@ -26,15 +26,10 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
 
     const store = usePeerStore
     let disposed = false
-    const pendingSignals = new Map<string, Peer.SignalData[]>()
+    const pendingSignals = new Map<string, SignalData[]>()
     const prevScreenSharing = new Map<string, boolean>()
 
-    // ICE restart state — lives for the duration of the call.
-    const restartAttempts = new Map<string, number>()
-    const restartTimers = new Map<string, ReturnType<typeof setTimeout>>()
-    const MAX_RESTART_ATTEMPTS = 3
-
-    const makePeer = (
+    const makeSession = (
       remoteId: string,
       initiator: boolean,
       info: { name: string; audio: boolean; video: boolean; screenSharing?: boolean },
@@ -42,87 +37,35 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       if (store.getState().peerConnections.has(remoteId)) {
         store.getState().removePeerConnection(remoteId)
       }
-      const localStream = store.getState().localStream ?? undefined
-      const peer = store.getState().createPeer(initiator, localStream)
 
-      peer.on('signal', (data) => {
-        client.send('signal', data, { to: remoteId })
-      })
-      peer.on('stream', (stream) => {
-        store.getState().updatePeerStream(remoteId, stream)
-      })
-      peer.on('close', () => {
-        clearTimeout(restartTimers.get(remoteId))
-        restartTimers.delete(remoteId)
-        restartAttempts.delete(remoteId)
-        store.getState().removePeerConnection(remoteId)
-      })
-      peer.on('error', (err) => {
-        // destroyed=true means destroy() was called intentionally; the
-        // OperationError / abort that follows is expected — not a real error.
-        if (peer.destroyed) return
-        if (!store.getState().peerConnections.has(remoteId)) return
-        // OperationError with "Close called" is WebRTC aborting an in-flight
-        // replaceTrack because the connection was torn down — expected on hangup.
-        if ((err as DOMException).name === 'OperationError') return
-        console.error('peer error', remoteId, err)
-        store.getState().removePeerConnection(remoteId)
+      const localStream = store.getState().localStream ?? new MediaStream()
+      const session = store.getState().createSession({
+        initiator,
+        localStream,
+        onSignal: (data) => {
+          client.send('signal', data, { to: remoteId })
+        },
+        onRemoteStream: (stream) => {
+          store.getState().updatePeerStream(remoteId, stream)
+        },
+        onConnectionStateChange: (state) => {
+          // Surface failed state to caller if needed in the future.
+          // ICE restart (disconnected → restartIce) is handled inside WebRTCSession.
+          if (state === 'failed' && !disposed) {
+            console.warn('[use-call] peer connection failed', remoteId)
+          }
+        },
       })
 
-      // ICE restart — initiator only to avoid signaling glare.
-      //
-      // When connectionState → 'disconnected' the ICE transport has lost its
-      // path but hasn't given up yet. We wait 2 s (transient drops recover on
-      // their own) then call restartIce(), which re-runs candidate gathering
-      // and emits a new offer through the existing signal handler. The DTLS
-      // session survives; the remote peer never sees a leave/join event.
-      //
-      // 'failed' means the browser's ICE agent exhausted all retries — at
-      // that point simple-peer destroys the peer, which falls through to the
-      // error/close handlers above (existing behaviour).
-      if (initiator) {
-        const pc = (peer as unknown as { _pc?: RTCPeerConnection })._pc
-        if (pc && typeof pc.restartIce === 'function') {
-          pc.addEventListener('connectionstatechange', function onStateChange() {
-            if (peer.destroyed) {
-              pc.removeEventListener('connectionstatechange', onStateChange)
-              return
-            }
-
-            if (pc.connectionState === 'disconnected') {
-              if (restartTimers.has(remoteId)) return  // already scheduled
-              const attempt = restartAttempts.get(remoteId) ?? 0
-              if (attempt >= MAX_RESTART_ATTEMPTS) return
-
-              restartTimers.set(remoteId, setTimeout(() => {
-                restartTimers.delete(remoteId)
-                if (peer.destroyed || pc.connectionState !== 'disconnected') return
-                restartAttempts.set(remoteId, attempt + 1)
-                console.info('[ice-restart] peer=%s attempt=%d', remoteId, attempt + 1)
-                pc.restartIce()
-              }, 2000))
-
-            } else if (pc.connectionState === 'connected') {
-              // Successful (re)connection — clear restart state.
-              clearTimeout(restartTimers.get(remoteId))
-              restartTimers.delete(remoteId)
-              restartAttempts.delete(remoteId)
-            }
-          })
-        }
-      }
-
-      store.getState().addPeerConnection(remoteId, peer, info)
+      store.getState().addPeerConnection(remoteId, session, info)
 
       const buffered = pendingSignals.get(remoteId)
       if (buffered) {
-        buffered.forEach((data) => {
-          try { peer.signal(data) } catch (e) { console.error('buffered signal failed', e) }
-        })
+        buffered.forEach((data) => { void session.signal(data) })
         pendingSignals.delete(remoteId)
       }
 
-      return peer
+      return session
     }
 
     const handleJoined = (env: Envelope<JoinedData>) => {
@@ -130,7 +73,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       const peers = env.data?.peers ?? []
       for (const p of peers) {
         if (p.id === myId) continue
-        makePeer(p.id, true, { name: p.name, audio: p.audio, video: p.video, screenSharing: p.screenSharing ?? false })
+        makeSession(p.id, true, { name: p.name, audio: p.audio, video: p.video, screenSharing: p.screenSharing ?? false })
       }
     }
 
@@ -138,7 +81,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       const d = env.data
       if (!d?.peerId) return
       if (d.peerId === client.getPeerId()) return
-      makePeer(d.peerId, false, { name: d.name, audio: d.audio, video: d.video, screenSharing: d.screenSharing ?? false })
+      makeSession(d.peerId, false, { name: d.name, audio: d.audio, video: d.video, screenSharing: d.screenSharing ?? false })
       playPeerJoined()
     }
 
@@ -157,8 +100,6 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       if (newScreenSharing && !oldScreenSharing) playScreenShareStart()
       else if (!newScreenSharing && oldScreenSharing) playScreenShareStop()
       prevScreenSharing.set(env.from, newScreenSharing)
-      // Treat absent speaking field as false — server omits it when null/missing,
-      // so we can't use ?? to fall back to the previous value.
       store.getState().updatePeerMediaState(env.from, env.data.audio, env.data.video, env.data.speaking ?? false, newScreenSharing)
     }
 
@@ -167,15 +108,11 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       const conn = store.getState().peerConnections.get(env.from)
       if (!conn) {
         const buf = pendingSignals.get(env.from) ?? []
-        buf.push(env.data as Peer.SignalData)
+        buf.push(env.data as SignalData)
         pendingSignals.set(env.from, buf)
         return
       }
-      try {
-        conn.peer.signal(env.data as Peer.SignalData)
-      } catch (e) {
-        console.error('peer.signal failed', e)
-      }
+      void conn.session.signal(env.data as SignalData)
     }
 
     // On reconnect: clear stale peers and rejoin — the server will send
@@ -196,7 +133,6 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
 
     ;(async () => {
       try {
-        // Skip fetch if ICE servers were pre-fetched on the join screen.
         if (store.getState().iceServers.length === 0) {
           try {
             const iceServers = await fetchIceServers()
@@ -224,9 +160,6 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       client.off('peer-state', handlePeerState as (env: Envelope) => void)
       client.off('signal', handleSignal)
       pendingSignals.clear()
-      for (const timer of restartTimers.values()) clearTimeout(timer)
-      restartTimers.clear()
-      restartAttempts.clear()
       store.getState().clearAll()
     }
     // Intentionally excluding userName/initialAudio/initialVideo: they're
