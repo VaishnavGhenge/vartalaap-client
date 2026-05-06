@@ -61,7 +61,7 @@ export function Collapsible({ label, children, defaultOpen = false, storageKey, 
         style={{ gridTemplateRows: open ? '1fr' : '0fr' }}
       >
         <div className="overflow-hidden">
-          <div className="pt-2">
+          <div className="px-1 pb-1 pt-2">
             {children}
           </div>
         </div>
