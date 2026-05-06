@@ -23,6 +23,7 @@ import { useMediaDevices } from "@/src/hooks/use-media-devices";
 import { supportsAudioOutputSelection } from "@/src/lib/audio-context";
 import { MicLevelMeter } from "@/src/components/ui/MicLevelMeter";
 import { DeviceSelect } from "@/src/components/ui/DeviceSelect";
+import { Collapsible } from "@/src/components/ui/Collapsible";
 
 export default function JoinMeet() {
     const params = useParams<{ meetCode: string }>();
@@ -176,34 +177,40 @@ export default function JoinMeet() {
                             </div>
                         </div>
 
-                        {/* Device selectors below the preview */}
+                        {/* Device selectors — collapsed by default, persisted for power users */}
                         {(audioInputs.length > 0 || videoInputs.length > 0 || showSpeaker) && (
-                            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                <DeviceSelect
-                                    id="join-mic"
-                                    label="Microphone"
-                                    devices={audioInputs}
-                                    value={preferredAudioInputId}
-                                    onChange={(id) => { void setAudioInput(id) }}
-                                />
-                                <DeviceSelect
-                                    id="join-camera"
-                                    label="Camera"
-                                    devices={videoInputs}
-                                    value={preferredVideoInputId}
-                                    onChange={(id) => { void setVideoInput(id) }}
-                                />
-                                {showSpeaker && (
+                            <Collapsible
+                                label="Audio & video settings"
+                                storageKey="join-devices-open"
+                                className="mt-3"
+                            >
+                                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                                     <DeviceSelect
-                                        id="join-speaker"
-                                        label="Speaker"
-                                        devices={audioOutputs}
-                                        value={preferredAudioOutputId}
-                                        onChange={(id) => { void setAudioOutput(id) }}
-                                        className="sm:col-span-2"
+                                        id="join-mic"
+                                        label="Microphone"
+                                        devices={audioInputs}
+                                        value={preferredAudioInputId}
+                                        onChange={(id) => { void setAudioInput(id) }}
                                     />
-                                )}
-                            </div>
+                                    <DeviceSelect
+                                        id="join-camera"
+                                        label="Camera"
+                                        devices={videoInputs}
+                                        value={preferredVideoInputId}
+                                        onChange={(id) => { void setVideoInput(id) }}
+                                    />
+                                    {showSpeaker && (
+                                        <DeviceSelect
+                                            id="join-speaker"
+                                            label="Speaker"
+                                            devices={audioOutputs}
+                                            value={preferredAudioOutputId}
+                                            onChange={(id) => { void setAudioOutput(id) }}
+                                            className="sm:col-span-2"
+                                        />
+                                    )}
+                                </div>
+                            </Collapsible>
                         )}
                     </div>
 
