@@ -4,16 +4,23 @@ import { getSharedAudioContext } from '@/src/lib/audio-context'
 const DEFAULT_THRESHOLD = 0.035
 const HOLD_MS = 280
 
+export interface AudioLevel {
+  speaking: boolean
+  level: number // 0–1 RMS, smoothed
+}
+
 export function useAudioLevel(
   stream: MediaStream | null,
   active: boolean,
   threshold = DEFAULT_THRESHOLD,
-): boolean {
+): AudioLevel {
   const [speaking, setSpeaking] = useState(false)
+  const [level, setLevel] = useState(0)
 
   useEffect(() => {
     if (!stream || !active) {
       setSpeaking(false)
+      setLevel(0)
       return
     }
 
@@ -53,6 +60,9 @@ export function useAudioLevel(
           sumSq += v * v
         }
         const rms = Math.sqrt(sumSq / data.length)
+        // Clamp to a useful visual range (threshold..0.3) then normalise to 0–1.
+        const normalized = Math.min(1, Math.max(0, (rms - threshold) / (0.3 - threshold)))
+        setLevel(normalized)
         const now = performance.now()
         if (rms > threshold) {
           lastOnAt = now
@@ -90,8 +100,9 @@ export function useAudioLevel(
       stream.removeEventListener('addtrack', onAddTrack)
       teardown?.()
       setSpeaking(false)
+      setLevel(0)
     }
   }, [stream, active, threshold])
 
-  return speaking
+  return { speaking, level }
 }

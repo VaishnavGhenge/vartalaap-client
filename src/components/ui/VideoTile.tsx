@@ -63,7 +63,7 @@ export const VideoTile = ({
     const muted = isLocal ? !!isMuted : !!participant?.isMuted;
     const label = isLocal ? `${name} (you)` : name;
 
-    const localSpeaking = useAudioLevel(isLocal ? stream : null, isLocal && !muted);
+    const { speaking: localSpeaking } = useAudioLevel(isLocal ? stream : null, isLocal && !muted);
     const [remoteSpeaking, setRemoteSpeaking] = useState(false);
     const holdTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
     useEffect(() => {

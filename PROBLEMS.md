@@ -9,15 +9,9 @@ Problems holding us back from being best-in-class. Ordered by impact on the core
 ### ~~1. Browser-native noise/echo suppression is mediocre~~ ✅ Resolved
 RNNoise AI noise suppression shipped via `NoiseSuppressor` (`src/lib/noise-suppression.ts`). AudioWorklet pipeline: `getUserMedia` → RNNoise WASM worklet → `MediaStreamAudioDestinationNode`. Toggle in Settings panel, persisted to `localStorage`. Applied automatically on `enableMic` and device switch when active.
 
-### 3. No pre-call device preview
-Users currently join the call before knowing if their mic or camera is working, which mic/camera is selected, or what they look/sound like. This is a top-3 friction point in all video calling research. A bad setup ruins the first impression.
-
-**Fix:** Extend the join screen with device selectors for microphone, camera, and speaker output (`enumerateDevices`). Camera preview and mic level meter are already live on the join screen.
-
-### 4. No device picker (mic/camera/speaker selection)
-No way to choose between multiple microphones or cameras beyond the front/back flip on mobile. On desktop, if the wrong mic is selected by the browser default, there is no recovery without leaving the browser settings.
-
-**Fix:** Add device dropdowns (`MediaDevices.enumerateDevices()`) for audio input, video input, and audio output to the Settings panel. Persist selection to `localStorage`. Apply immediately via `replaceTrack`.
+### ~~3. No pre-call device preview~~ ✅ Resolved
+### ~~4. No device picker (mic/camera/speaker selection)~~ ✅ Resolved
+Device selectors (mic, camera, speaker) now live below the camera preview on the join screen via `DeviceSelect` component. Mic level meter (`MicLevelMeter`) shows live audio activity when mic is on. `useAudioLevel` extended to return `{ speaking, level }` for both boolean indicator and continuous meter use.
 
 ---
 
@@ -26,8 +20,8 @@ No way to choose between multiple microphones or cameras beyond the front/back f
 ### 6. No in-call text chat
 For couples/small groups, a chat panel for sharing links, quick messages when audio is bad, or silent communication is a high-value feature that most platforms do poorly (buried, laggy, separate window). A clean side drawer with WebSocket message relaying through the signaling server would cover this.
 
-### 7. No speaking indicator on the join screen
-Users can't verify their mic is working before joining. The `use-audio-level` hook already exists — it just needs to be shown in the join screen as a visual meter.
+### ~~7. No speaking indicator on the join screen~~ ✅ Resolved
+`MicLevelMeter` renders animated bars above the controls when mic is on. Shares the `level` value from `useAudioLevel`.
 
 ---
 
