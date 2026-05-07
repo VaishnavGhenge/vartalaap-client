@@ -26,6 +26,10 @@ export class SignalingClient {
 
   constructor(url: string) { this.url = url }
 
+  setReconnectedHandler(handler: (() => void) | undefined): void {
+    this.onReconnected = handler
+  }
+
   connect(): void {
     if (this.disposed) return
     const ws = new WebSocket(this.url)

@@ -97,7 +97,6 @@ export function Captions(props: Props) {
             clearInterval(interval);
             stopRecording();
         };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
 

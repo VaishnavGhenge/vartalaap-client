@@ -59,6 +59,9 @@ function makeClient() {
     }),
     getPeerId: vi.fn(() => 'peer-alice'),
     onReconnected: undefined as (() => void) | undefined,
+    setReconnectedHandler: vi.fn((handler: (() => void) | undefined) => {
+      client.onReconnected = handler
+    }),
 
     emit(type: string, env: Partial<Envelope>) {
       handlers.get(type)?.forEach(h => h({ type: type as Envelope['type'], ...env }))
