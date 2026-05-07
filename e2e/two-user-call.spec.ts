@@ -1,44 +1,12 @@
-import { test, expect, type Page } from '@playwright/test'
-
-const randomRoom = () => Math.random().toString(36).slice(2, 8)
-
-const CTX_OPTS = {
-  permissions: ['camera', 'microphone'] as string[],
-  baseURL: 'http://localhost:3000',
-}
-
-async function gotoRoom(page: Page, roomCode: string) {
-  await page.goto(`/${roomCode}`, { waitUntil: 'domcontentloaded' })
-}
-
-async function fillName(page: Page, name: string) {
-  const input = page.getByPlaceholder(/your name/i)
-  const joinButton = page.getByRole('button', { name: /join now/i })
-  await expect(input).toBeVisible()
-
-  for (let attempt = 0; attempt < 20; attempt++) {
-    await input.fill(name)
-    if (await joinButton.isEnabled()) return
-    await page.waitForTimeout(100)
-  }
-
-  await expect(input).toHaveValue(name)
-  await expect(joinButton).toBeEnabled()
-}
-
-async function joinRoom(page: Page, roomCode: string, name: string) {
-  await gotoRoom(page, roomCode)
-  await fillName(page, name)
-  await page.getByRole('button', { name: /join now/i }).click()
-  await expect(page.getByRole('button', { name: /leave call/i })).toBeVisible({ timeout: 10_000 })
-}
+import { test, expect } from '@playwright/test'
+import { CALL_CONTEXT_OPTIONS, fillName, joinRoom, randomRoom } from './helpers/call'
 
 test.describe('Two-user call', () => {
   test('both users can see each other after joining the same room', async ({ browser }) => {
     const roomCode = randomRoom()
 
-    const ctx1 = await browser.newContext(CTX_OPTS)
-    const ctx2 = await browser.newContext(CTX_OPTS)
+    const ctx1 = await browser.newContext(CALL_CONTEXT_OPTIONS)
+    const ctx2 = await browser.newContext(CALL_CONTEXT_OPTIONS)
     const page1 = await ctx1.newPage()
     const page2 = await ctx2.newPage()
 
@@ -74,8 +42,8 @@ test.describe('Two-user call', () => {
   test('a user who leaves is removed from the other user\'s view', async ({ browser }) => {
     const roomCode = randomRoom()
 
-    const ctx1 = await browser.newContext(CTX_OPTS)
-    const ctx2 = await browser.newContext(CTX_OPTS)
+    const ctx1 = await browser.newContext(CALL_CONTEXT_OPTIONS)
+    const ctx2 = await browser.newContext(CALL_CONTEXT_OPTIONS)
     const page1 = await ctx1.newPage()
     const page2 = await ctx2.newPage()
 
@@ -104,8 +72,8 @@ test.describe('Two-user call', () => {
   test('rejoining the same room after leaving works', async ({ browser }) => {
     const roomCode = randomRoom()
 
-    const ctx1 = await browser.newContext(CTX_OPTS)
-    const ctx2 = await browser.newContext(CTX_OPTS)
+    const ctx1 = await browser.newContext(CALL_CONTEXT_OPTIONS)
+    const ctx2 = await browser.newContext(CALL_CONTEXT_OPTIONS)
     const page1 = await ctx1.newPage()
     const page2 = await ctx2.newPage()
 
