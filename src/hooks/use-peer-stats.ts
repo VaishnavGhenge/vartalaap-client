@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react'
 import { usePeerStore, type PeerStats, type EncodingLevel } from '@/src/stores/peer'
 import type { SignalingClient } from '@/src/services/signaling/client'
 import type { StatsReportPeer } from '@/src/services/signaling/protocol'
-import Peer from 'simple-peer'
+import type { WebRTCSession } from '@/src/services/webrtc/session'
 
 const POLL_MS   = 2_000
 const REPORT_MS = 30_000
@@ -18,40 +18,10 @@ const REPORT_MS = 30_000
 //   consecutive polls. Five clean samples = 10 s — conservative to prevent
 //   oscillation on marginal paths.
 
-const ENCODING_LEVELS = [
-  { maxBitrate: 200_000, scaleDown: 2.0, maxFps: 15 },  // 0: reduced
-  { maxBitrate: 500_000, scaleDown: 1.5, maxFps: 20 },  // 1: medium
-  { maxBitrate: 900_000, scaleDown: 1.0, maxFps: 24 },  // 2: full (default)
-] as const
-
 const STEP_DOWN_LOSS_PCT  = 5   // %
 const STEP_DOWN_SAMPLES   = 2
 const STEP_UP_LOSS_PCT    = 1   // %
 const STEP_UP_SAMPLES     = 5
-
-async function applyEncodingLevel(peer: Peer.Instance, level: EncodingLevel) {
-  const pc = (peer as unknown as { _pc?: RTCPeerConnection })._pc
-  if (!pc) return
-  const sender = pc.getSenders().find(s => s.track?.kind === 'video')
-  if (!sender) return
-
-  const params = sender.getParameters()
-  if (!params.encodings?.length) return
-
-  const enc = ENCODING_LEVELS[level]
-  params.encodings = params.encodings.map(e => ({
-    ...e,
-    maxBitrate:            enc.maxBitrate,
-    maxFramerate:          enc.maxFps,
-    scaleResolutionDownBy: enc.scaleDown,
-  }))
-
-  try {
-    await sender.setParameters(params)
-  } catch {
-    // sender may be detached (camera off) — skip silently
-  }
-}
 
 // ─── Stats parsing ─────────────────────────────────────────────────────────────
 
@@ -159,7 +129,7 @@ export function parseReport(
 
 export function stepAdaptation(
   peerId: string,
-  peer: Peer.Instance,
+  session: WebRTCSession,
   loss: number,
   levels:  Map<string, EncodingLevel>,
   badCnt:  Map<string, number>,
@@ -176,7 +146,7 @@ export function stepAdaptation(
       levels.set(peerId, next)
       badCnt.set(peerId, 0)
       console.info('[adaptive] peer=%s ↓ level %d→%d  loss=%.1f%%', peerId.slice(0, 8), level, next, loss)
-      void applyEncodingLevel(peer, next)
+      void session.applyEncodingLevel(next)
       return next
     }
   } else if (loss < STEP_UP_LOSS_PCT) {
@@ -188,7 +158,7 @@ export function stepAdaptation(
       levels.set(peerId, next)
       goodCnt.set(peerId, 0)
       console.info('[adaptive] peer=%s ↑ level %d→%d  loss=%.1f%%', peerId.slice(0, 8), level, next, loss)
-      void applyEncodingLevel(peer, next)
+      void session.applyEncodingLevel(next)
       return next
     }
   } else {
@@ -236,34 +206,29 @@ export function usePeerStats(client: SignalingClient | null) {
   useEffect(() => { clientRef.current = client }, [client])
 
   useEffect(() => {
-    // Adaptation state — lives for the duration of the call component.
     const adaptLevels  = new Map<string, EncodingLevel>()
     const badSamples   = new Map<string, number>()
     const goodSamples  = new Map<string, number>()
 
-    // 2 s poll: collect WebRTC stats → store → run adaptive encoding step
     const pollTimer = setInterval(async () => {
       const { peerConnections, updatePeerStats } = usePeerStore.getState()
 
       for (const [id, conn] of peerConnections) {
-        const pc = (conn.peer as unknown as { _pc?: RTCPeerConnection })._pc
-        if (!pc || pc.connectionState === 'closed') continue
+        if (conn.session.destroyed || conn.session.connectionState === 'closed') continue
 
         try {
-          const report       = await pc.getStats()
+          const report       = await conn.session.getStats()
           const currentLevel = adaptLevels.get(id) ?? 2
           const stats        = parseReport(report, id, prevRef.current, currentLevel)
 
-          // Run adaptive step — may update adaptLevels and call setParameters
           const newLevel = stepAdaptation(
-            id, conn.peer, stats.packetLossPercent,
+            id, conn.session, stats.packetLossPercent,
             adaptLevels, badSamples, goodSamples,
           )
 
-          // Store final stats with the (possibly updated) encoding level
           updatePeerStats(id, { ...stats, encodingLevel: newLevel })
         } catch {
-          // peer is closing — skip silently
+          // session is closing — skip silently
         }
       }
 
@@ -278,7 +243,6 @@ export function usePeerStats(client: SignalingClient | null) {
       }
     }, POLL_MS)
 
-    // 30 s report: emit stats snapshot over the existing WebSocket
     const reportTimer = setInterval(() => {
       const c = clientRef.current
       if (!c) return

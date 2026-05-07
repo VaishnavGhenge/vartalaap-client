@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { ImageSegmenter } from '@mediapipe/tasks-vision'
 import { BackgroundBlurProcessor } from '../background-blur'
 
@@ -66,6 +66,11 @@ describe('BackgroundBlurProcessor', () => {
             }
             return origCreateElement(tag)
         })
+    })
+
+    afterEach(() => {
+        vi.restoreAllMocks()
+        vi.unstubAllGlobals()
     })
 
     it('stop() is safe to call when never started', () => {

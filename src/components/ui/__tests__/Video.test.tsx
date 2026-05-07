@@ -1,5 +1,5 @@
 import { render } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AudioStream } from '../Video'
 
 class FakeMediaStream extends EventTarget {
@@ -34,6 +34,11 @@ describe('AudioStream', () => {
       configurable: true,
       value: vi.fn().mockResolvedValue(undefined),
     })
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
   })
 
   it('attaches audio when it is added to an existing remote stream', () => {

@@ -10,41 +10,29 @@ const origCreateElement = document.createElement.bind(document)
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
-// simple-peer creates real RTCPeerConnections in jsdom — replace with a minimal fake
-vi.mock('simple-peer', () => {
-  class FakePeer {
-    private _listeners = new Map<string, ((...args: unknown[]) => void)[]>()
+// Track sessions created in each test so we can simulate connection state changes.
+let createdSessions: { onConnectionStateChange?: (state: RTCPeerConnectionState) => void }[] = []
+
+vi.mock('@/src/services/webrtc/session', () => {
+  class WebRTCSession {
+    private _opts: { onConnectionStateChange?: (state: RTCPeerConnectionState) => void }
+    signal = vi.fn().mockResolvedValue(undefined)
+    close = vi.fn()
+    applyEncodingLevel = vi.fn().mockResolvedValue(undefined)
+    getStats = vi.fn().mockResolvedValue(new Map())
+    connectionState: RTCPeerConnectionState = 'connected'
     destroyed = false
-    signal = vi.fn()
-    addTrack = vi.fn()
-    removeTrack = vi.fn()
-    _pc = {
-      connectionState: 'connected',
-      restartIce: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      getSenders: vi.fn(() => [
-        { track: { kind: 'audio' }, replaceTrack: vi.fn().mockResolvedValue(undefined) },
-        { track: { kind: 'video' }, replaceTrack: vi.fn().mockResolvedValue(undefined) },
-      ]),
+
+    constructor(opts: { onConnectionStateChange?: (state: RTCPeerConnectionState) => void }) {
+      this._opts = opts
+      createdSessions.push(opts)
     }
 
-    on(event: string, listener: (...args: unknown[]) => void) {
-      const arr = this._listeners.get(event) ?? []
-      arr.push(listener)
-      this._listeners.set(event, arr)
-      return this
-    }
-    emit(event: string, ...args: unknown[]) {
-      this._listeners.get(event)?.forEach(l => l(...args))
-    }
-    destroy() {
-      if (this.destroyed) return  // guard against re-entrant destroy (mirrors real simple-peer)
-      this.destroyed = true
-      this.emit('close')
+    simulateConnectionState(state: RTCPeerConnectionState) {
+      this._opts.onConnectionStateChange?.(state)
     }
   }
-  return { default: FakePeer }
+  return { WebRTCSession, ENCODING_LEVELS: [] }
 })
 
 vi.mock('@/src/services/api/ice', () => ({
@@ -71,8 +59,10 @@ function makeClient() {
     }),
     getPeerId: vi.fn(() => 'peer-alice'),
     onReconnected: undefined as (() => void) | undefined,
+    setReconnectedHandler: vi.fn((handler: (() => void) | undefined) => {
+      client.onReconnected = handler
+    }),
 
-    // Test helper — simulate receiving a message
     emit(type: string, env: Partial<Envelope>) {
       handlers.get(type)?.forEach(h => h({ type: type as Envelope['type'], ...env }))
     },
@@ -86,6 +76,7 @@ function makeClient() {
 // ─── Store reset ─────────────────────────────────────────────────────────────
 
 beforeEach(() => {
+  createdSessions = []
   vi.stubGlobal('MediaStream', class {
     private _tracks: MediaStreamTrack[] = []
     getTracks() { return [...this._tracks] }
@@ -108,6 +99,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks()
+  vi.unstubAllGlobals()
 })
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -169,7 +161,7 @@ describe('useCall — join', () => {
 })
 
 describe('useCall — peer creation', () => {
-  it('creates an initiator peer for each peer in the joined response', async () => {
+  it('creates a session for each peer in the joined response', async () => {
     const client = makeClient()
 
     await act(async () => {
@@ -195,7 +187,7 @@ describe('useCall — peer creation', () => {
     expect(peers.has('peer-carol')).toBe(true)
   })
 
-  it('creates a non-initiator peer when peer-joined fires', async () => {
+  it('creates a session when peer-joined fires', async () => {
     const client = makeClient()
 
     await act(async () => {
@@ -308,7 +300,6 @@ describe('useCall — peer-state', () => {
       })
     })
 
-    // First message sets speaking true
     await act(async () => {
       client.emit('peer-state', {
         from: 'peer-bob',
@@ -316,7 +307,6 @@ describe('useCall — peer-state', () => {
       })
     })
 
-    // Second message has no speaking field (server omitted it)
     await act(async () => {
       client.emit('peer-state', {
         from: 'peer-bob',
@@ -325,7 +315,7 @@ describe('useCall — peer-state', () => {
     })
 
     const bob = usePeerStore.getState().peerConnections.get('peer-bob')
-    expect(bob?.speaking).toBe(false) // must NOT stay stuck on true
+    expect(bob?.speaking).toBe(false)
   })
 })
 
@@ -360,9 +350,8 @@ describe('useCall — reconnect', () => {
   })
 })
 
-describe('useCall — ICE restart', () => {
-  it('schedules restartIce on the initiator side after 2 s disconnected', async () => {
-    vi.useFakeTimers()
+describe('useCall — connection state change', () => {
+  it('wires up onConnectionStateChange for each created session', async () => {
     const client = makeClient()
 
     await act(async () => {
@@ -372,33 +361,19 @@ describe('useCall — ICE restart', () => {
       }))
     })
 
-    // Simulate a remote peer joining (Alice is initiator here)
     await act(async () => {
-      client.emit('joined', { data: { peers: [{ id: 'peer-bob', name: 'Bob', audio: true, video: true }] } })
+      client.emit('joined', {
+        data: { peers: [{ id: 'peer-bob', name: 'Bob', audio: true, video: true }] },
+      })
     })
 
-    const bobConn = usePeerStore.getState().peerConnections.get('peer-bob')
-    const fakePc = (bobConn!.peer as unknown as { _pc: any })._pc
-
-    // Capture the connectionstatechange listener registered by the hook
-    const listener = fakePc.addEventListener.mock.calls.find(
-      ([evt]: [string]) => evt === 'connectionstatechange'
-    )?.[1] as (() => void) | undefined
-    expect(listener).toBeDefined()
-
-    // Simulate 'disconnected' → should schedule a 2 s timer
-    fakePc.connectionState = 'disconnected'
-    listener!()
-
-    expect(fakePc.restartIce).not.toHaveBeenCalled()
-    await act(async () => { vi.advanceTimersByTime(2000) })
-    expect(fakePc.restartIce).toHaveBeenCalledTimes(1)
-
-    vi.useRealTimers()
+    // A session should have been created with an onConnectionStateChange callback
+    expect(createdSessions.length).toBeGreaterThan(0)
+    expect(typeof createdSessions[0]?.onConnectionStateChange).toBe('function')
   })
 
-  it('cancels the restart timer when the connection recovers before 2 s', async () => {
-    vi.useFakeTimers()
+  it('logs a warning when connection state is "failed"', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const client = makeClient()
 
     await act(async () => {
@@ -409,26 +384,17 @@ describe('useCall — ICE restart', () => {
     })
 
     await act(async () => {
-      client.emit('joined', { data: { peers: [{ id: 'peer-bob', name: 'Bob', audio: true, video: true }] } })
+      client.emit('joined', {
+        data: { peers: [{ id: 'peer-bob', name: 'Bob', audio: true, video: true }] },
+      })
     })
 
-    const bobConn = usePeerStore.getState().peerConnections.get('peer-bob')
-    const fakePc = (bobConn!.peer as unknown as { _pc: any })._pc
+    await act(async () => {
+      createdSessions[0]?.onConnectionStateChange?.('failed')
+    })
 
-    const listener = fakePc.addEventListener.mock.calls.find(
-      ([evt]: [string]) => evt === 'connectionstatechange'
-    )?.[1] as (() => void) | undefined
-
-    // Disconnect then immediately reconnect before the grace period
-    fakePc.connectionState = 'disconnected'
-    listener!()
-    fakePc.connectionState = 'connected'
-    listener!()
-
-    await act(async () => { vi.advanceTimersByTime(2000) })
-    expect(fakePc.restartIce).not.toHaveBeenCalled()
-
-    vi.useRealTimers()
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[use-call]'), expect.anything())
+    warnSpy.mockRestore()
   })
 })
 

@@ -163,7 +163,7 @@ test.describe('Flip camera button — in call', () => {
       const calls = (window as unknown as { __gumCalls: MediaStreamConstraints[] }).__gumCalls
       return calls.some(c => {
         const v = c.video as MediaTrackConstraints
-        return typeof v === 'object' && (v.facingMode as { exact?: string })?.exact === 'environment'
+        return typeof v === 'object' && (v.facingMode as { ideal?: string })?.ideal === 'environment'
       })
     }, { timeout: 5_000 })
 

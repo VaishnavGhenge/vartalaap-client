@@ -170,6 +170,7 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                     toggleVideo();
                     broadcastState(!storedMuted, true, undefined, false);
                 } else {
+                    toast.error("Camera unavailable. Check browser permissions.");
                     broadcastState(!storedMuted, false, undefined, false);
                 }
             } else {
@@ -180,19 +181,37 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
 
     const handleScreenShare = async () => {
         if (isScreenSharing) { doStopScreenShare(); return; }
-        setIsPicking(true);
-        const track = await startScreenShare();
-        setIsPicking(false);
-        if (!track) return;
-        screenTrackRef.current = track;
 
-        // Turn off the camera while screen sharing — only one video feed at a time.
+        // Disable camera BEFORE calling startScreenShare so the black placeholder
+        // is not the last track written to the video sender. startScreenShare()
+        // will overwrite the placeholder with the real screen track. If we did
+        // this after, the placeholder would race-overwrite the screen track and
+        // remote peers would see black.
         cameraWasOnBeforeShare.current = !isVideoOff;
         if (!isVideoOff) {
             disableCamera();
             toggleVideo();
         }
 
+        setIsPicking(true);
+        const track = await startScreenShare();
+        setIsPicking(false);
+
+        if (!track) {
+            // User cancelled the picker — restore the camera if it was on.
+            if (cameraWasOnBeforeShare.current) {
+                cameraWasOnBeforeShare.current = false;
+                const cameraTrack = await enableCamera();
+                if (cameraTrack) {
+                    toggleVideo();
+                } else {
+                    toast.error("Camera unavailable. Check browser permissions.");
+                }
+            }
+            return;
+        }
+
+        screenTrackRef.current = track;
         toggleScreenShare();
         broadcastState(!isMuted, false, undefined, true);
         playScreenShareStart();

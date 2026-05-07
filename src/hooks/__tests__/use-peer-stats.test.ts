@@ -1,14 +1,13 @@
 import { describe, it, expect, vi } from 'vitest'
 import { parseReport, stepAdaptation, type PrevEntry } from '../use-peer-stats'
 import type { EncodingLevel } from '@/src/stores/peer'
-import type Peer from 'simple-peer'
+import type { WebRTCSession } from '@/src/services/webrtc/session'
 
 // ─── parseReport ──────────────────────────────────────────────────────────────
 
 function makeReport(entries: Array<{ id?: string } & Record<string, unknown>>): RTCStatsReport {
     const map = new Map<string, unknown>()
     entries.forEach((e, i) => {
-        // Use the entry's own `id` as the map key so report.get(candidateId) resolves correctly.
         map.set(typeof e.id === 'string' ? e.id : String(i), e)
     })
     return map as unknown as RTCStatsReport
@@ -70,7 +69,6 @@ describe('parseReport – quality classification', () => {
         ])
 
         const stats = parseReport(report, 'peer1', prevMap, 2)
-        // Allow ±50 kbps tolerance for timing jitter in tests
         expect(stats.outboundBitrateKbps).toBeGreaterThan(900)
         expect(stats.inboundBitrateKbps).toBeGreaterThan(450)
     })
@@ -84,22 +82,19 @@ describe('parseReport – quality classification', () => {
         const stats = parseReport(report, 'peer1', new Map(), 2)
         expect(stats.frameWidth).toBe(1280)
         expect(stats.frameHeight).toBe(720)
-        expect(stats.framesPerSecond).toBe(30) // Math.round(29.7)
-        expect(stats.jitterMs).toBe(10)        // 0.01 * 1000
+        expect(stats.framesPerSecond).toBe(30)
+        expect(stats.jitterMs).toBe(10)
     })
 })
 
 // ─── stepAdaptation ──────────────────────────────────────────────────────────
 
-function makePeer(): Peer.Instance {
+function makeSession(): WebRTCSession {
     return {
+        applyEncodingLevel: vi.fn().mockResolvedValue(undefined),
         destroyed: false,
-        _pc: {
-            getSenders: vi.fn(() => [
-                { track: { kind: 'video' }, getParameters: vi.fn(() => ({ encodings: [{}] })), setParameters: vi.fn().mockResolvedValue(undefined) },
-            ]),
-        },
-    } as unknown as Peer.Instance
+        connectionState: 'connected',
+    } as unknown as WebRTCSession
 }
 
 describe('stepAdaptation – encoding level stepping', () => {
@@ -107,14 +102,12 @@ describe('stepAdaptation – encoding level stepping', () => {
         const levels = new Map<string, EncodingLevel>()
         const bad    = new Map<string, number>()
         const good   = new Map<string, number>()
-        const peer   = makePeer()
+        const session = makeSession()
 
-        // First bad sample — should not step yet
-        let level = stepAdaptation('p1', peer, 10, levels, bad, good)
+        let level = stepAdaptation('p1', session, 10, levels, bad, good)
         expect(level).toBe(2)
 
-        // Second bad sample — should step down to 1
-        level = stepAdaptation('p1', peer, 10, levels, bad, good)
+        level = stepAdaptation('p1', session, 10, levels, bad, good)
         expect(level).toBe(1)
     })
 
@@ -122,15 +115,14 @@ describe('stepAdaptation – encoding level stepping', () => {
         const levels = new Map<string, EncodingLevel>([['p1', 0 as EncodingLevel]])
         const bad    = new Map<string, number>()
         const good   = new Map<string, number>()
-        const peer   = makePeer()
+        const session = makeSession()
 
         for (let i = 0; i < 4; i++) {
-            const level = stepAdaptation('p1', peer, 0, levels, bad, good)
-            expect(level).toBe(0) // not stepped yet
+            const level = stepAdaptation('p1', session, 0, levels, bad, good)
+            expect(level).toBe(0)
         }
 
-        // 5th clean sample — should step up to 1
-        const level = stepAdaptation('p1', peer, 0, levels, bad, good)
+        const level = stepAdaptation('p1', session, 0, levels, bad, good)
         expect(level).toBe(1)
     })
 
@@ -138,9 +130,9 @@ describe('stepAdaptation – encoding level stepping', () => {
         const levels = new Map<string, EncodingLevel>([['p1', 1 as EncodingLevel]])
         const bad    = new Map<string, number>([['p1', 3]])
         const good   = new Map<string, number>([['p1', 3]])
-        const peer   = makePeer()
+        const session = makeSession()
 
-        const level = stepAdaptation('p1', peer, 3, levels, bad, good)
+        const level = stepAdaptation('p1', session, 3, levels, bad, good)
         expect(level).toBe(1)
         expect(bad.get('p1')).toBe(0)
         expect(good.get('p1')).toBe(0)
@@ -150,9 +142,9 @@ describe('stepAdaptation – encoding level stepping', () => {
         const levels = new Map<string, EncodingLevel>([['p1', 0 as EncodingLevel]])
         const bad    = new Map<string, number>([['p1', 10]])
         const good   = new Map<string, number>()
-        const peer   = makePeer()
+        const session = makeSession()
 
-        const level = stepAdaptation('p1', peer, 20, levels, bad, good)
+        const level = stepAdaptation('p1', session, 20, levels, bad, good)
         expect(level).toBe(0)
     })
 
@@ -160,9 +152,21 @@ describe('stepAdaptation – encoding level stepping', () => {
         const levels = new Map<string, EncodingLevel>([['p1', 2 as EncodingLevel]])
         const bad    = new Map<string, number>()
         const good   = new Map<string, number>([['p1', 10]])
-        const peer   = makePeer()
+        const session = makeSession()
 
-        const level = stepAdaptation('p1', peer, 0, levels, bad, good)
+        const level = stepAdaptation('p1', session, 0, levels, bad, good)
         expect(level).toBe(2)
+    })
+
+    it('calls session.applyEncodingLevel when stepping', () => {
+        const levels = new Map<string, EncodingLevel>()
+        const bad    = new Map<string, number>()
+        const good   = new Map<string, number>()
+        const session = makeSession()
+
+        stepAdaptation('p1', session, 10, levels, bad, good)
+        stepAdaptation('p1', session, 10, levels, bad, good)
+
+        expect(session.applyEncodingLevel).toHaveBeenCalledWith(1)
     })
 })

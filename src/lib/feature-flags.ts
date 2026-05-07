@@ -1,4 +1,3 @@
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export type FeatureFlags = {}
 
 const STORAGE_KEY = 'vartalaap:flags'

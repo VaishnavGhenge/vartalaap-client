@@ -2,7 +2,10 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useHasMultipleCameras } from '../use-has-multiple-cameras'
 
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+})
 
 function stubDevices(devices: { kind: string }[]) {
   vi.stubGlobal('navigator', {

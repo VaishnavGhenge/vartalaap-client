@@ -23,7 +23,7 @@ export default defineConfig({
   webServer: [
     {
       name: 'signaling',
-      command: './run.sh',
+      command: 'sh ./run.sh',
       cwd: '../vartalaap-server',
       url: 'http://localhost:8080/healthz',
       reuseExistingServer: true,
