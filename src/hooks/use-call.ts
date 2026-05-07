@@ -7,6 +7,7 @@ import type {
 } from '@/src/services/signaling/protocol'
 import type { SignalData } from '@/src/services/webrtc/session'
 import { playPeerJoined, playPeerLeft, playScreenShareStart, playScreenShareStop } from '@/src/lib/sounds'
+import { toast } from 'sonner'
 
 interface Args {
   client: SignalingClient | null
@@ -49,10 +50,12 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
           store.getState().updatePeerStream(remoteId, stream)
         },
         onConnectionStateChange: (state) => {
-          // Surface failed state to caller if needed in the future.
-          // ICE restart (disconnected → restartIce) is handled inside WebRTCSession.
+          // ICE restart on disconnected is handled inside WebRTCSession.
+          // failed means all restart attempts are exhausted — tell the user.
           if (state === 'failed' && !disposed) {
             console.warn('[use-call] peer connection failed', remoteId)
+            const peerName = store.getState().peerConnections.get(remoteId)?.name
+            toast.error(`Connection to ${peerName || 'a participant'} was lost`)
           }
         },
       })

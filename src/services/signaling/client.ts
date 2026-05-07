@@ -97,7 +97,8 @@ export class SignalingClient {
       this.onStateChange?.('failed', this.attempt)
       return
     }
-    const delay = Math.min(1000 * Math.pow(2, this.attempt), 16_000)
+    const base  = Math.min(1000 * Math.pow(2, this.attempt), 16_000)
+    const delay = base * (0.5 + Math.random() * 0.5)
     this.attempt++
     this.onStateChange?.('reconnecting', this.attempt)
     setTimeout(() => { if (!this.disposed) this.connect() }, delay)

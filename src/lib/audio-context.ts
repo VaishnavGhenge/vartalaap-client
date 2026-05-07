@@ -43,11 +43,7 @@ export async function setAudioOutputDevice(deviceId: string): Promise<void> {
   pendingSinkId = deviceId
   const ctx = getSharedAudioContext()
   if (!ctx || !('setSinkId' in ctx)) return
-  try {
-    await (ctx as AudioContextWithSinkId).setSinkId(deviceId)
-  } catch (e) {
-    console.warn('[AudioContext] setSinkId failed', e)
-  }
+  await (ctx as AudioContextWithSinkId).setSinkId(deviceId)
 }
 
 // True only on Chrome 110+ and other browsers that implement AudioContext.setSinkId.

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
+import { toast } from 'sonner'
 import { WebRTCSession, type SignalData, type WebRTCSessionOptions } from '@/src/services/webrtc/session'
 import type { IceServer } from '@/src/services/api/ice'
 import { getSharedAudioContext, setAudioOutputDevice } from '@/src/lib/audio-context'
@@ -261,6 +262,7 @@ export const usePeerStore = create<PeerState>()(
           console.error('NoiseSuppressor.start failed', e)
           set({ suppressNoise: false })
           saveNoiseSuppression(false)
+          toast.error('Noise suppression unavailable, using raw microphone.')
         }
       } else {
         if (!noiseSuppressor) return
@@ -425,6 +427,7 @@ export const usePeerStore = create<PeerState>()(
           } catch {
             set({ localStream: new MediaStream([...audioTracks, track]), blurProcessor: null, rawCameraTrack: null, backgroundEffect: 'off', backgroundImageDataUrl: null })
             replaceVideoTrackOnPeers(track, get().peerConnections)
+            toast.error('Background effect unavailable.')
           }
         } else {
           set({ localStream: new MediaStream([...audioTracks, track]) })
@@ -499,6 +502,7 @@ export const usePeerStore = create<PeerState>()(
           } catch {
             set({ localStream: new MediaStream([...audioTracks, newTrack]), facingMode: nextFacing, blurProcessor: null, rawCameraTrack: null })
             replaceVideoTrackOnPeers(newTrack, peerConnections)
+            toast.error('Background effect unavailable.')
           }
         } else {
           set({ localStream: new MediaStream([...audioTracks, newTrack]), facingMode: nextFacing })
@@ -586,7 +590,12 @@ export const usePeerStore = create<PeerState>()(
     setAudioOutput: async (deviceId) => {
       setDevicePreference('audioOutputId', deviceId)
       set({ preferredAudioOutputId: deviceId })
-      await setAudioOutputDevice(deviceId)
+      try {
+        await setAudioOutputDevice(deviceId)
+      } catch (e) {
+        console.warn('[peer] setAudioOutput failed', e)
+        toast.error('Could not switch audio output. Check browser permissions.')
+      }
     },
 
     setBackgroundEffect: async (preference) => {
@@ -610,6 +619,7 @@ export const usePeerStore = create<PeerState>()(
           return true
         } catch (e) {
           console.error('background blur failed', e)
+          toast.error('Background effect unavailable.')
           return false
         }
       } else {
