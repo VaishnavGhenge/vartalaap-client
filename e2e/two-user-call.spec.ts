@@ -1,19 +1,40 @@
-import { test, expect, chromium } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 
 const randomRoom = () => Math.random().toString(36).slice(2, 8)
 
-// chromium.launch() bypasses playwright.config launchOptions, so pass args explicitly
-const LAUNCH_ARGS = {
-  args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'],
-}
 const CTX_OPTS = {
   permissions: ['camera', 'microphone'] as string[],
   baseURL: 'http://localhost:3000',
 }
 
+async function gotoRoom(page: Page, roomCode: string) {
+  await page.goto(`/${roomCode}`, { waitUntil: 'domcontentloaded' })
+}
+
+async function fillName(page: Page, name: string) {
+  const input = page.getByPlaceholder(/your name/i)
+  const joinButton = page.getByRole('button', { name: /join now/i })
+  await expect(input).toBeVisible()
+
+  for (let attempt = 0; attempt < 20; attempt++) {
+    await input.fill(name)
+    if (await joinButton.isEnabled()) return
+    await page.waitForTimeout(100)
+  }
+
+  await expect(input).toHaveValue(name)
+  await expect(joinButton).toBeEnabled()
+}
+
+async function joinRoom(page: Page, roomCode: string, name: string) {
+  await gotoRoom(page, roomCode)
+  await fillName(page, name)
+  await page.getByRole('button', { name: /join now/i }).click()
+  await expect(page.getByRole('button', { name: /leave call/i })).toBeVisible({ timeout: 10_000 })
+}
+
 test.describe('Two-user call', () => {
-  test('both users can see each other after joining the same room', async () => {
-    const browser = await chromium.launch(LAUNCH_ARGS)
+  test('both users can see each other after joining the same room', async ({ browser }) => {
     const roomCode = randomRoom()
 
     const ctx1 = await browser.newContext(CTX_OPTS)
@@ -21,33 +42,18 @@ test.describe('Two-user call', () => {
     const page1 = await ctx1.newPage()
     const page2 = await ctx2.newPage()
 
-    await test.step('Alice navigates to the room', async () => {
-      await page1.goto(`/${roomCode}`)
+    await test.step('Alice joins the room', async () => {
+      await joinRoom(page1, roomCode, 'Alice')
       await expect(page1.getByText(roomCode)).toBeVisible()
     })
 
-    await test.step('Alice joins the call', async () => {
-      await page1.getByPlaceholder(/your name/i).fill('Alice')
-      await page1.getByRole('button', { name: /join now/i }).click()
-      await expect(page1.getByRole('button', { name: /leave call/i })).toBeVisible({ timeout: 10_000 })
-    })
-
-    await test.step('Bob navigates to the same room', async () => {
-      await page2.goto(`/${roomCode}`)
+    await test.step('Bob joins the same room', async () => {
+      await joinRoom(page2, roomCode, 'Bob')
       await expect(page2.getByText(roomCode)).toBeVisible()
     })
 
-    await test.step('Bob joins the call', async () => {
-      await page2.getByPlaceholder(/your name/i).fill('Bob')
-      await page2.getByRole('button', { name: /join now/i }).click()
-      await expect(page2.getByRole('button', { name: /leave call/i })).toBeVisible({ timeout: 10_000 })
-    })
-
-    await test.step('Alice can see Bob\'s tile', async () => {
+    await test.step('both users can see each other', async () => {
       await expect(page1.getByText('Bob')).toBeVisible({ timeout: 15_000 })
-    })
-
-    await test.step('Bob can see Alice\'s tile', async () => {
       await expect(page2.getByText('Alice')).toBeVisible({ timeout: 15_000 })
     })
 
@@ -61,11 +67,11 @@ test.describe('Two-user call', () => {
       await expect(page2.getByText(/invite someone/i)).not.toBeVisible()
     })
 
-    await browser.close()
+    await ctx1.close()
+    await ctx2.close()
   })
 
-  test('a user who leaves is removed from the other user\'s view', async () => {
-    const browser = await chromium.launch(LAUNCH_ARGS)
+  test('a user who leaves is removed from the other user\'s view', async ({ browser }) => {
     const roomCode = randomRoom()
 
     const ctx1 = await browser.newContext(CTX_OPTS)
@@ -74,16 +80,8 @@ test.describe('Two-user call', () => {
     const page2 = await ctx2.newPage()
 
     await test.step('both users join', async () => {
-      await page1.goto(`/${roomCode}`)
-      await page1.getByPlaceholder(/your name/i).fill('Alice')
-      await page1.getByRole('button', { name: /join now/i }).click()
-      await expect(page1.getByRole('button', { name: /leave call/i })).toBeVisible({ timeout: 10_000 })
-
-      await page2.goto(`/${roomCode}`)
-      await page2.getByPlaceholder(/your name/i).fill('Bob')
-      await page2.getByRole('button', { name: /join now/i }).click()
-      await expect(page2.getByRole('button', { name: /leave call/i })).toBeVisible({ timeout: 10_000 })
-
+      await joinRoom(page1, roomCode, 'Alice')
+      await joinRoom(page2, roomCode, 'Bob')
       await expect(page1.getByText('Bob')).toBeVisible({ timeout: 15_000 })
     })
 
@@ -99,11 +97,11 @@ test.describe('Two-user call', () => {
       await expect(page1.getByText(/1 participant/i)).toBeVisible()
     })
 
-    await browser.close()
+    await ctx1.close()
+    await ctx2.close()
   })
 
-  test('rejoining the same room after leaving works', async () => {
-    const browser = await chromium.launch(LAUNCH_ARGS)
+  test('rejoining the same room after leaving works', async ({ browser }) => {
     const roomCode = randomRoom()
 
     const ctx1 = await browser.newContext(CTX_OPTS)
@@ -112,32 +110,25 @@ test.describe('Two-user call', () => {
     const page2 = await ctx2.newPage()
 
     await test.step('Alice joins', async () => {
-      await page1.goto(`/${roomCode}`)
-      await page1.getByPlaceholder(/your name/i).fill('Alice')
-      await page1.getByRole('button', { name: /join now/i }).click()
-      await expect(page1.getByRole('button', { name: /leave call/i })).toBeVisible({ timeout: 10_000 })
+      await joinRoom(page1, roomCode, 'Alice')
     })
 
     await test.step('Alice leaves and rejoins', async () => {
       await page1.getByRole('button', { name: /leave call/i }).click()
-      // Back on join screen
       await expect(page1.getByRole('button', { name: /join now/i })).toBeVisible({ timeout: 5_000 })
 
-      await page1.getByPlaceholder(/your name/i).fill('Alice')
+      await fillName(page1, 'Alice')
       await page1.getByRole('button', { name: /join now/i }).click()
       await expect(page1.getByRole('button', { name: /leave call/i })).toBeVisible({ timeout: 10_000 })
     })
 
     await test.step('Bob joins and can see Alice', async () => {
-      await page2.goto(`/${roomCode}`)
-      await page2.getByPlaceholder(/your name/i).fill('Bob')
-      await page2.getByRole('button', { name: /join now/i }).click()
-      await expect(page2.getByRole('button', { name: /leave call/i })).toBeVisible({ timeout: 10_000 })
-
+      await joinRoom(page2, roomCode, 'Bob')
       await expect(page2.getByText('Alice')).toBeVisible({ timeout: 15_000 })
       await expect(page1.getByText('Bob')).toBeVisible({ timeout: 15_000 })
     })
 
-    await browser.close()
+    await ctx1.close()
+    await ctx2.close()
   })
 })

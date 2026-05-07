@@ -95,7 +95,10 @@ beforeEach(() => {
   })
 })
 
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+})
 
 // ─── enableMic ────────────────────────────────────────────────────────────────
 

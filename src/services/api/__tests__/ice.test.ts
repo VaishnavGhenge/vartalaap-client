@@ -1,9 +1,13 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { fetchIceServers } from '../ice'
 
 describe('fetchIceServers', () => {
     beforeEach(() => {
         vi.restoreAllMocks()
+    })
+
+    afterEach(() => {
+        vi.unstubAllGlobals()
     })
 
     it('returns iceServers from a successful response', async () => {
@@ -27,7 +31,7 @@ describe('fetchIceServers', () => {
             status: 503,
         }))
 
-        await expect(fetchIceServers()).rejects.toThrow('ice-servers failed: 503')
+        await expect(fetchIceServers()).rejects.toThrow('ice-servers 503')
     })
 
     it('throws when fetch itself rejects (network error)', async () => {
