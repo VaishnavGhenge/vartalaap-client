@@ -18,13 +18,13 @@ interface SettingsPanelProps {
   isVideoOff?: boolean
 }
 
-// Abstract colorful gradient — used as the "background" in tile previews
+// Simulated background used in blur/replace preview tiles — uses brand palette only
 function AbstractBg() {
   return (
-    <div className="absolute inset-0 bg-[linear-gradient(135deg,#7c3aed_0%,#3b82f6_50%,#10b981_100%)]">
-      <div className="absolute -right-2 -top-2 h-10 w-10 rounded-full bg-amber-300/50" />
-      <div className="absolute -bottom-1 left-0 h-6 w-6 rounded-full bg-pink-300/40" />
-    </div>
+    <div
+      className="absolute inset-0"
+      style={{ background: 'linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--brand-soft)) 100%)' }}
+    />
   )
 }
 
