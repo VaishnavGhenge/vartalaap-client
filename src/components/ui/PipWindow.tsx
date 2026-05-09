@@ -30,8 +30,8 @@ export function PipWindow({ pipWindow, children }: PipWindowProps) {
     // clicking the PiP button) is still valid. A useEffect-based approach
     // delays rendering by one commit cycle, by which point Chrome's autoplay
     // policy has consumed the activation and play() silently fails.
-    const preparedRef = useRef(false);
-    if (!preparedRef.current) {
+    const preparedRef = useRef<true | null>(null);
+    if (preparedRef.current == null) {
         preparedRef.current = true;
         preparePipDocument(pipWindow.document);
     }
