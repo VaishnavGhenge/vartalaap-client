@@ -18,12 +18,31 @@ function useAttachTracks<T extends HTMLMediaElement>(
         const el = ref.current;
         if (!el) return;
 
+        const tryPlay = (current: T) => {
+            if (!current.srcObject || !current.paused) return;
+            current.play().catch(() => {
+                // Autoplay blocked (e.g. Document PiP window before first user
+                // interaction). Register a one-shot pointer handler on the pip
+                // document so the video resumes on the next tap/click.
+                const doc = current.ownerDocument;
+                const resume = () => { current.play().catch(() => {}); };
+                doc.addEventListener('pointerdown', resume, { once: true });
+            });
+        };
+
         const sync = () => {
-            if (!ref.current) return;
+            const current = ref.current;
+            if (!current) return;
             const tracks = kind === 'audio' ? (stream?.getAudioTracks() ?? []) : (stream?.getVideoTracks() ?? []);
-            ref.current.srcObject = tracks.length > 0
-                ? (typeof MediaStream === 'undefined' ? stream : new MediaStream(tracks))
+            // Always use the global (main window) MediaStream constructor.
+            // Remote WebRTC tracks are created in the main window's RTCPeerConnection
+            // context; wrapping them with the Document PiP window's MediaStream
+            // constructor silently produces an unplayable stream.
+            const MediaStreamCtor = typeof MediaStream !== 'undefined' ? MediaStream : undefined;
+            current.srcObject = tracks.length > 0
+                ? (MediaStreamCtor ? new MediaStreamCtor(tracks) : stream)
                 : null;
+            if (current.srcObject) tryPlay(current);
         };
 
         sync();
@@ -64,10 +83,11 @@ export const AudioStream = ({ stream }: { stream: MediaStream | null }) => {
         const el = ref.current
         if (!el) return
         const play = () => {
-            if (!el.srcObject) return
+            if (!el.srcObject || !el.paused) return
             el.play().catch(() => {
-                // Browser autoplay policies can still block remote playout on
-                // some devices. The next user gesture / track change retries.
+                const doc = el.ownerDocument
+                const resume = () => { el.play().catch(() => {}) }
+                doc.addEventListener('pointerdown', resume, { once: true })
             })
         }
         play()

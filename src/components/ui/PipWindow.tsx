@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from 'react';
+import { useRef } from 'react';
 import { createPortal } from 'react-dom';
 
 interface PipWindowProps {
@@ -25,13 +25,16 @@ function preparePipDocument(pipDoc: Document) {
 }
 
 export function PipWindow({ pipWindow, children }: PipWindowProps) {
-    const [ready, setReady] = useState(false);
-
-    useEffect(() => {
+    // Prepare synchronously during the first render so that video elements
+    // created by the portal have autoPlay fire while user activation (from
+    // clicking the PiP button) is still valid. A useEffect-based approach
+    // delays rendering by one commit cycle, by which point Chrome's autoplay
+    // policy has consumed the activation and play() silently fails.
+    const preparedRef = useRef(false);
+    if (!preparedRef.current) {
+        preparedRef.current = true;
         preparePipDocument(pipWindow.document);
-        setReady(true);
-    }, [pipWindow]);
+    }
 
-    if (!ready) return null;
     return createPortal(children, pipWindow.document.body);
 }

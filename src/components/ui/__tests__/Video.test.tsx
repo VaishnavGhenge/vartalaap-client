@@ -1,6 +1,6 @@
 import { render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AudioStream } from '../Video'
+import { AudioStream, VideoStream } from '../Video'
 
 class FakeMediaStream extends EventTarget {
   private tracks: MediaStreamTrack[]
@@ -53,5 +53,34 @@ describe('AudioStream', () => {
 
     const attached = audio.srcObject as MediaStream
     expect(attached.getAudioTracks()).toEqual([track])
+  })
+})
+
+describe('VideoStream', () => {
+  beforeEach(() => {
+    vi.stubGlobal('MediaStream', FakeMediaStream)
+    Object.defineProperty(HTMLMediaElement.prototype, 'play', {
+      configurable: true,
+      value: vi.fn().mockResolvedValue(undefined),
+    })
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it('starts playback after attaching an existing video track', () => {
+    const track = makeTrack('video')
+    const stream = new FakeMediaStream([track])
+
+    const { container } = render(
+      <VideoStream stream={stream as unknown as MediaStream} isLocal={false} />
+    )
+    const video = container.querySelector('video')!
+
+    const attached = video.srcObject as MediaStream
+    expect(attached.getVideoTracks()).toEqual([track])
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalled()
   })
 })
