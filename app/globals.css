@@ -294,15 +294,15 @@
     filter: brightness(1.09);
 }
 
-/* Screen-sharing active state: primary tint to signal "you are sharing" */
+/* Active feature state (screen share, PiP, stats): inverted neutral — no extra hue */
 .ctrl-btn-screen {
-    background-color: hsl(var(--primary));
-    color: hsl(var(--primary-foreground));
-    box-shadow: 0 4px 14px -4px hsl(var(--primary) / 0.4);
+    background-color: hsl(var(--foreground));
+    color: hsl(var(--background));
+    box-shadow: 0 4px 20px -4px hsl(var(--foreground) / 0.28);
 }
 
 .ctrl-btn-screen:hover {
-    filter: brightness(1.09);
+    filter: brightness(1.06);
 }
 
 /* ─── Animations ─────────────────────────────────────────────────────────── */
