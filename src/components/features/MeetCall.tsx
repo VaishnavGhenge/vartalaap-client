@@ -75,7 +75,9 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
 
             const micHwTrack = peerState.rawMicTrack ?? peerState.localStream?.getAudioTracks()[0] ?? null
             let micRevoked = false
-            if (!meetState.isMuted && micHwTrack?.readyState === 'ended') {
+            // macOS revokes the mic by setting muted=true rather than ending the track,
+            // unlike the camera which becomes 'ended'. Check both states.
+            if (!meetState.isMuted && micHwTrack && (micHwTrack.readyState === 'ended' || micHwTrack.muted)) {
                 peerState.disableMic()
                 useMeetStore.getState().toggleMute()
                 micRevoked = true
