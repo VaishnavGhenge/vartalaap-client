@@ -52,6 +52,50 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
         setCanScreenShare(typeof navigator.mediaDevices?.getDisplayMedia === 'function');
     }, []);
 
+    // When the laptop wakes from sleep the OS revokes camera/mic access and the
+    // MediaStreamTrack readyState becomes 'ended'. visibilitychange fires on wake,
+    // so we check the hardware tracks here and sync UI state if they were revoked.
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.visibilityState !== 'visible') return
+
+            const peerState = usePeerStore.getState()
+            const meetState = useMeetStore.getState()
+
+            // rawCameraTrack is the hardware track when blur is active; otherwise
+            // the video track in localStream is the hardware track directly.
+            const cameraHwTrack = peerState.rawCameraTrack ?? peerState.localStream?.getVideoTracks()[0] ?? null
+            let cameraRevoked = false
+            if (!meetState.isVideoOff && cameraHwTrack?.readyState === 'ended') {
+                peerState.disableCamera()
+                meetState.toggleVideo()
+                cameraRevoked = true
+                toast('Camera was interrupted. Click to re-enable.')
+            }
+
+            const micHwTrack = peerState.rawMicTrack ?? peerState.localStream?.getAudioTracks()[0] ?? null
+            let micRevoked = false
+            if (!meetState.isMuted && micHwTrack?.readyState === 'ended') {
+                peerState.disableMic()
+                useMeetStore.getState().toggleMute()
+                micRevoked = true
+                toast('Microphone was interrupted. Click to re-enable.')
+            }
+
+            if (cameraRevoked || micRevoked) {
+                const fresh = useMeetStore.getState()
+                client?.send('peer-state', {
+                    audio: !fresh.isMuted,
+                    video: !fresh.isVideoOff,
+                    screenSharing: fresh.isScreenSharing,
+                })
+            }
+        }
+
+        document.addEventListener('visibilitychange', handleVisibilityChange)
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }, [client])
+
     const remotePeers = useMemo(() => Array.from(peerConnections.values()), [peerConnections]);
 
     const { pipActive, pipWindow, pipMode, enterPip, exitPip } = usePip();
