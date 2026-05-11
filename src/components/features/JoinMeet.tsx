@@ -112,7 +112,7 @@ export default function JoinMeet() {
 
                     {/* ── Camera preview ────────────────────────────────── */}
                     <div className="lg:col-span-3">
-                        <div className="app-panel relative w-full overflow-hidden rounded-2xl"
+                        <div className={`tile-in app-panel relative w-full overflow-hidden rounded-2xl${speaking ? ' speaking-ring' : ''}`}
                              style={{ aspectRatio: '16/9' }}>
 
                             {/* Settings — top-right of the preview */}
@@ -154,10 +154,15 @@ export default function JoinMeet() {
                                 {previewName}
                             </div>
 
-                            {/* Mic level meter — shown when mic is on */}
+                            {/* Mic level meter + confirmation — shown when mic is on */}
                             {!isMuted && (
-                                <div className="absolute bottom-14 left-1/2 -translate-x-1/2 w-32 h-5">
-                                    <MicLevelMeter level={level} active={speaking || level > 0} />
+                                <div className="absolute bottom-14 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1">
+                                    <MicLevelMeter level={level} active={speaking} className="w-32 h-5" />
+                                    <span className={`text-[10px] font-medium transition-opacity duration-200
+                                                      text-[hsl(var(--brand-glow))]
+                                                      ${speaking ? 'opacity-100' : 'opacity-0'}`}>
+                                        We can hear you
+                                    </span>
                                 </div>
                             )}
 
