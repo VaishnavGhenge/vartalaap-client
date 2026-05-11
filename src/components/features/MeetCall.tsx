@@ -4,7 +4,7 @@ import { PhoneOff, Copy, Check, Share2, BarChart2, Monitor, PictureInPicture2 } 
 import { toast } from "sonner";
 import { resumeSharedAudioContext } from "@/src/lib/audio-context";
 import { playLeaveCall, playScreenShareStart, playScreenShareStop } from "@/src/lib/sounds";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAudioLevel } from "@/src/hooks/use-audio-level";
 import { MicButton } from "@/src/components/ui/MicButton";
 import { CameraButton } from "@/src/components/ui/CameraButton";
@@ -128,9 +128,12 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
         return s;
     }, [screenTrack, localStream]);
 
-    const broadcastState = (audio: boolean, video: boolean, speaking?: boolean, screenSharing?: boolean) => {
-        client?.send('peer-state', { audio, video, speaking, screenSharing: screenSharing ?? isScreenSharing });
-    };
+    const isScreenSharingRef = useRef(isScreenSharing);
+    useEffect(() => { isScreenSharingRef.current = isScreenSharing; }, [isScreenSharing]);
+
+    const broadcastState = useCallback((audio: boolean, video: boolean, speaking?: boolean, screenSharing?: boolean) => {
+        client?.send('peer-state', { audio, video, speaking, screenSharing: screenSharing ?? isScreenSharingRef.current });
+    }, [client]);
 
     const { speaking: localSpeaking } = useAudioLevel(localStream, !isMuted);
     const prevSpeakingRef = useRef(localSpeaking);
@@ -138,8 +141,7 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
         if (prevSpeakingRef.current === localSpeaking) return;
         prevSpeakingRef.current = localSpeaking;
         broadcastState(!isMuted, !isVideoOff, localSpeaking);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [localSpeaking]);
+    }, [localSpeaking, broadcastState, isMuted, isVideoOff]);
 
     const handleMicToggle = async () => {
         const nextMuted = !isMuted;
@@ -302,6 +304,7 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
             isVideoOff={isScreenSharing ? false : isVideoOff}
             isMuted={isMuted}
             stream={localDisplayStream}
+            speaking={isMuted ? false : localSpeaking}
             onPin={opts.onPin}
             isPinned={opts.isPinned}
             compact={opts.compact}
