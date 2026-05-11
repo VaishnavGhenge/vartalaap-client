@@ -112,7 +112,7 @@ export default function JoinMeet() {
 
                     {/* ── Camera preview ────────────────────────────────── */}
                     <div className="lg:col-span-3">
-                        <div className={`tile-in app-panel relative w-full overflow-hidden rounded-2xl${speaking ? ' speaking-ring' : ''}`}
+                        <div className="app-panel relative w-full overflow-hidden rounded-2xl"
                              style={{ aspectRatio: '16/9' }}>
 
                             {/* Settings — top-right of the preview */}
