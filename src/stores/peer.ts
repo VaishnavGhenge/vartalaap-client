@@ -206,15 +206,6 @@ const replaceAudioSenderOnPeers = (
   peers.forEach((c) => { void c.session.replaceTrack('audio', track) })
 }
 
-// Audio senders are always pre-negotiated at session creation, so replaceTrack
-// is the only publish path — no addTrack fallback needed.
-const publishAudioTrackToPeers = (
-  track: MediaStreamTrack,
-  peers: Map<string, PeerConnection>,
-) => {
-  peers.forEach((c) => { void c.session.replaceTrack('audio', track) })
-}
-
 export const usePeerStore = create<PeerState>()(
   devtools((set, get) => {
     const savedDevices = getDevicePreferences()
@@ -256,7 +247,7 @@ export const usePeerStore = create<PeerState>()(
           localStream?.getAudioTracks().forEach(t => { if (t !== activeMicTrack) { t.stop(); localStream.removeTrack(t) } })
           localStream?.removeTrack(activeMicTrack)
           localStream?.addTrack(processedTrack)
-          publishAudioTrackToPeers(processedTrack, peerConnections)
+          replaceAudioSenderOnPeers(processedTrack, peerConnections)
           set({ noiseSuppressor: suppressor, rawMicTrack: activeMicTrack })
         } catch (e) {
           console.error('NoiseSuppressor.start failed', e)
@@ -271,7 +262,7 @@ export const usePeerStore = create<PeerState>()(
         if (rawMicTrack && localStream) {
           localStream.getAudioTracks().forEach(t => { t.stop(); localStream.removeTrack(t) })
           localStream.addTrack(rawMicTrack)
-          publishAudioTrackToPeers(rawMicTrack, peerConnections)
+          replaceAudioSenderOnPeers(rawMicTrack, peerConnections)
         }
         set({ noiseSuppressor: null, rawMicTrack: null })
       }
@@ -356,7 +347,7 @@ export const usePeerStore = create<PeerState>()(
             stream.addTrack(processedTrack)
             if (!existing) set({ localStream: stream })
             set({ noiseSuppressor: suppressor, rawMicTrack: rawTrack })
-            publishAudioTrackToPeers(processedTrack, get().peerConnections)
+            replaceAudioSenderOnPeers(processedTrack, get().peerConnections)
             return rawTrack
           } catch (e) {
             console.error('NoiseSuppressor.start failed on enableMic, falling back', e)
@@ -367,7 +358,7 @@ export const usePeerStore = create<PeerState>()(
         stream.addTrack(rawTrack)
         if (!existing) set({ localStream: stream })
         set({ noiseSuppressor: null, rawMicTrack: null })
-        publishAudioTrackToPeers(rawTrack, get().peerConnections)
+        replaceAudioSenderOnPeers(rawTrack, get().peerConnections)
         return rawTrack
       } catch (e) {
         console.error('enableMic failed', e)
@@ -539,7 +530,7 @@ export const usePeerStore = create<PeerState>()(
             const processedTrack = await suppressor.start(rawTrack)
             localStream.addTrack(processedTrack)
             set({ noiseSuppressor: suppressor, rawMicTrack: rawTrack })
-            publishAudioTrackToPeers(processedTrack, peerConnections)
+            replaceAudioSenderOnPeers(processedTrack, peerConnections)
             return
           } catch (e) {
             console.error('NoiseSuppressor.start failed on setAudioInput, falling back', e)
@@ -548,7 +539,7 @@ export const usePeerStore = create<PeerState>()(
 
         set({ noiseSuppressor: null, rawMicTrack: null })
         localStream.addTrack(rawTrack)
-        publishAudioTrackToPeers(rawTrack, peerConnections)
+        replaceAudioSenderOnPeers(rawTrack, peerConnections)
       } catch (e) {
         console.error('setAudioInput failed', e)
       }
