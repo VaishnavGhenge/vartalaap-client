@@ -52,4 +52,51 @@ describe('VideoTile', () => {
     )
     expect(container.querySelector('[aria-label="Carol, speaking"]')).toBeInTheDocument()
   })
+
+  it('shows Reconnecting overlay when connectionState is disconnected', () => {
+    render(
+      <VideoTile
+        participant={{ id: 'peer-1', name: 'Dave' }}
+        stream={makeStream()}
+        connectionState="disconnected"
+      />,
+    )
+    expect(screen.getByText('Reconnecting…')).toBeInTheDocument()
+  })
+
+  it('shows Connection lost overlay when connectionState is failed', () => {
+    render(
+      <VideoTile
+        participant={{ id: 'peer-1', name: 'Eve' }}
+        stream={makeStream()}
+        connectionState="failed"
+      />,
+    )
+    expect(screen.getByText('Connection lost')).toBeInTheDocument()
+  })
+
+  it('shows Audio only badge when videoHeld is true', () => {
+    render(
+      <VideoTile
+        participant={{ id: 'peer-1', name: 'Frank' }}
+        stream={makeStream()}
+        videoHeld
+      />,
+    )
+    expect(screen.getByText('Audio only')).toBeInTheDocument()
+  })
+
+  it('does not show overlays on the local tile', () => {
+    render(
+      <VideoTile
+        isLocal
+        userName="Me"
+        stream={makeStream()}
+        connectionState="failed"
+        videoHeld
+      />,
+    )
+    expect(screen.queryByText('Connection lost')).not.toBeInTheDocument()
+    expect(screen.queryByText('Audio only')).not.toBeInTheDocument()
+  })
 })

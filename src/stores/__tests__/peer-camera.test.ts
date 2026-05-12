@@ -31,19 +31,24 @@ function makeTrack(kind: 'video' | 'audio', facingMode?: string): MediaStreamTra
 // Stubs document.createElement('canvas') so createBlackVideoTrack works in jsdom.
 function stubCanvasCaptureStream() {
   const placeholder = makeTrack('video')
+  const canvas = {
+    width: 0,
+    height: 0,
+    getContext: vi.fn(() => ({
+      fillStyle: '',
+      fillRect: vi.fn(),
+    })),
+    captureStream: vi.fn(() => ({
+      getVideoTracks: () => [placeholder],
+    })),
+  }
   vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
     if (tag === 'canvas') {
-      return {
-        width: 0,
-        height: 0,
-        captureStream: vi.fn(() => ({
-          getVideoTracks: () => [placeholder],
-        })),
-      } as unknown as HTMLElement
+      return canvas as unknown as HTMLElement
     }
     return (document.createElement as any).__vitest_original?.(tag) ?? document.createElement(tag)
   })
-  return placeholder
+  return { placeholder, canvas }
 }
 
 function makeSession(): InstanceType<typeof WebRTCSession> {
@@ -225,7 +230,7 @@ describe('enableCamera — facingMode', () => {
 describe('disableCamera — peer interaction', () => {
   it('calls session.replaceTrack with video placeholder (no removeTrack)', async () => {
     const session = makeSession()
-    const placeholder = stubCanvasCaptureStream()
+    const { placeholder } = stubCanvasCaptureStream()
     const videoTrack = makeTrack('video')
     const stream = makeStream([videoTrack])
     usePeerStore.setState({
@@ -238,10 +243,26 @@ describe('disableCamera — peer interaction', () => {
     expect(session.replaceTrack).toHaveBeenCalledWith('video', placeholder)
   })
 
+  it('uses a camera-sized placeholder so later replaceTrack does not outgrow the negotiated video envelope', async () => {
+    const session = makeSession()
+    const { canvas } = stubCanvasCaptureStream()
+    const stream = makeStream([makeTrack('video')])
+    usePeerStore.setState({
+      localStream: stream,
+      peerConnections: new Map([['peer-1', peerConn(session)]]),
+    })
+
+    usePeerStore.getState().disableCamera()
+
+    expect(canvas.width).toBe(960)
+    expect(canvas.height).toBe(540)
+    expect(canvas.captureStream).toHaveBeenCalledWith(24)
+  })
+
   it('stops the placeholder after a delay (not synchronously)', async () => {
     vi.useFakeTimers()
     const session = makeSession()
-    const placeholder = stubCanvasCaptureStream()
+    const { placeholder } = stubCanvasCaptureStream()
     const stream = makeStream([makeTrack('video')])
     usePeerStore.setState({
       localStream: stream,
@@ -332,6 +353,66 @@ describe('enableCamera — peer sender reuse', () => {
 
     expect(session.replaceTrack).toHaveBeenCalledWith('video', newTrack)
   })
+
+  it('calls session.replaceTrack when localStream is null (joined camera-off AND mic-off)', async () => {
+    // Most likely real-world bug scenario: user joins with camera AND mic both off,
+    // so localStream is null. A peer is already connected. User enables camera.
+    // The video sender was pre-negotiated at session creation with a black placeholder,
+    // so replaceTrack MUST reach the session even when localStream starts as null.
+    const session = makeSession()
+    const cameraTrack = makeTrack('video')
+    stubGetUserMedia(cameraTrack)
+    usePeerStore.setState({
+      localStream: null,
+      peerConnections: new Map([['peer-1', peerConn(session)]]),
+    })
+
+    await usePeerStore.getState().enableCamera()
+
+    expect(session.replaceTrack).toHaveBeenCalledWith('video', cameraTrack)
+  })
+
+  it('calls session.replaceTrack on EVERY peer when multiple peers are connected', async () => {
+    const session1 = makeSession()
+    const session2 = makeSession()
+    const cameraTrack = makeTrack('video')
+    stubGetUserMedia(cameraTrack)
+    usePeerStore.setState({
+      localStream: null,
+      peerConnections: new Map([
+        ['peer-1', peerConn(session1, 'peer-1')],
+        ['peer-2', peerConn(session2, 'peer-2')],
+      ]),
+    })
+
+    await usePeerStore.getState().enableCamera()
+
+    expect(session1.replaceTrack).toHaveBeenCalledWith('video', cameraTrack)
+    expect(session2.replaceTrack).toHaveBeenCalledWith('video', cameraTrack)
+  })
+
+  it('logs replaceTrack rejection instead of swallowing it silently', async () => {
+    // replaceTrack can reject with InvalidModificationError (codec renegotiation required)
+    // or InvalidStateError (sender detached). Without .catch(), these are silently dropped.
+    const session = makeSession()
+    const rejection = new DOMException('codec renegotiation required', 'InvalidModificationError')
+    session.replaceTrack = vi.fn().mockRejectedValue(rejection)
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const cameraTrack = makeTrack('video')
+    stubGetUserMedia(cameraTrack)
+    usePeerStore.setState({
+      localStream: null,
+      peerConnections: new Map([['peer-1', peerConn(session)]]),
+    })
+
+    await usePeerStore.getState().enableCamera()
+    // Flush the microtask queue so the .catch() callback fires before we assert.
+    await Promise.resolve()
+
+    expect(errorSpy).toHaveBeenCalled()
+    errorSpy.mockRestore()
+  })
 })
 
 // ─── startScreenShare / stopScreenShare ───────────────────────────────────────
@@ -415,7 +496,7 @@ describe('stopScreenShare', () => {
 
   it('restores black placeholder on peers when camera is off', async () => {
     const session = makeSession()
-    const placeholder = stubCanvasCaptureStream()
+    const { placeholder } = stubCanvasCaptureStream()
     const screenTrack = makeTrack('video')
     usePeerStore.setState({
       screenTrack,
