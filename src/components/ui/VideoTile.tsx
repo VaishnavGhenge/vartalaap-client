@@ -40,6 +40,8 @@ interface VideoTileProps {
     compact?: boolean;
     connectionState?: RTCPeerConnectionState;
     videoHeld?: boolean;
+    /** Pass the already-computed speaking state to skip internal audio analysis. */
+    speaking?: boolean;
 }
 
 export const VideoTile = ({
@@ -57,6 +59,7 @@ export const VideoTile = ({
     compact = false,
     connectionState,
     videoHeld = false,
+    speaking: speakingProp,
 }: VideoTileProps) => {
     const name = isLocal ? (userName || 'You') : (participant?.name || 'Participant');
     // When a remote peer is screen sharing their video track IS the screen —
@@ -67,7 +70,12 @@ export const VideoTile = ({
     const muted = isLocal ? !!isMuted : !!participant?.isMuted;
     const label = isLocal ? `${name} (you)` : name;
 
-    const { speaking: localSpeaking } = useAudioLevel(isLocal ? stream : null, isLocal && !muted);
+    // Skip internal audio analysis when the caller provides speaking state directly
+    // (e.g. local tile in MeetCall, where audio is already analysed for broadcasting).
+    const { speaking: localSpeaking } = useAudioLevel(
+        isLocal && speakingProp === undefined ? stream : null,
+        isLocal && speakingProp === undefined && !muted,
+    );
     const [remoteSpeaking, setRemoteSpeaking] = useState(false);
     const holdTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
     useEffect(() => {
@@ -80,7 +88,7 @@ export const VideoTile = ({
         }
         return () => clearTimeout(holdTimer.current);
     }, [isLocal, participant?.speaking]);
-    const speaking = isLocal ? localSpeaking : remoteSpeaking;
+    const speaking = speakingProp !== undefined ? speakingProp : (isLocal ? localSpeaking : remoteSpeaking);
 
     const color = avatarColor(name);
     const initials = initialsOf(name);
