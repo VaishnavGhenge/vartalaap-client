@@ -286,7 +286,7 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                 outboundBitrateKbps: 0, inboundBitrateKbps: 0,
                 packetLossPercent: 0, roundTripTimeMs: -1,
                 jitterMs: 0, candidateType: 'unknown' as const,
-                quality: 'unknown' as const, encodingLevel: 2 as const, timestamp: 0,
+                quality: 'unknown' as const, encodingLevel: 2 as const, videoHeld: false, timestamp: 0,
             },
         })),
         [remotePeers, peerStats],
@@ -324,6 +324,8 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                 quality={stats?.quality}
                 viaRelay={stats?.candidateType === 'relay'}
                 isScreenSharing={c.screenSharing}
+                connectionState={c.connectionState}
+                videoHeld={stats?.videoHeld}
                 onPin={opts.onPin}
                 isPinned={opts.isPinned}
                 compact={opts.compact}

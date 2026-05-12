@@ -20,7 +20,7 @@ describe('parseReport – quality classification', () => {
             { type: 'candidate', id: '1', candidateType: 'host' },
             { type: 'remote-inbound-rtp', fractionLost: 0.005 },
         ])
-        const stats = parseReport(report, 'peer1', new Map(), 2)
+        const stats = parseReport(report, 'peer1', new Map(), 2, false)
         expect(stats.quality).toBe('good')
     })
 
@@ -29,7 +29,7 @@ describe('parseReport – quality classification', () => {
             { type: 'candidate-pair', nominated: true, currentRoundTripTime: 0.2, localCandidateId: '1' },
             { type: 'remote-inbound-rtp', fractionLost: 0.04 },
         ])
-        const stats = parseReport(report, 'peer1', new Map(), 2)
+        const stats = parseReport(report, 'peer1', new Map(), 2, false)
         expect(stats.quality).toBe('medium')
     })
 
@@ -38,13 +38,13 @@ describe('parseReport – quality classification', () => {
             { type: 'candidate-pair', nominated: true, currentRoundTripTime: 0.5, localCandidateId: '1' },
             { type: 'remote-inbound-rtp', fractionLost: 0.1 },
         ])
-        const stats = parseReport(report, 'peer1', new Map(), 2)
+        const stats = parseReport(report, 'peer1', new Map(), 2, false)
         expect(stats.quality).toBe('poor')
     })
 
     it('returns quality "unknown" when no RTT data is available', () => {
         const report = makeReport([])
-        const stats = parseReport(report, 'peer1', new Map(), 2)
+        const stats = parseReport(report, 'peer1', new Map(), 2, false)
         expect(stats.quality).toBe('unknown')
         expect(stats.roundTripTimeMs).toBe(-1)
     })
@@ -54,7 +54,7 @@ describe('parseReport – quality classification', () => {
             { type: 'candidate-pair', nominated: true, currentRoundTripTime: 0.05, localCandidateId: 'c1' },
             { id: 'c1', type: 'local-candidate', candidateType: 'relay' },
         ])
-        const stats = parseReport(report, 'peer1', new Map(), 2)
+        const stats = parseReport(report, 'peer1', new Map(), 2, false)
         expect(stats.candidateType).toBe('relay')
     })
 
@@ -68,7 +68,7 @@ describe('parseReport – quality classification', () => {
             { type: 'inbound-rtp', bytesReceived: 62_500 },  // 62.5 KB in 1 s = 500 kbps
         ])
 
-        const stats = parseReport(report, 'peer1', prevMap, 2)
+        const stats = parseReport(report, 'peer1', prevMap, 2, false)
         expect(stats.outboundBitrateKbps).toBeGreaterThan(900)
         expect(stats.inboundBitrateKbps).toBeGreaterThan(450)
     })
@@ -79,7 +79,7 @@ describe('parseReport – quality classification', () => {
             { type: 'inbound-rtp', kind: 'video', bytesReceived: 0, jitter: 0.01,
               frameWidth: 1280, frameHeight: 720, framesPerSecond: 29.7 },
         ])
-        const stats = parseReport(report, 'peer1', new Map(), 2)
+        const stats = parseReport(report, 'peer1', new Map(), 2, false)
         expect(stats.frameWidth).toBe(1280)
         expect(stats.frameHeight).toBe(720)
         expect(stats.framesPerSecond).toBe(30)

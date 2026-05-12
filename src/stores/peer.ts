@@ -44,6 +44,8 @@ export interface PeerStats {
   candidateType: 'host' | 'srflx' | 'relay' | 'unknown'
   quality: 'good' | 'medium' | 'poor' | 'unknown'
   encodingLevel: EncodingLevel
+  /** True while outbound video is held back due to sustained poor quality. */
+  videoHeld: boolean
   timestamp: number
   frameWidth?: number
   frameHeight?: number
@@ -59,6 +61,7 @@ interface PeerConnection {
   video: boolean
   speaking: boolean
   screenSharing: boolean
+  connectionState: RTCPeerConnectionState
 }
 
 interface PeerState {
@@ -90,6 +93,7 @@ interface PeerState {
   removePeerConnection: (id: string) => void
   updatePeerStream: (id: string, stream: MediaStream) => void
   updatePeerMediaState: (id: string, audio: boolean, video: boolean, speaking?: boolean, screenSharing?: boolean) => void
+  updatePeerConnectionState: (id: string, state: RTCPeerConnectionState) => void
   updatePeerStats: (id: string, stats: PeerStats) => void
 
   enableMic: () => Promise<MediaStreamTrack | null>
@@ -288,6 +292,7 @@ export const usePeerStore = create<PeerState>()(
           video: info?.video ?? false,
           speaking: false,
           screenSharing: info?.screenSharing ?? false,
+          connectionState: 'new',
         })
         return { peerConnections: next }
       }),
@@ -300,6 +305,14 @@ export const usePeerStore = create<PeerState>()(
         const nextStats = new Map(state.peerStats)
         nextStats.delete(id)
         return { peerConnections: next, peerStats: nextStats }
+      }),
+
+    updatePeerConnectionState: (id, connectionState) =>
+      set((state) => {
+        const next = new Map(state.peerConnections)
+        const c = next.get(id)
+        if (c) next.set(id, { ...c, connectionState })
+        return { peerConnections: next }
       }),
 
     updatePeerStats: (id, stats) =>

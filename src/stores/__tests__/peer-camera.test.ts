@@ -51,7 +51,7 @@ function makeSession(): InstanceType<typeof WebRTCSession> {
 }
 
 function peerConn(session: InstanceType<typeof WebRTCSession>, id = 'peer-1') {
-  return { id, session, name: 'Alice', audio: true, video: true, speaking: false, screenSharing: false }
+  return { id, session, name: 'Alice', audio: true, video: true, speaking: false, screenSharing: false, connectionState: 'connected' as RTCPeerConnectionState }
 }
 
 function makeStream(tracks: MediaStreamTrack[] = []): MediaStream {
@@ -341,7 +341,7 @@ describe('startScreenShare', () => {
     const session = makeSession()
     usePeerStore.setState({
       peerConnections: new Map([
-        ['p1', { id: 'p1', session, name: '', audio: false, video: false, speaking: false, screenSharing: false }],
+        ['p1', { id: 'p1', session, name: '', audio: false, video: false, speaking: false, screenSharing: false, connectionState: 'connected' as RTCPeerConnectionState }],
       ]),
     })
     const screenTrack = makeTrack('video')
@@ -404,7 +404,7 @@ describe('stopScreenShare', () => {
       screenTrack,
       localStream: stream,
       peerConnections: new Map([
-        ['p1', { id: 'p1', session, name: '', audio: false, video: true, speaking: false, screenSharing: false }],
+        ['p1', { id: 'p1', session, name: '', audio: false, video: true, speaking: false, screenSharing: false, connectionState: 'connected' as RTCPeerConnectionState }],
       ]),
     })
 
@@ -421,7 +421,7 @@ describe('stopScreenShare', () => {
       screenTrack,
       localStream: null,
       peerConnections: new Map([
-        ['p1', { id: 'p1', session, name: '', audio: false, video: false, speaking: false, screenSharing: false }],
+        ['p1', { id: 'p1', session, name: '', audio: false, video: false, speaking: false, screenSharing: false, connectionState: 'connected' as RTCPeerConnectionState }],
       ]),
     })
 

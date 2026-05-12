@@ -61,7 +61,7 @@ function makeSession(): InstanceType<typeof WebRTCSession> {
 }
 
 function peerConn(session: InstanceType<typeof WebRTCSession>, id = 'p1') {
-  return { id, session, name: '', audio: false, video: false, speaking: false, screenSharing: false }
+  return { id, session, name: '', audio: false, video: false, speaking: false, screenSharing: false, connectionState: 'connected' as RTCPeerConnectionState }
 }
 
 // ─── Setup ────────────────────────────────────────────────────────────────────

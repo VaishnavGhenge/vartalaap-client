@@ -22,6 +22,9 @@ const STEP_DOWN_LOSS_PCT  = 5   // %
 const STEP_DOWN_SAMPLES   = 2
 const STEP_UP_LOSS_PCT    = 1   // %
 const STEP_UP_SAMPLES     = 5
+// Sustained bad samples at level 0 before outbound video is held back entirely.
+// 8 × 2 s = 16 s at minimum bitrate with continued poor quality.
+const AUDIO_ONLY_SAMPLES  = 8
 
 // ─── Stats parsing ─────────────────────────────────────────────────────────────
 
@@ -39,6 +42,7 @@ export function parseReport(
   peerId: string,
   prevMap: Map<string, PrevEntry>,
   encodingLevel: EncodingLevel,
+  videoHeld: boolean,
 ): PeerStats {
   const entries = Array.from(report.values()) as StatsEntry[]
 
@@ -118,6 +122,7 @@ export function parseReport(
     candidateType,
     quality,
     encodingLevel,
+    videoHeld,
     timestamp: now,
     frameWidth,
     frameHeight,
@@ -206,12 +211,15 @@ export function usePeerStats(client: SignalingClient | null) {
   useEffect(() => { clientRef.current = client }, [client])
 
   useEffect(() => {
-    const adaptLevels  = new Map<string, EncodingLevel>()
-    const badSamples   = new Map<string, number>()
-    const goodSamples  = new Map<string, number>()
+    const adaptLevels    = new Map<string, EncodingLevel>()
+    const badSamples     = new Map<string, number>()
+    const goodSamples    = new Map<string, number>()
+    const audioOnlyCnt   = new Map<string, number>()  // bad samples while at level 0
+    const videoHeldPeers = new Set<string>()           // peers with outbound video held
 
     const pollTimer = setInterval(async () => {
-      const { peerConnections, updatePeerStats } = usePeerStore.getState()
+      const { peerConnections, updatePeerStats, localStream } = usePeerStore.getState()
+      const localVideoTrack = localStream?.getVideoTracks()[0] ?? null
 
       for (const [id, conn] of peerConnections) {
         if (conn.session.destroyed || conn.session.connectionState === 'closed') continue
@@ -219,14 +227,38 @@ export function usePeerStats(client: SignalingClient | null) {
         try {
           const report       = await conn.session.getStats()
           const currentLevel = adaptLevels.get(id) ?? 2
-          const stats        = parseReport(report, id, prevRef.current, currentLevel)
+          const isHeld       = videoHeldPeers.has(id)
+          const stats        = parseReport(report, id, prevRef.current, currentLevel, isHeld)
 
           const newLevel = stepAdaptation(
             id, conn.session, stats.packetLossPercent,
             adaptLevels, badSamples, goodSamples,
           )
 
-          updatePeerStats(id, { ...stats, encodingLevel: newLevel })
+          // ── Audio-only degradation ─────────────────────────────────────────
+          // If we're already at the lowest encoding level and quality is still
+          // poor, hold back outbound video entirely to preserve the audio path.
+          if (newLevel === 0 && stats.quality === 'poor') {
+            const cnt = (audioOnlyCnt.get(id) ?? 0) + 1
+            audioOnlyCnt.set(id, cnt)
+            if (cnt >= AUDIO_ONLY_SAMPLES && !videoHeldPeers.has(id)) {
+              videoHeldPeers.add(id)
+              void conn.session.replaceTrack('video', null)
+            }
+          } else if (videoHeldPeers.has(id) && stats.quality !== 'poor') {
+            // Quality has recovered — restore outbound video if the user still
+            // has their camera on (don't override a deliberate camera-off).
+            const { isVideoOff } = (await import('@/src/stores/meet')).useMeetStore.getState()
+            if (!isVideoOff && localVideoTrack) {
+              videoHeldPeers.delete(id)
+              audioOnlyCnt.set(id, 0)
+              void conn.session.replaceTrack('video', localVideoTrack)
+            }
+          } else if (!videoHeldPeers.has(id)) {
+            audioOnlyCnt.set(id, 0)
+          }
+
+          updatePeerStats(id, { ...stats, encodingLevel: newLevel, videoHeld: videoHeldPeers.has(id) })
         } catch {
           // session is closing — skip silently
         }
@@ -239,6 +271,8 @@ export function usePeerStats(client: SignalingClient | null) {
           adaptLevels.delete(id)
           badSamples.delete(id)
           goodSamples.delete(id)
+          audioOnlyCnt.delete(id)
+          videoHeldPeers.delete(id)
         }
       }
     }, POLL_MS)
