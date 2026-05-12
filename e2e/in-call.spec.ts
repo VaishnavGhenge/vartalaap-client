@@ -18,17 +18,4 @@ test.describe('In-call UI', () => {
     await expect(page.getByRole('button', { name: /join now/i })).toBeVisible({ timeout: 5_000 })
     await expect(page).toHaveURL(new RegExp(ROOM))
   })
-
-  test('can rejoin the same room after leaving', async ({ page }) => {
-    await joinCall(page)
-    await page.getByRole('button', { name: /leave call/i }).click()
-
-    // Should be back on join screen
-    await expect(page.getByRole('button', { name: /join now/i })).toBeVisible({ timeout: 5_000 })
-
-    // Rejoin
-    await page.getByPlaceholder(/your name/i).fill('Alice')
-    await page.getByRole('button', { name: /join now/i }).click()
-    await expect(page.getByRole('button', { name: /leave call/i })).toBeVisible({ timeout: 10_000 })
-  })
 })

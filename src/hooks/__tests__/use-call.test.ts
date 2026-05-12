@@ -18,6 +18,7 @@ vi.mock('@/src/services/webrtc/session', () => {
     private _opts: { onConnectionStateChange?: (state: RTCPeerConnectionState) => void }
     signal = vi.fn().mockResolvedValue(undefined)
     close = vi.fn()
+    replaceTrack = vi.fn().mockResolvedValue(undefined)
     applyEncodingLevel = vi.fn().mockResolvedValue(undefined)
     getStats = vi.fn().mockResolvedValue(new Map())
     connectionState: RTCPeerConnectionState = 'connected'
@@ -395,6 +396,29 @@ describe('useCall — connection state change', () => {
 
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[use-call]'), expect.anything())
     warnSpy.mockRestore()
+  })
+
+  it('updates peer connectionState in the store on every state change', async () => {
+    const client = makeClient()
+
+    await act(async () => {
+      renderHook(() => useCall({
+        client, roomId: 'room-1', enabled: true,
+        userName: 'Alice', initialAudio: true, initialVideo: true,
+      }))
+    })
+
+    await act(async () => {
+      client.emit('joined', {
+        data: { peers: [{ id: 'peer-bob', name: 'Bob', audio: true, video: true }] },
+      })
+    })
+
+    for (const state of ['connecting', 'connected', 'disconnected', 'failed'] as RTCPeerConnectionState[]) {
+      await act(async () => { createdSessions[0]?.onConnectionStateChange?.(state) })
+      const bob = usePeerStore.getState().peerConnections.get('peer-bob')
+      expect(bob?.connectionState).toBe(state)
+    }
   })
 })
 

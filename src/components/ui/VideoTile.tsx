@@ -1,6 +1,6 @@
 "use client";
 
-import { MicOff, Pin, PinOff } from "lucide-react";
+import { MicOff, Pin, PinOff, WifiOff, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { AudioStream, VideoStream } from "@/src/components/ui/Video";
 import { useAudioLevel } from "@/src/hooks/use-audio-level";
@@ -38,6 +38,8 @@ interface VideoTileProps {
     isPinned?: boolean;
     /** Compact mode for small thumbnail tiles — abbreviates the name pill. */
     compact?: boolean;
+    connectionState?: RTCPeerConnectionState;
+    videoHeld?: boolean;
     /** Pass the already-computed speaking state to skip internal audio analysis. */
     speaking?: boolean;
 }
@@ -55,6 +57,8 @@ export const VideoTile = ({
     onPin,
     isPinned = false,
     compact = false,
+    connectionState,
+    videoHeld = false,
     speaking: speakingProp,
 }: VideoTileProps) => {
     const name = isLocal ? (userName || 'You') : (participant?.name || 'Participant');
@@ -164,6 +168,40 @@ export const VideoTile = ({
                         : <Pin className="w-3.5 h-3.5" />
                     }
                 </button>
+            )}
+
+            {/* Connection state overlays — remote tiles only */}
+            {!isLocal && connectionState === 'disconnected' && (
+                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2
+                                bg-[hsl(var(--background))]/60 backdrop-blur-sm">
+                    <Loader2 className="w-5 h-5 text-[hsl(var(--muted-foreground))] animate-spin" />
+                    {!compact && (
+                        <span className="text-[11px] font-medium text-[hsl(var(--muted-foreground))]">
+                            Reconnecting…
+                        </span>
+                    )}
+                </div>
+            )}
+            {!isLocal && connectionState === 'failed' && (
+                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2
+                                bg-[hsl(var(--background))]/60 backdrop-blur-sm">
+                    <WifiOff className="w-5 h-5 text-[hsl(var(--destructive))]" />
+                    {!compact && (
+                        <span className="text-[11px] font-medium text-[hsl(var(--destructive))]">
+                            Connection lost
+                        </span>
+                    )}
+                </div>
+            )}
+
+            {/* Video held badge — shown when outbound video is paused for bandwidth */}
+            {!isLocal && videoHeld && !compact && connectionState !== 'failed' && (
+                <div className="absolute top-2.5 left-2.5 z-10">
+                    <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full leading-none
+                                     bg-[hsl(var(--destructive))]/15 text-[hsl(var(--destructive))]">
+                        Audio only
+                    </span>
+                </div>
             )}
 
             {/* Name pill — compact tiles show initials so the pill never overflows. */}

@@ -44,6 +44,8 @@ export interface PeerStats {
   candidateType: 'host' | 'srflx' | 'relay' | 'unknown'
   quality: 'good' | 'medium' | 'poor' | 'unknown'
   encodingLevel: EncodingLevel
+  /** True while outbound video is held back due to sustained poor quality. */
+  videoHeld: boolean
   timestamp: number
   frameWidth?: number
   frameHeight?: number
@@ -59,6 +61,7 @@ interface PeerConnection {
   video: boolean
   speaking: boolean
   screenSharing: boolean
+  connectionState: RTCPeerConnectionState
 }
 
 interface PeerState {
@@ -90,6 +93,7 @@ interface PeerState {
   removePeerConnection: (id: string) => void
   updatePeerStream: (id: string, stream: MediaStream) => void
   updatePeerMediaState: (id: string, audio: boolean, video: boolean, speaking?: boolean, screenSharing?: boolean) => void
+  updatePeerConnectionState: (id: string, state: RTCPeerConnectionState) => void
   updatePeerStats: (id: string, stats: PeerStats) => void
 
   enableMic: () => Promise<MediaStreamTrack | null>
@@ -145,16 +149,28 @@ const replaceVideoTrackOnPeers = (
   newTrack: MediaStreamTrack,
   peers: Map<string, PeerConnection>,
 ) => {
-  peers.forEach((c) => { void c.session.replaceTrack('video', newTrack) })
+  peers.forEach((c) => {
+    c.session.replaceTrack('video', newTrack).catch(e => {
+      console.error('[peer] replaceTrack video failed', e)
+    })
+  })
 }
 
 // Placeholder sent via replaceTrack when camera is disabled so the video sender survives.
 const createBlackVideoTrack = (): MediaStreamTrack | null => {
   try {
     const canvas = document.createElement('canvas')
-    canvas.width = 2
-    canvas.height = 2
-    return canvas.captureStream(0).getVideoTracks()[0] ?? null
+    // Match the normal camera envelope. Negotiating a tiny/0fps placeholder and
+    // later replacing it with a real camera can make replaceTrack() require
+    // renegotiation on stricter browser/device combinations.
+    canvas.width = VIDEO_WIDTH_IDEAL
+    canvas.height = VIDEO_HEIGHT_IDEAL
+    const ctx = canvas.getContext('2d')
+    if (ctx) {
+      ctx.fillStyle = '#000'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+    }
+    return canvas.captureStream(VIDEO_FRAME_RATE_IDEAL).getVideoTracks()[0] ?? null
   } catch {
     return null
   }
@@ -203,8 +219,14 @@ const replaceAudioSenderOnPeers = (
   track: MediaStreamTrack,
   peers: Map<string, PeerConnection>,
 ) => {
-  peers.forEach((c) => { void c.session.replaceTrack('audio', track) })
+  peers.forEach((c) => {
+    c.session.replaceTrack('audio', track).catch(e => {
+      console.error('[peer] replaceTrack audio failed', e)
+    })
+  })
 }
+
+
 
 export const usePeerStore = create<PeerState>()(
   devtools((set, get) => {
@@ -279,6 +301,7 @@ export const usePeerStore = create<PeerState>()(
           video: info?.video ?? false,
           speaking: false,
           screenSharing: info?.screenSharing ?? false,
+          connectionState: 'new',
         })
         return { peerConnections: next }
       }),
@@ -291,6 +314,14 @@ export const usePeerStore = create<PeerState>()(
         const nextStats = new Map(state.peerStats)
         nextStats.delete(id)
         return { peerConnections: next, peerStats: nextStats }
+      }),
+
+    updatePeerConnectionState: (id, connectionState) =>
+      set((state) => {
+        const next = new Map(state.peerConnections)
+        const c = next.get(id)
+        if (c) next.set(id, { ...c, connectionState })
+        return { peerConnections: next }
       }),
 
     updatePeerStats: (id, stats) =>
