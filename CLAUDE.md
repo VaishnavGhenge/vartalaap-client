@@ -1,6 +1,6 @@
 # vartalaap-client — Frontend Rules
 
-Next.js + TypeScript + Tailwind + Zustand. WebRTC via simple-peer (being phased out toward raw RTCPeerConnection).
+Next.js + TypeScript + Tailwind + Zustand. WebRTC uses a raw RTCPeerConnection wrapper in `src/services/webrtc/session.ts`.
 
 ---
 
@@ -19,7 +19,7 @@ All media and peer state lives in `src/stores/peer.ts` (Zustand). Before adding 
 
 - Every `getUserMedia` call needs a fallback path (see `getUserMediaWithFallback` in peer.ts)
 - Every `replaceTrack` call must handle `OperationError` silently — it fires when the sender is gone
-- Never access `peer._pc` without a null-check and a comment explaining why raw access is needed
+- Keep direct `RTCPeerConnection` access inside `WebRTCSession`; expose focused methods instead of reaching into transport internals from stores or components
 - Noise suppression and background blur are media transforms — new effects follow the same start/stop pattern as `NoiseSuppressor` and `BackgroundBlurProcessor`
 
 ## Failure paths to always handle

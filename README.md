@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/VaishnavGhenge/vartalaap-client/actions/workflows/test.yml/badge.svg)](https://github.com/VaishnavGhenge/vartalaap-client/actions/workflows/test.yml)
 
-High-quality P2P video calling for couples and small groups. Built with Next.js, WebRTC via simple-peer, Zustand, and Tailwind.
+High-quality P2P video calling for couples and small groups. Built with Next.js, raw WebRTC, Zustand, and Tailwind.
 
 ## Test coverage
 
@@ -65,7 +65,7 @@ npx tsc --noEmit  # type check
 | Layer | Choice |
 |-------|--------|
 | Framework | Next.js 16 (App Router) |
-| WebRTC | simple-peer + raw RTCPeerConnection |
+| WebRTC | Raw RTCPeerConnection wrapper |
 | State | Zustand |
 | Styling | Tailwind CSS |
 | Error tracking | Sentry |

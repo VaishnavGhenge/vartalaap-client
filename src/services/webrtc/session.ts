@@ -37,9 +37,10 @@ export interface WebRTCSessionOptions {
 //   • Handles ICE restart automatically (initiator side only) with exponential
 //     back-off and a max of 3 attempts per disconnection event.
 //
-// Phase-2 SFU note: the only coupling to the P2P signaling transport is the
-// `onSignal` callback and the `signal()` method. Replacing those with Cloudflare
-// Calls REST calls is the entire transport migration.
+// Phase-2 SFU note: the main coupling to the P2P signaling transport is the
+// `onSignal` callback and the `signal()` method. The Cloudflare Realtime SFU
+// migration should replace peer-to-peer offer/answer relay with session/track
+// publish-subscribe while keeping media controls behind this session boundary.
 
 const MAX_ICE_RESTART_ATTEMPTS = 3
 const ICE_RESTART_DELAY_MS = 2_000

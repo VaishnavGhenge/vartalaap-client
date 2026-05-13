@@ -27,10 +27,10 @@ For couples/small groups, a chat panel for sharing links, quick messages when au
 
 ## P2 — Architecture ceiling (higher effort, high payoff)
 
-### 8. `simple-peer` abstraction blocks quality control
-`simple-peer` wraps `RTCPeerConnection` and hides TWCC (Transport-Wide Congestion Control) events, raw RTCP feedback, fine-grained `getStats()`, sender lifecycle, and renegotiation details. The current code already reaches through `_pc` (a private field) to call `getSenders()`, `replaceTrack()`, and `restartIce()`. This is fragile and will break on simple-peer upgrades.
+### 8. P2P session model is not SFU-ready
+The old `simple-peer` dependency has been replaced with a raw `RTCPeerConnection` wrapper, but the app still creates one `WebRTCSession` per remote peer and couples call orchestration to offer/answer relay. That model makes SFU migration harder because `use-call.ts`, `peer.ts`, and `use-peer-stats.ts` all assume peer-to-peer sessions.
 
-**Fix:** Replace `simple-peer` with raw `RTCPeerConnection` and explicit audio/video transceivers. Pre-create senders with `sendrecv` transceivers, handle offer/answer glare intentionally, and make `replaceTrack()` the normal path for mic/camera/screen changes. This removes private `_pc` access and makes audio publish, renegotiation, ICE restart, and stats collection reliable by design.
+**Fix:** Introduce an SFU-ready session boundary before the Cloudflare Realtime SFU cut-over. `use-call.ts` should talk to a transport interface, while `peer.ts` owns local media tracks and `use-peer-stats.ts` consumes transport stats without assuming one connection per remote peer.
 
 ### 9. P2P mesh degrades fast with 3+ participants
 Each participant opens N-1 peer connections and encodes N-1 independent video streams. At 4 participants that is 6 connections and 3× encode CPU per device. Mobile devices start dropping frames at 3 people.

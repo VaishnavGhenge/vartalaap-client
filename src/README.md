@@ -15,7 +15,7 @@ src/
 ├── lib/                 # Library configurations
 ├── services/            # External service integrations
 │   ├── api/            # API service functions
-│   ├── socket/         # Socket.io related services
+│   ├── signaling/      # WebSocket signaling client and protocol
 │   └── webrtc/         # WebRTC functionality
 ├── stores/              # Zustand state stores
 ├── types/               # TypeScript type definitions
@@ -26,7 +26,7 @@ src/
 
 - **State Management**: Zustand
 - **Data Fetching**: TanStack Query (React Query)
-- **Real-time Communication**: Socket.io
+- **Real-time Communication**: WebSocket signaling
 - **Notifications**: Sonner
 - **Styling**: Tailwind CSS v4
 - **WebRTC**: Custom implementation for video calls
@@ -41,9 +41,9 @@ src/
 - Configured in `src/components/providers.tsx`
 - Custom hooks in `src/hooks/`
 
-### Socket Integration
-- `src/services/socket/socket.ts` - Socket service
-- `src/hooks/use-socket.ts` - Socket hook
+### Signaling Integration
+- `src/services/signaling/client.ts` - WebSocket signaling client
+- `src/hooks/use-signaling.ts` - Signaling lifecycle hook
 
 ### Notifications
 - Sonner integrated in providers
@@ -65,11 +65,11 @@ import { useLogin } from '@/src/hooks/use-auth'
 const { mutate: login, isPending } = useLogin()
 ```
 
-### Using Socket
+### Using Signaling
 ```tsx
-import { useSocket } from '@/src/hooks/use-socket'
+import { useSignaling } from '@/src/hooks/use-signaling'
 
-const { socket, isConnected } = useSocket()
+const { client, connState } = useSignaling(hasJoinedMeet)
 ```
 
 ### Showing Notifications
