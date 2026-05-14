@@ -50,12 +50,12 @@ export function sfuTracksNew(sessionId: string, req: SfuTracksNewRequest): Promi
     return sfuFetch('POST', `/sfu/sessions/${sessionId}/tracks/new`, req)
 }
 
-export function sfuRenegotiate(
-    sessionId: string,
-    offerSdp: string,
-): Promise<{ sessionDescription: { type: string; sdp: string } }> {
+// sfuRenegotiate sends the client's SDP to CF after a renegotiation is required.
+// In the subscribe flow sdpType is 'answer'; for ICE-restart it may be 'offer'.
+// CF returns 204 No Content on success.
+export function sfuRenegotiate(sessionId: string, sdp: string, sdpType: 'offer' | 'answer'): Promise<void> {
     return sfuFetch('PUT', `/sfu/sessions/${sessionId}/renegotiate`, {
-        sessionDescription: { type: 'offer', sdp: offerSdp },
+        sessionDescription: { type: sdpType, sdp },
     })
 }
 

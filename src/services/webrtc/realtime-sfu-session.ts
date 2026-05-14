@@ -97,6 +97,10 @@ export class RealtimeSfuSession {
     }
 
     // subscribe — pulls the given trackNames from remoteSessionId into this PC.
+    //
+    // When CF sets requiresImmediateRenegotiation, it sends an SDP offer in the response.
+    // The client must set it as the remote description, create an answer, and send the
+    // answer back via /renegotiate. CF returns no SDP — it just confirms success.
     async subscribe(remoteSessionId: string, trackNames: string[]): Promise<void> {
         if (!this._sessionId) throw new Error('SFU session not initialized')
 
@@ -108,15 +112,12 @@ export class RealtimeSfuSession {
 
         const resp = await sfuTracksNew(this._sessionId, { tracks: remoteTracks })
 
-        if (resp.sessionDescription) {
+        if (resp.requiresImmediateRenegotiation && resp.sessionDescription) {
+            // CF sends an offer; we answer it and send the answer back.
             await this._pc.setRemoteDescription(resp.sessionDescription as RTCSessionDescriptionInit)
-        }
-
-        if (resp.requiresImmediateRenegotiation) {
-            const offer = await this._pc.createOffer()
-            await this._pc.setLocalDescription(offer)
-            const reResp = await sfuRenegotiate(this._sessionId, offer.sdp!)
-            await this._pc.setRemoteDescription(reResp.sessionDescription as RTCSessionDescriptionInit)
+            const answer = await this._pc.createAnswer()
+            await this._pc.setLocalDescription(answer)
+            await sfuRenegotiate(this._sessionId, answer.sdp!, 'answer')
         }
     }
 
