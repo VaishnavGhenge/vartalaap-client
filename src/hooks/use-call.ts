@@ -35,7 +35,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
     const makeSession = (
       remoteId: string,
       initiator: boolean,
-      info: { name: string; audio: boolean; video: boolean; screenSharing?: boolean },
+      info: { name: string; audio: boolean; video: boolean; screenSharing?: boolean; videoHeld?: boolean },
     ) => {
       if (store.getState().peerConnections.has(remoteId)) {
         store.getState().removePeerConnection(remoteId)

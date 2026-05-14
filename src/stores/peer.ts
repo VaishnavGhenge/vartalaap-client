@@ -62,7 +62,7 @@ interface PeerConnection {
   video: boolean
   speaking: boolean
   screenSharing: boolean
-  videoHeld: boolean
+  videoHeld?: boolean
   connectionState: RTCPeerConnectionState
 }
 
