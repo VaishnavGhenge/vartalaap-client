@@ -11,6 +11,7 @@ export type MsgType =
   | 'ping'
   | 'pong'
   | 'stats-report'
+  | 'sfu-tracks'
 
 export interface Envelope<T = unknown> {
   type: MsgType
@@ -61,4 +62,14 @@ export interface StatsReportPeer {
 
 export interface StatsReportData {
   peers: StatsReportPeer[]
+}
+
+export interface SfuTrackInfo {
+  trackName: string
+  mid?: string
+}
+
+export interface SfuTracksData {
+  sessionId: string
+  tracks: SfuTrackInfo[]
 }

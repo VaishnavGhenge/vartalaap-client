@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
 import { toast } from 'sonner'
 import { WebRTCSession, type SignalData, type WebRTCSessionOptions } from '@/src/services/webrtc/session'
+import { RealtimeSfuSession } from '@/src/services/webrtc/realtime-sfu-session'
 import type { IceServer } from '@/src/services/api/ice'
 import { getSharedAudioContext, setAudioOutputDevice } from '@/src/lib/audio-context'
 import { BackgroundBlurProcessor } from '@/src/lib/background-blur'
@@ -55,7 +56,7 @@ export interface PeerStats {
 
 interface PeerConnection {
   id: string
-  session: WebRTCSession
+  session?: WebRTCSession // undefined in SFU mode — all media goes through sfuSession
   stream?: MediaStream
   name: string
   audio: boolean
@@ -83,13 +84,15 @@ interface PeerState {
   noiseSuppressor: NoiseSuppressor | null
   rawMicTrack: MediaStreamTrack | null
   suppressNoise: boolean
+  sfuSession: RealtimeSfuSession | null
 
   setIceServers: (s: IceServer[]) => void
   setSuppressNoise: (enabled: boolean) => Promise<void>
+  setSfuSession: (s: RealtimeSfuSession | null) => void
 
   addPeerConnection: (
     id: string,
-    session: WebRTCSession,
+    session: WebRTCSession | undefined,
     info?: { name?: string; audio?: boolean; video?: boolean; screenSharing?: boolean; videoHeld?: boolean },
   ) => void
   removePeerConnection: (id: string) => void
@@ -150,9 +153,16 @@ const createBackgroundProcessor = (preference: BackgroundEffectPreference) => {
 const replaceVideoTrackOnPeers = (
   newTrack: MediaStreamTrack,
   peers: Map<string, PeerConnection>,
+  sfuSession?: RealtimeSfuSession | null,
 ) => {
+  if (sfuSession) {
+    sfuSession.replaceTrack('video', newTrack).catch(e => {
+      console.error('[peer] sfuSession replaceTrack video failed', e)
+    })
+    return
+  }
   peers.forEach((c) => {
-    c.session.replaceTrack('video', newTrack).catch(e => {
+    c.session?.replaceTrack('video', newTrack).catch(e => {
       console.error('[peer] replaceTrack video failed', e)
     })
   })
@@ -220,9 +230,16 @@ const createSilentAudioTrack = (): MediaStreamTrack | null => {
 const replaceAudioSenderOnPeers = (
   track: MediaStreamTrack,
   peers: Map<string, PeerConnection>,
+  sfuSession?: RealtimeSfuSession | null,
 ) => {
+  if (sfuSession) {
+    sfuSession.replaceTrack('audio', track).catch(e => {
+      console.error('[peer] sfuSession replaceTrack audio failed', e)
+    })
+    return
+  }
   peers.forEach((c) => {
-    c.session.replaceTrack('audio', track).catch(e => {
+    c.session?.replaceTrack('audio', track).catch(e => {
       console.error('[peer] replaceTrack audio failed', e)
     })
   })
@@ -250,8 +267,10 @@ export const usePeerStore = create<PeerState>()(
     noiseSuppressor: null,
     rawMicTrack: null,
     suppressNoise: getSavedNoiseSuppression(),
+    sfuSession: null,
 
     setIceServers: (s) => set({ iceServers: s }),
+    setSfuSession: (s) => set({ sfuSession: s }),
 
     setSuppressNoise: async (enabled) => {
       saveNoiseSuppression(enabled)
@@ -260,7 +279,7 @@ export const usePeerStore = create<PeerState>()(
       // on the next unmute using the saved suppressNoise flag.
       set({ suppressNoise: enabled })
 
-      const { localStream, noiseSuppressor, rawMicTrack, peerConnections } = get()
+      const { localStream, noiseSuppressor, rawMicTrack, peerConnections, sfuSession } = get()
       const activeMicTrack = rawMicTrack ?? localStream?.getAudioTracks()[0]
 
       if (enabled) {
@@ -271,7 +290,7 @@ export const usePeerStore = create<PeerState>()(
           localStream?.getAudioTracks().forEach(t => { if (t !== activeMicTrack) { t.stop(); localStream.removeTrack(t) } })
           localStream?.removeTrack(activeMicTrack)
           localStream?.addTrack(processedTrack)
-          replaceAudioSenderOnPeers(processedTrack, peerConnections)
+          replaceAudioSenderOnPeers(processedTrack, peerConnections, sfuSession)
           set({ noiseSuppressor: suppressor, rawMicTrack: activeMicTrack })
         } catch (e) {
           console.error('NoiseSuppressor.start failed', e)
@@ -286,7 +305,7 @@ export const usePeerStore = create<PeerState>()(
         if (rawMicTrack && localStream) {
           localStream.getAudioTracks().forEach(t => { t.stop(); localStream.removeTrack(t) })
           localStream.addTrack(rawMicTrack)
-          replaceAudioSenderOnPeers(rawMicTrack, peerConnections)
+          replaceAudioSenderOnPeers(rawMicTrack, peerConnections, sfuSession)
         }
         set({ noiseSuppressor: null, rawMicTrack: null })
       }
@@ -313,7 +332,7 @@ export const usePeerStore = create<PeerState>()(
       set((state) => {
         const next = new Map(state.peerConnections)
         const c = next.get(id)
-        if (c) { c.session.close(); next.delete(id) }
+        if (c) { c.session?.close(); next.delete(id) }
         const nextStats = new Map(state.peerStats)
         nextStats.delete(id)
         return { peerConnections: next, peerStats: nextStats }
@@ -382,7 +401,7 @@ export const usePeerStore = create<PeerState>()(
             stream.addTrack(processedTrack)
             if (!existing) set({ localStream: stream })
             set({ noiseSuppressor: suppressor, rawMicTrack: rawTrack })
-            replaceAudioSenderOnPeers(processedTrack, get().peerConnections)
+            replaceAudioSenderOnPeers(processedTrack, get().peerConnections, get().sfuSession)
             return rawTrack
           } catch (e) {
             console.error('NoiseSuppressor.start failed on enableMic, falling back', e)
@@ -393,7 +412,7 @@ export const usePeerStore = create<PeerState>()(
         stream.addTrack(rawTrack)
         if (!existing) set({ localStream: stream })
         set({ noiseSuppressor: null, rawMicTrack: null })
-        replaceAudioSenderOnPeers(rawTrack, get().peerConnections)
+        replaceAudioSenderOnPeers(rawTrack, get().peerConnections, get().sfuSession)
         return rawTrack
       } catch (e) {
         console.error('enableMic failed', e)
@@ -402,12 +421,12 @@ export const usePeerStore = create<PeerState>()(
     },
 
     disableMic: () => {
-      const { localStream, peerConnections, noiseSuppressor, rawMicTrack } = get()
+      const { localStream, peerConnections, noiseSuppressor, rawMicTrack, sfuSession } = get()
       if (!localStream) return
       // Replace sender with silent placeholder BEFORE stopping the track, so
       // the sender never becomes track-less (avoids negotiation glitches).
       const silent = createSilentAudioTrack()
-      if (silent) replaceAudioSenderOnPeers(silent, peerConnections)
+      if (silent) replaceAudioSenderOnPeers(silent, peerConnections, sfuSession)
       localStream.getAudioTracks().forEach(t => { t.stop(); localStream.removeTrack(t) })
       // Stop the noise suppressor and its raw track.
       noiseSuppressor?.stop()
@@ -449,15 +468,15 @@ export const usePeerStore = create<PeerState>()(
               backgroundEffect: nextPreference.mode,
               backgroundImageDataUrl: nextPreference.imageDataUrl ?? null,
             })
-            replaceVideoTrackOnPeers(canvasTrack, get().peerConnections)
+            replaceVideoTrackOnPeers(canvasTrack, get().peerConnections, get().sfuSession)
           } catch {
             set({ localStream: new MediaStream([...audioTracks, track]), blurProcessor: null, rawCameraTrack: null, backgroundEffect: 'off', backgroundImageDataUrl: null })
-            replaceVideoTrackOnPeers(track, get().peerConnections)
+            replaceVideoTrackOnPeers(track, get().peerConnections, get().sfuSession)
             toast.error('Background effect unavailable.')
           }
         } else {
           set({ localStream: new MediaStream([...audioTracks, track]) })
-          replaceVideoTrackOnPeers(track, get().peerConnections)
+          replaceVideoTrackOnPeers(track, get().peerConnections, get().sfuSession)
         }
 
         return track
@@ -468,7 +487,7 @@ export const usePeerStore = create<PeerState>()(
     },
 
     disableCamera: () => {
-      const { localStream, peerConnections, blurProcessor, rawCameraTrack } = get()
+      const { localStream, peerConnections, blurProcessor, rawCameraTrack, sfuSession } = get()
       if (!localStream) return
 
       if (blurProcessor) {
@@ -484,7 +503,7 @@ export const usePeerStore = create<PeerState>()(
       // reference that subsequent replaceTrack calls (e.g. screen share start) cannot find.
       const placeholder = createBlackVideoTrack()
       if (placeholder) {
-        replaceVideoTrackOnPeers(placeholder, peerConnections)
+        replaceVideoTrackOnPeers(placeholder, peerConnections, sfuSession)
         setTimeout(() => placeholder.stop(), 1000)
       }
 
@@ -497,7 +516,7 @@ export const usePeerStore = create<PeerState>()(
     },
 
     switchCamera: async () => {
-      const { localStream, facingMode, peerConnections, blurProcessor: activeProcessor, backgroundEffect, backgroundImageDataUrl } = get()
+      const { localStream, facingMode, peerConnections, blurProcessor: activeProcessor, backgroundEffect, backgroundImageDataUrl, sfuSession } = get()
       if (!localStream) return false
 
       const nextFacing: 'user' | 'environment' = facingMode === 'user' ? 'environment' : 'user'
@@ -524,15 +543,15 @@ export const usePeerStore = create<PeerState>()(
               ?? createBackgroundBlurProcessor('blur-medium')
             const canvasTrack = await newProcessor.start(newTrack)
             set({ localStream: new MediaStream([...audioTracks, canvasTrack]), facingMode: nextFacing, blurProcessor: newProcessor, rawCameraTrack: newTrack })
-            replaceVideoTrackOnPeers(canvasTrack, peerConnections)
+            replaceVideoTrackOnPeers(canvasTrack, peerConnections, sfuSession)
           } catch {
             set({ localStream: new MediaStream([...audioTracks, newTrack]), facingMode: nextFacing, blurProcessor: null, rawCameraTrack: null })
-            replaceVideoTrackOnPeers(newTrack, peerConnections)
+            replaceVideoTrackOnPeers(newTrack, peerConnections, sfuSession)
             toast.error('Background effect unavailable.')
           }
         } else {
           set({ localStream: new MediaStream([...audioTracks, newTrack]), facingMode: nextFacing })
-          replaceVideoTrackOnPeers(newTrack, peerConnections)
+          replaceVideoTrackOnPeers(newTrack, peerConnections, sfuSession)
         }
 
         return true
@@ -545,7 +564,7 @@ export const usePeerStore = create<PeerState>()(
     setAudioInput: async (deviceId) => {
       setDevicePreference('audioInputId', deviceId)
       set({ preferredAudioInputId: deviceId })
-      const { localStream, peerConnections, suppressNoise, noiseSuppressor } = get()
+      const { localStream, peerConnections, suppressNoise, noiseSuppressor, sfuSession } = get()
       if (!localStream?.getAudioTracks().length) return
       try {
         const audioConstraints: MediaTrackConstraints = {
@@ -565,7 +584,7 @@ export const usePeerStore = create<PeerState>()(
             const processedTrack = await suppressor.start(rawTrack)
             localStream.addTrack(processedTrack)
             set({ noiseSuppressor: suppressor, rawMicTrack: rawTrack })
-            replaceAudioSenderOnPeers(processedTrack, peerConnections)
+            replaceAudioSenderOnPeers(processedTrack, peerConnections, sfuSession)
             return
           } catch (e) {
             console.error('NoiseSuppressor.start failed on setAudioInput, falling back', e)
@@ -574,7 +593,7 @@ export const usePeerStore = create<PeerState>()(
 
         set({ noiseSuppressor: null, rawMicTrack: null })
         localStream.addTrack(rawTrack)
-        replaceAudioSenderOnPeers(rawTrack, peerConnections)
+        replaceAudioSenderOnPeers(rawTrack, peerConnections, sfuSession)
       } catch (e) {
         console.error('setAudioInput failed', e)
       }
@@ -583,7 +602,7 @@ export const usePeerStore = create<PeerState>()(
     setVideoInput: async (deviceId) => {
       setDevicePreference('videoInputId', deviceId)
       set({ preferredVideoInputId: deviceId })
-      const { localStream, peerConnections, blurProcessor: activeProcessor, backgroundEffect, backgroundImageDataUrl } = get()
+      const { localStream, peerConnections, blurProcessor: activeProcessor, backgroundEffect, backgroundImageDataUrl, sfuSession } = get()
       if (!localStream?.getVideoTracks().length) return
       try {
         const media = await navigator.mediaDevices.getUserMedia({
@@ -600,14 +619,14 @@ export const usePeerStore = create<PeerState>()(
             if (newProcessor) {
               const canvasTrack = await newProcessor.start(newTrack)
               set({ localStream: new MediaStream([...audioTracks, canvasTrack]), blurProcessor: newProcessor, rawCameraTrack: newTrack })
-              replaceVideoTrackOnPeers(canvasTrack, peerConnections)
+              replaceVideoTrackOnPeers(canvasTrack, peerConnections, sfuSession)
               return
             }
           } catch { /* fall through to raw track */ }
           set({ blurProcessor: null, rawCameraTrack: null })
         }
         set({ localStream: new MediaStream([...audioTracks, newTrack]) })
-        replaceVideoTrackOnPeers(newTrack, peerConnections)
+        replaceVideoTrackOnPeers(newTrack, peerConnections, sfuSession)
       } catch (e) {
         console.error('setVideoInput failed', e)
       }
@@ -640,7 +659,7 @@ export const usePeerStore = create<PeerState>()(
           const canvasTrack = await processor.start(rawTrack)
           // Replace localStream with a new object so useAttachTracks re-syncs the video element.
           const newStream = new MediaStream([...(localStream!.getAudioTracks()), canvasTrack])
-          replaceVideoTrackOnPeers(canvasTrack, get().peerConnections)
+          replaceVideoTrackOnPeers(canvasTrack, get().peerConnections, get().sfuSession)
           set({ localStream: newStream, blurProcessor: processor, rawCameraTrack: rawTrack })
           return true
         } catch (e) {
@@ -656,7 +675,7 @@ export const usePeerStore = create<PeerState>()(
         canvasTrack?.stop()
         if (rawCameraTrack && localStream) {
           const newStream = new MediaStream([...localStream.getAudioTracks(), rawCameraTrack])
-          replaceVideoTrackOnPeers(rawCameraTrack, get().peerConnections)
+          replaceVideoTrackOnPeers(rawCameraTrack, get().peerConnections, get().sfuSession)
           set({ localStream: newStream, blurProcessor: null, rawCameraTrack: null })
         } else {
           set({ blurProcessor: null, rawCameraTrack: null, backgroundEffect: 'off', backgroundImageDataUrl: null })
@@ -678,7 +697,7 @@ export const usePeerStore = create<PeerState>()(
         const track = media.getVideoTracks()[0]
         if (!track) return null
         // Push the screen track to peers via replaceTrack — no renegotiation.
-        replaceVideoTrackOnPeers(track, get().peerConnections)
+        replaceVideoTrackOnPeers(track, get().peerConnections, get().sfuSession)
         set({ screenTrack: track })
         return track
       } catch (e) {
@@ -694,12 +713,13 @@ export const usePeerStore = create<PeerState>()(
       // if the camera is currently off.
       const stream = get().localStream
       const cameraTrack = stream?.getVideoTracks()[0] ?? null
+      const sfuSession = get().sfuSession
       if (cameraTrack) {
-        replaceVideoTrackOnPeers(cameraTrack, get().peerConnections)
+        replaceVideoTrackOnPeers(cameraTrack, get().peerConnections, sfuSession)
       } else {
         const placeholder = createBlackVideoTrack()
         if (placeholder) {
-          replaceVideoTrackOnPeers(placeholder, get().peerConnections)
+          replaceVideoTrackOnPeers(placeholder, get().peerConnections, sfuSession)
           setTimeout(() => placeholder.stop(), 1000)
         }
       }
@@ -733,20 +753,22 @@ export const usePeerStore = create<PeerState>()(
     },
 
     clearPeers: () => {
-      const { peerConnections } = get()
-      peerConnections.forEach((c) => c.session.close())
-      set({ peerConnections: new Map(), peerStats: new Map() })
+      const { peerConnections, sfuSession } = get()
+      peerConnections.forEach((c) => c.session?.close())
+      sfuSession?.close()
+      set({ peerConnections: new Map(), peerStats: new Map(), sfuSession: null })
     },
 
     clearAll: () => {
-      const { localStream, peerConnections, blurProcessor, rawCameraTrack, noiseSuppressor, rawMicTrack } = get()
+      const { localStream, peerConnections, blurProcessor, rawCameraTrack, noiseSuppressor, rawMicTrack, sfuSession } = get()
       const backgroundPreference = getBackgroundEffectPreference()
       blurProcessor?.stop()
       rawCameraTrack?.stop()
       noiseSuppressor?.stop()
       rawMicTrack?.stop()
       localStream?.getTracks().forEach((t) => t.stop())
-      peerConnections.forEach((c) => c.session.close())
+      peerConnections.forEach((c) => c.session?.close())
+      sfuSession?.close()
       set({
         localStream: null,
         screenTrack: null,
@@ -758,6 +780,7 @@ export const usePeerStore = create<PeerState>()(
         backgroundImageDataUrl: backgroundPreference.imageDataUrl ?? null,
         peerConnections: new Map(),
         peerStats: new Map(),
+        sfuSession: null,
       })
     },
   }

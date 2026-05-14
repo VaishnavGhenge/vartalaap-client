@@ -256,6 +256,7 @@ export function usePeerStats(client: SignalingClient | null) {
       const localVideoTrack = localStream?.getVideoTracks()[0] ?? null
 
       for (const [id, conn] of peerConnections) {
+        if (!conn.session) continue // SFU mode — no per-peer session to stat
         if (conn.session.destroyed || conn.session.connectionState === 'closed') continue
 
         try {
