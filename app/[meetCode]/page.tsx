@@ -26,6 +26,7 @@ export default function MeetManager() {
         userName,
         initialAudio: !isMuted,
         initialVideo: !isVideoOff,
+        sfuEnabled: true
     });
 
     useEffect(() => {
