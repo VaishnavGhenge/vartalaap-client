@@ -1,99 +1,70 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
+import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
+import { login, logout, register, refreshSession } from '@/src/services/api/auth'
 import { useAuthStore } from '@/src/stores/auth'
-
-interface LoginData {
-  email: string
-  password: string
-}
-
-interface RegisterData {
-  name: string
-  email: string
-  password: string
-}
-
-// Mock API functions - replace with actual API calls
-const loginUser = async (data: LoginData) => {
-  // Replace with actual API call
-  const response = await fetch('/api/auth/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  
-  if (!response.ok) {
-    throw new Error('Login failed')
-  }
-  
-  return response.json()
-}
-
-const registerUser = async (data: RegisterData) => {
-  // Replace with actual API call
-  const response = await fetch('/api/auth/register', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  
-  if (!response.ok) {
-    throw new Error('Registration failed')
-  }
-  
-  return response.json()
-}
+import type { RegisterCredentials, UserCredentials } from '@/src/types/auth'
 
 export const useLogin = () => {
-  const { login, setLoading } = useAuthStore()
-  
-  return useMutation({
-    mutationFn: loginUser,
-    onMutate: () => {
-      setLoading(true)
-    },
-    onSuccess: (data) => {
-      login(data.user)
-      toast.success('Successfully logged in!')
-    },
-    onError: (error) => {
-      setLoading(false)
-      toast.error(error.message || 'Login failed')
-    },
-  })
+    const { login: storeLogin } = useAuthStore()
+    const router = useRouter()
+
+    return useMutation({
+        mutationFn: (creds: UserCredentials) => login(creds),
+        onSuccess: ({ user }) => {
+            storeLogin(user)
+            toast.success('Signed in')
+            router.push('/')
+        },
+        onError: (err: Error) => {
+            toast.error(err.message || 'Login failed')
+        },
+    })
 }
 
 export const useRegister = () => {
-  const { login, setLoading } = useAuthStore()
-  
-  return useMutation({
-    mutationFn: registerUser,
-    onMutate: () => {
-      setLoading(true)
-    },
-    onSuccess: (data) => {
-      login(data.user)
-      toast.success('Account created successfully!')
-    },
-    onError: (error) => {
-      setLoading(false)
-      toast.error(error.message || 'Registration failed')
-    },
-  })
+    const { login: storeLogin } = useAuthStore()
+    const router = useRouter()
+
+    return useMutation({
+        mutationFn: (creds: RegisterCredentials) => register(creds),
+        onSuccess: ({ user }) => {
+            storeLogin(user)
+            toast.success('Account created')
+            router.push('/')
+        },
+        onError: (err: Error) => {
+            toast.error(err.message || 'Registration failed')
+        },
+    })
+}
+
+export const useLogout = () => {
+    const { logout: storeLogout } = useAuthStore()
+    const router = useRouter()
+
+    return () => {
+        logout().finally(() => {
+            storeLogout()
+            router.push('/login')
+        })
+    }
 }
 
 export const useAuth = () => {
-  const { user, isAuthenticated, isLoading, logout } = useAuthStore()
-  
-  const handleLogout = () => {
-    logout()
-    toast.success('Logged out successfully')
-  }
-  
-  return {
-    user,
-    isAuthenticated,
-    isLoading,
-    logout: handleLogout,
-  }
+    const { user, isAuthenticated, isLoading } = useAuthStore()
+    const handleLogout = useLogout()
+    return { user, isAuthenticated, isLoading, logout: handleLogout }
+}
+
+// Call once on app boot to restore session from the HttpOnly refresh cookie.
+export async function restoreSession() {
+    const { login: storeLogin, logout: storeLogout, setLoading } = useAuthStore.getState()
+    setLoading(true)
+    const resp = await refreshSession()
+    if (resp) {
+        storeLogin(resp.user)
+    } else {
+        storeLogout()
+    }
 }

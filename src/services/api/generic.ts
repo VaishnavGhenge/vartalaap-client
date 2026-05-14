@@ -1,47 +1,23 @@
-import {httpServerUri} from "@/src/services/api/config";
+import { httpServerUri } from '@/src/services/api/config'
+import { getAccessToken } from '@/src/services/api/token'
 
-function getJWTToken() {
-    const user = localStorage.getItem("user");
-    if (!user) {
-        return null;
-    }
-
-    return JSON.parse(user).token as string;
+function authHeaders(): Record<string, string> {
+    const token = getAccessToken()
+    return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
-export function get<T>(url: string): Promise<T> {
-    // const token = getJWTToken();
-    //
-    // if (token) {
-    //     return fetch(url, {
-    //         headers: {
-    //             Authorization: `Bearer ${token}`,
-    //         },
-    //     }) as Promise<T>;
-    // }
-
-    return fetch(`${httpServerUri}/${url}`) as Promise<T>;
+export function get<T>(path: string): Promise<T> {
+    return fetch(`${httpServerUri}/${path}`, {
+        credentials: 'include',
+        headers: authHeaders(),
+    }) as Promise<T>
 }
 
-export function post<T>(url: string, data?: any): Promise<T> {
-    // const token = getJWTToken();
-    //
-    // if (token) {
-    //     return fetch(url, {
-    //         method: "POST",
-    //         headers: {
-    //             "Content-Type": "application/json",
-    //             Authorization: `Bearer ${token}`,
-    //         },
-    //         body: JSON.stringify(data),
-    //     }) as Promise<T>;
-    // }
-
-    return fetch(`${httpServerUri}/${url}`, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify(data),
-    }) as Promise<T>;
+export function post<T>(path: string, data?: unknown): Promise<T> {
+    return fetch(`${httpServerUri}/${path}`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: data !== undefined ? JSON.stringify(data) : undefined,
+    }) as Promise<T>
 }
