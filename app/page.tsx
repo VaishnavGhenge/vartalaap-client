@@ -6,25 +6,31 @@ import { NewMeetingButton } from "@/src/components/ui/NewMeetButton";
 import { JoinMeetButton } from "@/src/components/ui/JoinMeetButton";
 import { Input } from "@/src/components/ui/input";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useTransition } from "react";
+
+const meetCodePattern = /^[a-z2-9]{3}-[a-z2-9]{4}-[a-z2-9]{3}$/;
 
 export default function Home() {
     const router = useRouter();
     const [meetingCode, setMeetingCode] = useState("");
+    const [isJoining, startJoinTransition] = useTransition();
 
     const normalizedCode = (() => {
         const trimmed = meetingCode.trim();
         try {
             const url = new URL(trimmed.includes('://') ? trimmed : `https://${trimmed}`);
             const path = url.pathname.replace(/^\/+|\/+$/g, '');
-            if (path) return path;
+            if (path) return path.toLowerCase();
         } catch { /* not a url */ }
-        return trimmed.replace(/^\/+|\/+$/g, '');
+        return trimmed.replace(/^\/+|\/+$/g, '').toLowerCase();
     })();
+    const canJoin = meetCodePattern.test(normalizedCode);
 
     const handleJoin = () => {
-        if (!normalizedCode) return;
-        router.push(`/${normalizedCode}`);
+        if (!canJoin || isJoining) return;
+        startJoinTransition(() => {
+            router.push(`/${normalizedCode}`);
+        });
     };
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -73,9 +79,11 @@ export default function Home() {
                                     autoComplete="off"
                                     autoCorrect="off"
                                     spellCheck={false}
+                                    disabled={isJoining}
                                 />
                                 <JoinMeetButton
-                                    disabled={!normalizedCode}
+                                    disabled={!canJoin || isJoining}
+                                    loading={isJoining}
                                     onJoin={handleJoin}
                                     className="shrink-0"
                                 />

@@ -1,29 +1,35 @@
 import {useRouter} from "next/navigation";
 import {Button} from "@/src/components/ui/button";
-import { ComponentProps } from "react";
-
-const ALPHABET = "abcdefghijkmnpqrstuvwxyz23456789";
-
-function generateMeetCode(): string {
-    const bytes = new Uint8Array(10);
-    crypto.getRandomValues(bytes);
-    const chars = Array.from(bytes, (b) => ALPHABET[b % ALPHABET.length]);
-    return `${chars.slice(0, 3).join("")}-${chars.slice(3, 7).join("")}-${chars.slice(7, 10).join("")}`;
-}
+import { ComponentProps, useState } from "react";
+import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import { createMeet } from "@/src/services/api/meet";
 
 export const NewMeetingButton = (props: Omit<ComponentProps<typeof Button>, "onClick">) => {
     const router = useRouter();
+    const [isCreating, setIsCreating] = useState(false);
 
-    const requestNewMeet = () => {
-        router.push(`/${generateMeetCode()}`);
+    const requestNewMeet = async () => {
+        if (isCreating) return;
+        setIsCreating(true);
+        try {
+            const meet = await createMeet();
+            router.push(`/${meet.meetCode}`);
+        } catch {
+            toast.error("Could not create meeting. Please try again.");
+            setIsCreating(false);
+        }
     }
 
     return (
         <Button
             onClick={requestNewMeet}
+            aria-busy={isCreating}
             {...props}
+            disabled={isCreating || props.disabled}
         >
-            New meeting
+            {isCreating && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
+            {isCreating ? "Creating..." : "New meeting"}
         </Button>
     )
 }

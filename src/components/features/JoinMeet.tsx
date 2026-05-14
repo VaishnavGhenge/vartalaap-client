@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Copy, Check, Share2, Settings } from "lucide-react";
+import { Copy, Check, Share2, Settings, Loader2 } from "lucide-react";
 import { SettingsPanel } from "@/src/components/ui/SettingsPanel";
 import { resumeSharedAudioContext } from "@/src/lib/audio-context";
 import { playJoinCall } from "@/src/lib/sounds";
@@ -25,6 +25,8 @@ import { MicLevelMeter } from "@/src/components/ui/MicLevelMeter";
 import { DeviceSelect } from "@/src/components/ui/DeviceSelect";
 import { Collapsible } from "@/src/components/ui/Collapsible";
 
+const meetCodePattern = /^[a-z2-9]{3}-[a-z2-9]{4}-[a-z2-9]{3}$/;
+
 export default function JoinMeet() {
     const params = useParams<{ meetCode: string }>();
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -33,6 +35,7 @@ export default function JoinMeet() {
     const [copied, setCopied] = useState(false);
     const [canShare, setCanShare] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
+    const [isJoining, setIsJoining] = useState(false);
     useEffect(() => { setCanShare('share' in navigator); }, []);
 
     const { localStream, enableMic, disableMic, enableCamera, disableCamera, switchCamera, setIceServers,
@@ -44,6 +47,7 @@ export default function JoinMeet() {
     const showSpeaker = supportsAudioOutputSelection() && audioOutputs.length > 0;
     const { speaking, level } = useAudioLevel(localStream, !isMuted);
     const { userName, setUserName, setMeetCode: setStoredMeetCode, setHasJoinedMeet } = useJoinMeetStore();
+    const canJoinMeet = meetCodePattern.test(params.meetCode);
 
     useEffect(() => { setMeetCode(params.meetCode); }, [params]);
 
@@ -79,7 +83,8 @@ export default function JoinMeet() {
     };
 
     const handleJoin = () => {
-        if (!userName.trim()) return;
+        if (!userName.trim() || !canJoinMeet || isJoining) return;
+        setIsJoining(true);
         setStoredMeetCode(params.meetCode);
         resumeSharedAudioContext();
         playJoinCall();
@@ -256,14 +261,17 @@ export default function JoinMeet() {
                                     onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
                                     autoComplete="name"
                                     maxLength={40}
+                                    disabled={isJoining}
                                 />
                                 <Button
                                     onClick={handleJoin}
-                                    disabled={!userName.trim()}
+                                    disabled={!userName.trim() || !canJoinMeet || isJoining}
+                                    aria-busy={isJoining}
                                     size="lg"
                                     className="w-full"
                                 >
-                                    Join now
+                                    {isJoining && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
+                                    {isJoining ? "Joining..." : "Join now"}
                                 </Button>
                             </div>
                         </div>

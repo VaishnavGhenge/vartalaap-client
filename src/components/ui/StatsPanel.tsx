@@ -36,6 +36,12 @@ const ENCODING_LABEL: Record<PeerStats['encodingLevel'], string> = {
   0: '200 kbps',
 }
 
+const UPLOAD_VIDEO_LABEL: Record<PeerStats['encodingLevel'], string> = {
+  2: 'Full',
+  1: 'Reduced',
+  0: 'Low',
+}
+
 const PRESSURE_LABEL: Record<PeerStats['networkPressure'], string> = {
   low: 'Low',
   medium: 'Medium',
@@ -171,10 +177,17 @@ function PeerCard({ name, stats }: { name: string; stats: PeerStats }) {
         />
         <Chip label="Jitter" value={`${stats.jitterMs} ms`} />
         <Chip
-          label="Encoding"
-          value={stats.videoHeld ? 'Audio only' : ENCODING_LABEL[stats.encodingLevel]}
+          label="Your video"
+          value={stats.videoHeld ? 'Paused' : UPLOAD_VIDEO_LABEL[stats.encodingLevel]}
           level={encLevel(stats.encodingLevel)}
         />
+        {!stats.videoHeld && (
+          <Chip
+            label="Upload cap"
+            value={ENCODING_LABEL[stats.encodingLevel]}
+            level={encLevel(stats.encodingLevel)}
+          />
+        )}
         <Chip
           label="Pressure"
           value={PRESSURE_LABEL[stats.networkPressure]}
