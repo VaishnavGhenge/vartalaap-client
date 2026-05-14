@@ -29,9 +29,10 @@ interface MeetCallProps {
     connState: ConnState;
     reconnectAttempt: number;
     routeMeetCode?: string;
+    onLeave?: () => void;
 }
 
-export default function MeetCall({ client, connState, reconnectAttempt, routeMeetCode }: MeetCallProps) {
+export default function MeetCall({ client, connState, reconnectAttempt, routeMeetCode, onLeave }: MeetCallProps) {
     const { isMuted, isVideoOff, isScreenSharing, toggleMute, toggleVideo, toggleScreenShare, clearMeet } = useMeetStore();
     const { localStream, screenTrack, enableMic, disableMic, enableCamera, disableCamera, switchCamera, startScreenShare, stopScreenShare, peerConnections, peerStats } = usePeerStore();
     const hasMultipleCameras = useHasMultipleCameras();
@@ -270,8 +271,12 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
         screenTrackRef.current?.stop();
         screenTrackRef.current = null;
         playLeaveCall();
-        clearMeet();
-        clearJoinMeet();
+        if (onLeave) {
+            onLeave();
+        } else {
+            clearMeet();
+            clearJoinMeet();
+        }
     };
 
     const togglePin = (id: string) => setPinnedId(prev => prev === id ? null : id);
@@ -288,7 +293,8 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                 outboundBitrateKbps: 0, inboundBitrateKbps: 0,
                 packetLossPercent: 0, roundTripTimeMs: -1,
                 jitterMs: 0, candidateType: 'unknown' as const,
-                quality: 'unknown' as const, encodingLevel: 2 as const, videoHeld: false, timestamp: 0,
+                quality: 'unknown' as const, networkPressure: 'unknown' as const,
+                encodingLevel: 2 as const, videoHeld: false, timestamp: 0,
             },
         })),
         [remotePeers, peerStats],

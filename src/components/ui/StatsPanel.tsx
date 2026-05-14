@@ -36,6 +36,14 @@ const ENCODING_LABEL: Record<PeerStats['encodingLevel'], string> = {
   0: '200 kbps',
 }
 
+const PRESSURE_LABEL: Record<PeerStats['networkPressure'], string> = {
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  severe: 'Severe',
+  unknown: '—',
+}
+
 type Level = 'ok' | 'warn' | 'bad'
 
 const LEVEL_COLOR: Record<Level, string> = {
@@ -53,6 +61,9 @@ function lossLevel(pct: number): Level {
 }
 function encLevel(l: PeerStats['encodingLevel']): Level {
   return l === 0 ? 'bad' : l === 1 ? 'warn' : 'ok'
+}
+function pressureLevel(p: PeerStats['networkPressure']): Level {
+  return p === 'severe' || p === 'high' ? 'bad' : p === 'medium' ? 'warn' : 'ok'
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -161,8 +172,13 @@ function PeerCard({ name, stats }: { name: string; stats: PeerStats }) {
         <Chip label="Jitter" value={`${stats.jitterMs} ms`} />
         <Chip
           label="Encoding"
-          value={ENCODING_LABEL[stats.encodingLevel]}
+          value={stats.videoHeld ? 'Audio only' : ENCODING_LABEL[stats.encodingLevel]}
           level={encLevel(stats.encodingLevel)}
+        />
+        <Chip
+          label="Pressure"
+          value={PRESSURE_LABEL[stats.networkPressure]}
+          level={pressureLevel(stats.networkPressure)}
         />
         {stats.frameWidth != null && stats.frameHeight != null && (
           <div className="col-span-2">

@@ -59,6 +59,7 @@ function makeClient() {
       sent.push({ type, data, extra })
     }),
     getPeerId: vi.fn(() => 'peer-alice'),
+    getPresenceId: vi.fn(() => 'presence-alice-tab'),
     onReconnected: undefined as (() => void) | undefined,
     setReconnectedHandler: vi.fn((handler: (() => void) | undefined) => {
       client.onReconnected = handler
@@ -122,7 +123,12 @@ describe('useCall — join', () => {
 
     const joinMsg = client.sent.find(m => m.type === 'join')
     expect(joinMsg).toBeDefined()
-    expect(joinMsg?.data).toMatchObject({ name: 'Alice', audio: true, video: true })
+    expect(joinMsg?.data).toMatchObject({
+      name: 'Alice',
+      audio: true,
+      video: true,
+      presenceId: 'presence-alice-tab',
+    })
     expect((joinMsg?.extra as Record<string, unknown>)?.room).toBe('room-1')
   })
 

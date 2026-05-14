@@ -32,6 +32,7 @@ export interface JoinData {
   name: string
   audio: boolean
   video: boolean
+  presenceId?: string
 }
 
 export interface JoinedData { peers: PeerInfo[] }
@@ -43,12 +44,15 @@ export interface ErrorData { message: string }
 export interface StatsReportPeer {
   peerId: string
   quality: 'good' | 'medium' | 'poor' | 'unknown'
+  networkPressure: 'low' | 'medium' | 'high' | 'severe' | 'unknown'
   roundTripTimeMs: number
   packetLossPercent: number
   outboundBitrateKbps: number
   inboundBitrateKbps: number
   candidateType: 'host' | 'srflx' | 'relay' | 'unknown'
   jitterMs: number
+  encodingLevel: 0 | 1 | 2
+  videoHeld: boolean
   frameWidth?: number
   frameHeight?: number
   framesPerSecond?: number

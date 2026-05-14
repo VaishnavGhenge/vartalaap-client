@@ -45,6 +45,7 @@ export default function MeetManager() {
     }, [clearAll, clearMeet, setHasJoinedMeet, setMeetCode]);
 
     const handleLeave = () => {
+        client?.send('leave', undefined, { room: meetCode });
         clearAll();
         clearMeet();
         setHasJoinedMeet(false);
@@ -56,7 +57,13 @@ export default function MeetManager() {
             {hasJoinedMeet
                 ? (
                     <CallErrorBoundary onLeave={handleLeave}>
-                        <MeetCall client={client} connState={connState} reconnectAttempt={reconnectAttempt} routeMeetCode={meetCode} />
+                        <MeetCall
+                            client={client}
+                            connState={connState}
+                            reconnectAttempt={reconnectAttempt}
+                            routeMeetCode={meetCode}
+                            onLeave={handleLeave}
+                        />
                     </CallErrorBoundary>
                 )
                 : <JoinMeet />}

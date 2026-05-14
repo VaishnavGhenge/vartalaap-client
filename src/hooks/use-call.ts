@@ -125,7 +125,12 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       pendingSignals.clear()
       store.getState().clearPeers()
       const a = joinArgs.current
-      client.send('join', { name: a.userName, audio: a.initialAudio, video: a.initialVideo }, { room: roomId })
+      client.send('join', {
+        name: a.userName,
+        audio: a.initialAudio,
+        video: a.initialVideo,
+        presenceId: client.getPresenceId(),
+      }, { room: roomId })
     })
 
     client.on('joined', handleJoined as (env: Envelope) => void)
@@ -147,7 +152,12 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
         }
         if (disposed) return
         const a = joinArgs.current
-        client.send('join', { name: a.userName, audio: a.initialAudio, video: a.initialVideo }, { room: roomId })
+        client.send('join', {
+          name: a.userName,
+          audio: a.initialAudio,
+          video: a.initialVideo,
+          presenceId: client.getPresenceId(),
+        }, { room: roomId })
       } catch (e) {
         console.error('failed to init call', e)
       }

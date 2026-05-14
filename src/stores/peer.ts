@@ -43,6 +43,7 @@ export interface PeerStats {
   jitterMs: number
   candidateType: 'host' | 'srflx' | 'relay' | 'unknown'
   quality: 'good' | 'medium' | 'poor' | 'unknown'
+  networkPressure: 'low' | 'medium' | 'high' | 'severe' | 'unknown'
   encodingLevel: EncodingLevel
   /** True while outbound video is held back due to sustained poor quality. */
   videoHeld: boolean

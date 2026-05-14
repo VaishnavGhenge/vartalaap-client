@@ -8,12 +8,34 @@ const MAX_ATTEMPTS = 5
 const GRACE_MS = 2000      // grace period before showing reconnect UI
 const PING_MS = 15_000     // heartbeat interval
 const MAX_MISSED_PONGS = 2 // missed pongs before treating connection as dead
+const PRESENCE_ID_KEY = 'vartalaap.presenceId'
+
+function newPresenceId(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID()
+  }
+  return `presence-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+}
+
+function getOrCreatePresenceId(): string {
+  if (typeof sessionStorage === 'undefined') return newPresenceId()
+  try {
+    const existing = sessionStorage.getItem(PRESENCE_ID_KEY)
+    if (existing) return existing
+    const id = newPresenceId()
+    sessionStorage.setItem(PRESENCE_ID_KEY, id)
+    return id
+  } catch {
+    return newPresenceId()
+  }
+}
 
 export class SignalingClient {
   private ws: WebSocket | null = null
   private handlers = new Map<MsgType, Set<Handler>>()
   private url: string
   private peerId: string | null = null
+  private presenceId = getOrCreatePresenceId()
 
   private disposed = false
   private attempt = 0
@@ -133,4 +155,5 @@ export class SignalingClient {
   }
 
   getPeerId() { return this.peerId }
+  getPresenceId() { return this.presenceId }
 }

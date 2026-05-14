@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { parseReport, stepAdaptation, type PrevEntry } from '../use-peer-stats'
+import { classifyNetworkPressure, parseReport, stepAdaptation, type PrevEntry } from '../use-peer-stats'
 import type { EncodingLevel } from '@/src/stores/peer'
 import type { WebRTCSession } from '@/src/services/webrtc/session'
 
@@ -22,6 +22,7 @@ describe('parseReport – quality classification', () => {
         ])
         const stats = parseReport(report, 'peer1', new Map(), 2, false)
         expect(stats.quality).toBe('good')
+        expect(stats.networkPressure).toBe('low')
     })
 
     it('classifies "medium" when loss is moderate or RTT is elevated', () => {
@@ -31,6 +32,7 @@ describe('parseReport – quality classification', () => {
         ])
         const stats = parseReport(report, 'peer1', new Map(), 2, false)
         expect(stats.quality).toBe('medium')
+        expect(stats.networkPressure).toBe('medium')
     })
 
     it('classifies "poor" when loss >= 8% or RTT >= 400ms', () => {
@@ -40,6 +42,7 @@ describe('parseReport – quality classification', () => {
         ])
         const stats = parseReport(report, 'peer1', new Map(), 2, false)
         expect(stats.quality).toBe('poor')
+        expect(stats.networkPressure).toBe('high')
     })
 
     it('returns quality "unknown" when no RTT data is available', () => {
@@ -87,6 +90,20 @@ describe('parseReport – quality classification', () => {
     })
 })
 
+describe('classifyNetworkPressure', () => {
+    it('treats high jitter as severe even when loss is low', () => {
+        expect(classifyNetworkPressure(0.5, 80, 140)).toBe('severe')
+    })
+
+    it('treats relay plus elevated loss as severe sooner', () => {
+        expect(classifyNetworkPressure(8, 250, 20, 'relay')).toBe('severe')
+    })
+
+    it('treats high RTT as high pressure before quality becomes unusable', () => {
+        expect(classifyNetworkPressure(1, 450, 20)).toBe('high')
+    })
+})
+
 // ─── stepAdaptation ──────────────────────────────────────────────────────────
 
 function makeSession(): WebRTCSession {
@@ -97,6 +114,17 @@ function makeSession(): WebRTCSession {
     } as unknown as WebRTCSession
 }
 
+function stats(overrides: Partial<Parameters<typeof stepAdaptation>[2]> = {}): Parameters<typeof stepAdaptation>[2] {
+    return {
+        packetLossPercent: 0,
+        roundTripTimeMs: 50,
+        jitterMs: 5,
+        candidateType: 'host',
+        networkPressure: 'low',
+        ...overrides,
+    }
+}
+
 describe('stepAdaptation – encoding level stepping', () => {
     it('steps down after STEP_DOWN_SAMPLES consecutive high-loss polls', () => {
         const levels = new Map<string, EncodingLevel>()
@@ -104,10 +132,20 @@ describe('stepAdaptation – encoding level stepping', () => {
         const good   = new Map<string, number>()
         const session = makeSession()
 
-        let level = stepAdaptation('p1', session, 10, levels, bad, good)
+        let level = stepAdaptation('p1', session, stats({ packetLossPercent: 6, networkPressure: 'high' }), levels, bad, good)
         expect(level).toBe(2)
 
-        level = stepAdaptation('p1', session, 10, levels, bad, good)
+        level = stepAdaptation('p1', session, stats({ packetLossPercent: 6, networkPressure: 'high' }), levels, bad, good)
+        expect(level).toBe(1)
+    })
+
+    it('steps down immediately under severe pressure', () => {
+        const levels = new Map<string, EncodingLevel>()
+        const bad    = new Map<string, number>()
+        const good   = new Map<string, number>()
+        const session = makeSession()
+
+        const level = stepAdaptation('p1', session, stats({ packetLossPercent: 14, networkPressure: 'severe' }), levels, bad, good)
         expect(level).toBe(1)
     })
 
@@ -118,21 +156,21 @@ describe('stepAdaptation – encoding level stepping', () => {
         const session = makeSession()
 
         for (let i = 0; i < 4; i++) {
-            const level = stepAdaptation('p1', session, 0, levels, bad, good)
+            const level = stepAdaptation('p1', session, stats(), levels, bad, good)
             expect(level).toBe(0)
         }
 
-        const level = stepAdaptation('p1', session, 0, levels, bad, good)
+        const level = stepAdaptation('p1', session, stats(), levels, bad, good)
         expect(level).toBe(1)
     })
 
-    it('holds level in the middle band (1% ≤ loss < 5%) and resets counters', () => {
+    it('holds level under medium pressure and resets counters', () => {
         const levels = new Map<string, EncodingLevel>([['p1', 1 as EncodingLevel]])
         const bad    = new Map<string, number>([['p1', 3]])
         const good   = new Map<string, number>([['p1', 3]])
         const session = makeSession()
 
-        const level = stepAdaptation('p1', session, 3, levels, bad, good)
+        const level = stepAdaptation('p1', session, stats({ packetLossPercent: 3, networkPressure: 'medium' }), levels, bad, good)
         expect(level).toBe(1)
         expect(bad.get('p1')).toBe(0)
         expect(good.get('p1')).toBe(0)
@@ -144,7 +182,7 @@ describe('stepAdaptation – encoding level stepping', () => {
         const good   = new Map<string, number>()
         const session = makeSession()
 
-        const level = stepAdaptation('p1', session, 20, levels, bad, good)
+        const level = stepAdaptation('p1', session, stats({ packetLossPercent: 20, networkPressure: 'severe' }), levels, bad, good)
         expect(level).toBe(0)
     })
 
@@ -154,7 +192,7 @@ describe('stepAdaptation – encoding level stepping', () => {
         const good   = new Map<string, number>([['p1', 10]])
         const session = makeSession()
 
-        const level = stepAdaptation('p1', session, 0, levels, bad, good)
+        const level = stepAdaptation('p1', session, stats(), levels, bad, good)
         expect(level).toBe(2)
     })
 
@@ -164,8 +202,8 @@ describe('stepAdaptation – encoding level stepping', () => {
         const good   = new Map<string, number>()
         const session = makeSession()
 
-        stepAdaptation('p1', session, 10, levels, bad, good)
-        stepAdaptation('p1', session, 10, levels, bad, good)
+        stepAdaptation('p1', session, stats({ packetLossPercent: 6, networkPressure: 'high' }), levels, bad, good)
+        stepAdaptation('p1', session, stats({ packetLossPercent: 6, networkPressure: 'high' }), levels, bad, good)
 
         expect(session.applyEncodingLevel).toHaveBeenCalledWith(1)
     })

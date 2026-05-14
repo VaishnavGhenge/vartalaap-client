@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useRef } from 'react'
 import { usePeerStore, type PeerStats, type EncodingLevel } from '@/src/stores/peer'
+import { useMeetStore } from '@/src/stores/meet'
 import type { SignalingClient } from '@/src/services/signaling/client'
 import type { StatsReportPeer } from '@/src/services/signaling/protocol'
 import type { WebRTCSession } from '@/src/services/webrtc/session'
@@ -10,21 +11,21 @@ const REPORT_MS = 30_000
 
 // ─── Adaptive encoding levels ─────────────────────────────────────────────────
 //
-// Step-down trigger: packetLoss ≥ STEP_DOWN_LOSS_PCT for STEP_DOWN_SAMPLES
-//   consecutive polls. Two bad samples = 4 s — fast enough to ease congestion
-//   before GoogCC drives quality into the floor.
+// Step-down trigger: high pressure for STEP_DOWN_SAMPLES consecutive polls,
+//   or severe pressure immediately. Pressure is based on packet loss, RTT,
+//   jitter, and whether the path is already TURN-relayed.
 //
-// Step-up trigger: packetLoss < STEP_UP_LOSS_PCT for STEP_UP_SAMPLES
-//   consecutive polls. Five clean samples = 10 s — conservative to prevent
-//   oscillation on marginal paths.
+// Step-up trigger: low pressure for STEP_UP_SAMPLES consecutive polls. Five
+//   clean samples = 10 s — conservative to prevent oscillation on marginal paths.
 
-const STEP_DOWN_LOSS_PCT  = 5   // %
-const STEP_DOWN_SAMPLES   = 2
-const STEP_UP_LOSS_PCT    = 1   // %
-const STEP_UP_SAMPLES     = 5
+const STEP_DOWN_SAMPLES        = 2
+const SEVERE_STEP_DOWN_SAMPLES = 1
+const STEP_UP_SAMPLES          = 5
 // Sustained bad samples at level 0 before outbound video is held back entirely.
-// 8 × 2 s = 16 s at minimum bitrate with continued poor quality.
-const AUDIO_ONLY_SAMPLES  = 8
+// Severe paths hold after 6 s; merely poor paths hold after 16 s.
+const AUDIO_ONLY_POOR_SAMPLES   = 8
+const AUDIO_ONLY_SEVERE_SAMPLES = 3
+const VIDEO_RESTORE_SAMPLES     = 5
 
 // ─── Stats parsing ─────────────────────────────────────────────────────────────
 
@@ -32,6 +33,7 @@ export interface PrevEntry { bytesSent: number; bytesReceived: number; ts: numbe
 
 // RTCStatsReport entries are loosely typed in the DOM lib.
 type StatsEntry = Record<string, any>
+type NetworkPressure = PeerStats['networkPressure']
 
 function n(entry: StatsEntry, key: string): number {
   return typeof entry[key] === 'number' ? entry[key] : 0
@@ -106,11 +108,12 @@ export function parseReport(
 
   const packetLossPercent = fractionLost * 100
 
+  const networkPressure = classifyNetworkPressure(packetLossPercent, rttMs, jitterMs, candidateType)
   let quality: PeerStats['quality'] = 'unknown'
   if (rttMs >= 0) {
-    if      (packetLossPercent < 2 && rttMs < 150) quality = 'good'
-    else if (packetLossPercent < 8 && rttMs < 400) quality = 'medium'
-    else                                            quality = 'poor'
+    if      (networkPressure === 'low') quality = 'good'
+    else if (networkPressure === 'medium') quality = 'medium'
+    else quality = 'poor'
   }
 
   return {
@@ -121,6 +124,7 @@ export function parseReport(
     jitterMs: Math.round(jitterMs),
     candidateType,
     quality,
+    networkPressure,
     encodingLevel,
     videoHeld,
     timestamp: now,
@@ -130,31 +134,53 @@ export function parseReport(
   }
 }
 
+export function classifyNetworkPressure(
+  loss: number,
+  rttMs: number,
+  jitterMs: number,
+  candidateType: PeerStats['candidateType'] = 'unknown',
+): NetworkPressure {
+  if (rttMs < 0) return 'unknown'
+  const relay = candidateType === 'relay'
+  if (loss >= 12 || rttMs >= 700 || jitterMs >= 120 || (relay && loss >= 8)) return 'severe'
+  if (loss >= 5 || rttMs >= 400 || jitterMs >= 80 || (relay && rttMs >= 500)) return 'high'
+  if (loss >= 2 || rttMs >= 150 || jitterMs >= 30) return 'medium'
+  return 'low'
+}
+
 // ─── Adaptive step function ───────────────────────────────────────────────────
 
 export function stepAdaptation(
   peerId: string,
   session: WebRTCSession,
-  loss: number,
+  stats: Pick<PeerStats, 'packetLossPercent' | 'roundTripTimeMs' | 'jitterMs' | 'candidateType' | 'networkPressure'>,
   levels:  Map<string, EncodingLevel>,
   badCnt:  Map<string, number>,
   goodCnt: Map<string, number>,
 ): EncodingLevel {
   const level = levels.get(peerId) ?? 2
+  const pressure = stats.networkPressure
+  const shouldStepDown = pressure === 'high' || pressure === 'severe'
+  const shouldStepUp = pressure === 'low'
 
-  if (loss >= STEP_DOWN_LOSS_PCT) {
+  if (shouldStepDown) {
     goodCnt.set(peerId, 0)
     const bad = (badCnt.get(peerId) ?? 0) + 1
     badCnt.set(peerId, bad)
-    if (bad >= STEP_DOWN_SAMPLES && level > 0) {
+    const threshold = pressure === 'severe' ? SEVERE_STEP_DOWN_SAMPLES : STEP_DOWN_SAMPLES
+    if (bad >= threshold && level > 0) {
       const next = (level - 1) as EncodingLevel
       levels.set(peerId, next)
       badCnt.set(peerId, 0)
-      console.info('[adaptive] peer=%s ↓ level %d→%d  loss=%.1f%%', peerId.slice(0, 8), level, next, loss)
+      console.info(
+        '[adaptive] peer=%s ↓ level %d→%d pressure=%s loss=%.1f%% rtt=%dms jitter=%dms',
+        peerId.slice(0, 8), level, next, pressure,
+        stats.packetLossPercent, stats.roundTripTimeMs, stats.jitterMs,
+      )
       void session.applyEncodingLevel(next)
       return next
     }
-  } else if (loss < STEP_UP_LOSS_PCT) {
+  } else if (shouldStepUp) {
     badCnt.set(peerId, 0)
     const good = (goodCnt.get(peerId) ?? 0) + 1
     goodCnt.set(peerId, good)
@@ -162,12 +188,16 @@ export function stepAdaptation(
       const next = (level + 1) as EncodingLevel
       levels.set(peerId, next)
       goodCnt.set(peerId, 0)
-      console.info('[adaptive] peer=%s ↑ level %d→%d  loss=%.1f%%', peerId.slice(0, 8), level, next, loss)
+      console.info(
+        '[adaptive] peer=%s ↑ level %d→%d pressure=%s loss=%.1f%% rtt=%dms jitter=%dms',
+        peerId.slice(0, 8), level, next, pressure,
+        stats.packetLossPercent, stats.roundTripTimeMs, stats.jitterMs,
+      )
       void session.applyEncodingLevel(next)
       return next
     }
   } else {
-    // middle band (1 ≤ loss < 5) — hold current level, reset both counters
+    // Medium/unknown pressure holds current level and resets both counters.
     badCnt.set(peerId, 0)
     goodCnt.set(peerId, 0)
   }
@@ -188,12 +218,15 @@ function buildReportPayload(): StatsReportPeer[] | null {
     peers.push({
       peerId:               id,
       quality:              s.quality,
+      networkPressure:      s.networkPressure,
       roundTripTimeMs:      s.roundTripTimeMs,
       packetLossPercent:    s.packetLossPercent,
       outboundBitrateKbps:  s.outboundBitrateKbps,
       inboundBitrateKbps:   s.inboundBitrateKbps,
       candidateType:        s.candidateType,
       jitterMs:             s.jitterMs,
+      encodingLevel:        s.encodingLevel,
+      videoHeld:            s.videoHeld,
       frameWidth:           s.frameWidth,
       frameHeight:          s.frameHeight,
       framesPerSecond:      s.framesPerSecond,
@@ -215,6 +248,7 @@ export function usePeerStats(client: SignalingClient | null) {
     const badSamples     = new Map<string, number>()
     const goodSamples    = new Map<string, number>()
     const audioOnlyCnt   = new Map<string, number>()  // bad samples while at level 0
+    const restoreCnt     = new Map<string, number>()
     const videoHeldPeers = new Set<string>()           // peers with outbound video held
 
     const pollTimer = setInterval(async () => {
@@ -231,31 +265,44 @@ export function usePeerStats(client: SignalingClient | null) {
           const stats        = parseReport(report, id, prevRef.current, currentLevel, isHeld)
 
           const newLevel = stepAdaptation(
-            id, conn.session, stats.packetLossPercent,
+            id, conn.session, stats,
             adaptLevels, badSamples, goodSamples,
           )
 
           // ── Audio-only degradation ─────────────────────────────────────────
           // If we're already at the lowest encoding level and quality is still
           // poor, hold back outbound video entirely to preserve the audio path.
-          if (newLevel === 0 && stats.quality === 'poor') {
+          if (newLevel === 0 && (stats.networkPressure === 'high' || stats.networkPressure === 'severe')) {
             const cnt = (audioOnlyCnt.get(id) ?? 0) + 1
             audioOnlyCnt.set(id, cnt)
-            if (cnt >= AUDIO_ONLY_SAMPLES && !videoHeldPeers.has(id)) {
+            const threshold = stats.networkPressure === 'severe'
+              ? AUDIO_ONLY_SEVERE_SAMPLES
+              : AUDIO_ONLY_POOR_SAMPLES
+            if (cnt >= threshold && !videoHeldPeers.has(id)) {
+              console.info('[adaptive] peer=%s holding outbound video to protect audio', id.slice(0, 8))
               videoHeldPeers.add(id)
               void conn.session.replaceTrack('video', null)
             }
-          } else if (videoHeldPeers.has(id) && stats.quality !== 'poor') {
-            // Quality has recovered — restore outbound video if the user still
-            // has their camera on (don't override a deliberate camera-off).
-            const { isVideoOff } = (await import('@/src/stores/meet')).useMeetStore.getState()
-            if (!isVideoOff && localVideoTrack) {
+          } else if (videoHeldPeers.has(id) && stats.networkPressure === 'low') {
+            const restored = (restoreCnt.get(id) ?? 0) + 1
+            restoreCnt.set(id, restored)
+            // Quality has recovered and stayed clean — restore outbound video
+            // if the user still has their camera on.
+            const { isVideoOff } = useMeetStore.getState()
+            if (restored >= VIDEO_RESTORE_SAMPLES && !isVideoOff && localVideoTrack) {
+              console.info('[adaptive] peer=%s restoring outbound video after recovery', id.slice(0, 8))
               videoHeldPeers.delete(id)
               audioOnlyCnt.set(id, 0)
+              restoreCnt.set(id, 0)
               void conn.session.replaceTrack('video', localVideoTrack)
             }
+          } else if (videoHeldPeers.has(id)) {
+            restoreCnt.set(id, 0)
           } else if (!videoHeldPeers.has(id)) {
-            audioOnlyCnt.set(id, 0)
+            restoreCnt.set(id, 0)
+            if (stats.networkPressure === 'low' || stats.networkPressure === 'medium') {
+              audioOnlyCnt.set(id, 0)
+            }
           }
 
           updatePeerStats(id, { ...stats, encodingLevel: newLevel, videoHeld: videoHeldPeers.has(id) })
@@ -272,6 +319,7 @@ export function usePeerStats(client: SignalingClient | null) {
           badSamples.delete(id)
           goodSamples.delete(id)
           audioOnlyCnt.delete(id)
+          restoreCnt.delete(id)
           videoHeldPeers.delete(id)
         }
       }
