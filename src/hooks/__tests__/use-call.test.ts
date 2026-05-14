@@ -324,6 +324,41 @@ describe('useCall — peer-state', () => {
     const bob = usePeerStore.getState().peerConnections.get('peer-bob')
     expect(bob?.speaking).toBe(false)
   })
+
+  it('updates videoHeld from peer-state and preserves it when omitted', async () => {
+    const client = makeClient()
+
+    await act(async () => {
+      renderHook(() => useCall({
+        client, roomId: 'room-1', enabled: true,
+        userName: 'Alice', initialAudio: true, initialVideo: true,
+      }))
+    })
+
+    await act(async () => {
+      client.emit('peer-joined', {
+        data: { peerId: 'peer-bob', name: 'Bob', audio: true, video: true },
+      })
+    })
+
+    await act(async () => {
+      client.emit('peer-state', {
+        from: 'peer-bob',
+        data: { audio: true, video: true, videoHeld: true },
+      })
+    })
+
+    expect(usePeerStore.getState().peerConnections.get('peer-bob')?.videoHeld).toBe(true)
+
+    await act(async () => {
+      client.emit('peer-state', {
+        from: 'peer-bob',
+        data: { audio: true, video: true, speaking: false },
+      })
+    })
+
+    expect(usePeerStore.getState().peerConnections.get('peer-bob')?.videoHeld).toBe(true)
+  })
 })
 
 describe('useCall — reconnect', () => {

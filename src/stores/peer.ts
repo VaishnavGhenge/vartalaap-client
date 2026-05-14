@@ -62,6 +62,7 @@ interface PeerConnection {
   video: boolean
   speaking: boolean
   screenSharing: boolean
+  videoHeld: boolean
   connectionState: RTCPeerConnectionState
 }
 
@@ -89,11 +90,11 @@ interface PeerState {
   addPeerConnection: (
     id: string,
     session: WebRTCSession,
-    info?: { name?: string; audio?: boolean; video?: boolean; screenSharing?: boolean },
+    info?: { name?: string; audio?: boolean; video?: boolean; screenSharing?: boolean; videoHeld?: boolean },
   ) => void
   removePeerConnection: (id: string) => void
   updatePeerStream: (id: string, stream: MediaStream) => void
-  updatePeerMediaState: (id: string, audio: boolean, video: boolean, speaking?: boolean, screenSharing?: boolean) => void
+  updatePeerMediaState: (id: string, audio: boolean, video: boolean, speaking?: boolean, screenSharing?: boolean, videoHeld?: boolean) => void
   updatePeerConnectionState: (id: string, state: RTCPeerConnectionState) => void
   updatePeerStats: (id: string, stats: PeerStats) => void
 
@@ -302,6 +303,7 @@ export const usePeerStore = create<PeerState>()(
           video: info?.video ?? false,
           speaking: false,
           screenSharing: info?.screenSharing ?? false,
+          videoHeld: info?.videoHeld ?? false,
           connectionState: 'new',
         })
         return { peerConnections: next }
@@ -340,7 +342,7 @@ export const usePeerStore = create<PeerState>()(
         return { peerConnections: next }
       }),
 
-    updatePeerMediaState: (id, audio, video, speaking, screenSharing) =>
+    updatePeerMediaState: (id, audio, video, speaking, screenSharing, videoHeld) =>
       set((state) => {
         const next = new Map(state.peerConnections)
         const c = next.get(id)
@@ -350,6 +352,7 @@ export const usePeerStore = create<PeerState>()(
           video,
           speaking: speaking ?? c.speaking,
           screenSharing: screenSharing ?? c.screenSharing,
+          videoHeld: videoHeld ?? c.videoHeld,
         })
         return { peerConnections: next }
       }),

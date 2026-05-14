@@ -76,7 +76,13 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       const peers = env.data?.peers ?? []
       for (const p of peers) {
         if (p.id === myId) continue
-        makeSession(p.id, true, { name: p.name, audio: p.audio, video: p.video, screenSharing: p.screenSharing ?? false })
+        makeSession(p.id, true, {
+          name: p.name,
+          audio: p.audio,
+          video: p.video,
+          screenSharing: p.screenSharing ?? false,
+          videoHeld: p.videoHeld ?? false,
+        })
       }
     }
 
@@ -84,7 +90,13 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       const d = env.data
       if (!d?.peerId) return
       if (d.peerId === client.getPeerId()) return
-      makeSession(d.peerId, false, { name: d.name, audio: d.audio, video: d.video, screenSharing: d.screenSharing ?? false })
+      makeSession(d.peerId, false, {
+        name: d.name,
+        audio: d.audio,
+        video: d.video,
+        screenSharing: d.screenSharing ?? false,
+        videoHeld: d.videoHeld ?? false,
+      })
       playPeerJoined()
     }
 
@@ -103,7 +115,14 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       if (newScreenSharing && !oldScreenSharing) playScreenShareStart()
       else if (!newScreenSharing && oldScreenSharing) playScreenShareStop()
       prevScreenSharing.set(env.from, newScreenSharing)
-      store.getState().updatePeerMediaState(env.from, env.data.audio, env.data.video, env.data.speaking ?? false, newScreenSharing)
+      store.getState().updatePeerMediaState(
+        env.from,
+        env.data.audio,
+        env.data.video,
+        env.data.speaking ?? false,
+        newScreenSharing,
+        env.data.videoHeld,
+      )
     }
 
     const handleSignal = (env: Envelope) => {

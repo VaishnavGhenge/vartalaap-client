@@ -282,6 +282,13 @@ export function usePeerStats(client: SignalingClient | null) {
               console.info('[adaptive] peer=%s holding outbound video to protect audio', id.slice(0, 8))
               videoHeldPeers.add(id)
               void conn.session.replaceTrack('video', null)
+              const { isMuted, isVideoOff, isScreenSharing } = useMeetStore.getState()
+              clientRef.current?.send('peer-state', {
+                audio: !isMuted,
+                video: !isVideoOff,
+                screenSharing: isScreenSharing,
+                videoHeld: true,
+              }, { to: id })
             }
           } else if (videoHeldPeers.has(id) && stats.networkPressure === 'low') {
             const restored = (restoreCnt.get(id) ?? 0) + 1
@@ -295,6 +302,13 @@ export function usePeerStats(client: SignalingClient | null) {
               audioOnlyCnt.set(id, 0)
               restoreCnt.set(id, 0)
               void conn.session.replaceTrack('video', localVideoTrack)
+              const { isMuted, isVideoOff, isScreenSharing } = useMeetStore.getState()
+              clientRef.current?.send('peer-state', {
+                audio: !isMuted,
+                video: !isVideoOff,
+                screenSharing: isScreenSharing,
+                videoHeld: false,
+              }, { to: id })
             }
           } else if (videoHeldPeers.has(id)) {
             restoreCnt.set(id, 0)

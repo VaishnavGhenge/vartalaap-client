@@ -86,6 +86,18 @@ describe('VideoTile', () => {
     expect(screen.getByText('Audio only')).toBeInTheDocument()
   })
 
+  it('labels the quality dot for hover and focus tooltip', () => {
+    render(
+      <VideoTile
+        participant={{ id: 'peer-1', name: 'Grace' }}
+        stream={makeStream()}
+        quality="medium"
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Connection quality: Fair' })).toBeInTheDocument()
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Fair')
+  })
+
   it('does not show overlays on the local tile', () => {
     render(
       <VideoTile

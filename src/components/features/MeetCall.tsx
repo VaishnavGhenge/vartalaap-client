@@ -331,10 +331,9 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                 }}
                 stream={c.stream ?? null}
                 quality={stats?.quality}
-                viaRelay={stats?.candidateType === 'relay'}
                 isScreenSharing={c.screenSharing}
                 connectionState={c.connectionState}
-                videoHeld={stats?.videoHeld}
+                videoHeld={c.videoHeld}
                 onPin={opts.onPin}
                 isPinned={opts.isPinned}
                 compact={opts.compact}

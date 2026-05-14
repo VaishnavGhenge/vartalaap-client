@@ -16,6 +16,13 @@ const QUALITY_DOT_COLOR: Record<PeerStats['quality'], string> = {
     unknown: 'bg-zinc-400',
 }
 
+const QUALITY_LABEL: Record<PeerStats['quality'], string> = {
+    good: 'Good',
+    medium: 'Fair',
+    poor: 'Poor',
+    unknown: 'Measuring',
+}
+
 interface Participant {
     id: string;
     name: string;
@@ -32,7 +39,6 @@ interface VideoTileProps {
     isMuted?: boolean;
     stream: MediaStream | null;
     quality?: PeerStats['quality'];
-    viaRelay?: boolean;
     isScreenSharing?: boolean;
     onPin?: () => void;
     isPinned?: boolean;
@@ -52,7 +58,6 @@ export const VideoTile = ({
     isMuted,
     stream,
     quality,
-    viaRelay,
     isScreenSharing = false,
     onPin,
     isPinned = false,
@@ -138,14 +143,23 @@ export const VideoTile = ({
 
             {/* Quality dot — remote tiles only, top-right corner */}
             {!isLocal && quality && quality !== 'unknown' && (
-                <div aria-hidden="true" className="absolute top-2.5 right-2.5 flex items-center gap-1">
-                    {viaRelay && (
-                        <span className="text-[9px] font-medium px-1 py-0.5 rounded-full leading-none
-                                         bg-amber-400/20 text-amber-500 dark:text-amber-400">
-                            TURN
+                <div className="absolute top-2.5 right-2.5 flex items-center gap-1">
+                    <button
+                        type="button"
+                        aria-label={`Connection quality: ${QUALITY_LABEL[quality]}`}
+                        className="group/quality relative flex h-5 w-5 items-center justify-center rounded-full"
+                    >
+                        <span className={`block w-2 h-2 rounded-full ${QUALITY_DOT_COLOR[quality]}`} />
+                        <span
+                            role="tooltip"
+                            className="pointer-events-none absolute right-0 top-full mt-1 whitespace-nowrap rounded-md
+                                       bg-[hsl(var(--surface-3))] px-2 py-1 text-[10px] font-medium
+                                       text-[hsl(var(--foreground))] opacity-0 shadow-lg
+                                       transition-opacity group-hover/quality:opacity-100 group-focus-visible/quality:opacity-100"
+                        >
+                            {QUALITY_LABEL[quality]}
                         </span>
-                    )}
-                    <span className={`block w-2 h-2 rounded-full ${QUALITY_DOT_COLOR[quality]}`} />
+                    </button>
                 </div>
             )}
 
