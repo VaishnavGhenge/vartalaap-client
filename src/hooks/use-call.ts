@@ -5,8 +5,7 @@ import { fetchIceServers } from '@/src/services/api/ice'
 import type {
   Envelope, JoinedData, PeerJoinedData, PeerLeftData, PeerStateData, SfuTracksData,
 } from '@/src/services/signaling/protocol'
-import type { SignalData } from '@/src/services/webrtc/session'
-import { RealtimeSfuSession } from '@/src/services/webrtc/realtime-sfu-session'
+import { SfuSession } from '@/src/services/webrtc/sfu-session'
 import { playPeerJoined, playPeerLeft, playScreenShareStart, playScreenShareStop } from '@/src/lib/sounds'
 
 interface Args {
@@ -16,10 +15,9 @@ interface Args {
   userName: string
   initialAudio: boolean
   initialVideo: boolean
-  sfuEnabled?: boolean
 }
 
-export function useCall({ client, roomId, enabled, userName, initialAudio, initialVideo, sfuEnabled = false }: Args) {
+export function useCall({ client, roomId, enabled, userName, initialAudio, initialVideo }: Args) {
   const joinArgs = useRef({ userName, initialAudio, initialVideo })
 
   useEffect(() => {
@@ -32,92 +30,47 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
     const store = usePeerStore
     let disposed = false
     const prevScreenSharing = new Map<string, boolean>()
-    // SFU only: maps CF remoteSessionId → signaling peerId so onRemoteTrack can route tracks.
+    // Maps CF remoteSessionId → signaling peerId so onRemoteTrack can route tracks.
     const remoteSessionToPeer = new Map<string, string>()
-    // SFU only: sfu-tracks messages that arrive before sfuSession is ready are buffered here.
+    // sfu-tracks messages that arrive before sfuSession is ready are buffered here.
     const pendingSfuTracks: Array<{ sessionId: string; trackNames: string[] }> = []
 
-    // ── P2P helpers (used when sfuEnabled=false) ────────────────────────────
-
-    const pendingSignals = new Map<string, SignalData[]>()
-
-    const makeSession = (
-      remoteId: string,
-      initiator: boolean,
-      info: { name: string; audio: boolean; video: boolean; screenSharing?: boolean; videoHeld?: boolean },
-    ) => {
-      if (store.getState().peerConnections.has(remoteId)) {
-        store.getState().removePeerConnection(remoteId)
-      }
-
-      const localStream = store.getState().localStream ?? new MediaStream()
-      const session = store.getState().createSession({
-        initiator,
-        localStream,
-        onSignal: (data) => {
-          client.send('signal', data, { to: remoteId })
-        },
-        onRemoteStream: (stream) => {
-          store.getState().updatePeerStream(remoteId, stream)
-        },
-        onConnectionStateChange: (state) => {
-          if (disposed) return
-          store.getState().updatePeerConnectionState(remoteId, state)
-          if (state === 'failed') {
-            console.warn('[use-call] peer connection failed', remoteId)
-          }
-        },
-      })
-
-      store.getState().addPeerConnection(remoteId, session, info)
-
-      const buffered = pendingSignals.get(remoteId)
-      if (buffered) {
-        buffered.forEach((data) => { void session.signal(data) })
-        pendingSignals.delete(remoteId)
-      }
-
-      return session
+    // Resolves when the server sends `joined` after our `join`. We must not call
+    // sfuSession.publish() before the server has added us to the room — otherwise
+    // hub.BroadcastSfuTracks finds room == nil and silently skips storeSfuTracks,
+    // so late joiners never get our tracks replayed. See
+    // vartalaap-server/internal/signaling/hub.go:136 (BroadcastSfuTracks).
+    let resolveJoinedAck: (() => void) | null = null
+    let joinedAck = new Promise<void>((resolve) => { resolveJoinedAck = resolve })
+    const resetJoinedAck = () => {
+      joinedAck = new Promise<void>((resolve) => { resolveJoinedAck = resolve })
     }
 
-    // ── Shared handlers ──────────────────────────────────────────────────────
+    // ── Handlers ────────────────────────────────────────────────────────────
 
     const handleJoined = (env: Envelope<JoinedData>) => {
       const myId = client.getPeerId()
       const peers = env.data?.peers ?? []
       for (const p of peers) {
         if (p.id === myId) continue
-        if (sfuEnabled) {
-          // In SFU mode: register peer metadata only — no per-peer RTCPeerConnection.
-          // Tracks arrive via sfu-tracks after the remote peer publishes.
-          store.getState().addPeerConnection(p.id, undefined, {
-            name: p.name, audio: p.audio, video: p.video,
-            screenSharing: p.screenSharing ?? false, videoHeld: p.videoHeld ?? false,
-          })
-        } else {
-          makeSession(p.id, true, {
-            name: p.name, audio: p.audio, video: p.video,
-            screenSharing: p.screenSharing ?? false, videoHeld: p.videoHeld ?? false,
-          })
-        }
+        // Register peer metadata only — no per-peer RTCPeerConnection in SFU mode.
+        // Tracks arrive via sfu-tracks after the remote peer publishes.
+        store.getState().addPeerConnection(p.id, {
+          name: p.name, audio: p.audio, video: p.video,
+          screenSharing: p.screenSharing ?? false, videoHeld: p.videoHeld ?? false,
+        })
       }
+      resolveJoinedAck?.()
     }
 
     const handlePeerJoined = (env: Envelope<PeerJoinedData>) => {
       const d = env.data
       if (!d?.peerId) return
       if (d.peerId === client.getPeerId()) return
-      if (sfuEnabled) {
-        store.getState().addPeerConnection(d.peerId, undefined, {
-          name: d.name, audio: d.audio, video: d.video,
-          screenSharing: d.screenSharing ?? false, videoHeld: d.videoHeld ?? false,
-        })
-      } else {
-        makeSession(d.peerId, false, {
-          name: d.name, audio: d.audio, video: d.video,
-          screenSharing: d.screenSharing ?? false, videoHeld: d.videoHeld ?? false,
-        })
-      }
+      store.getState().addPeerConnection(d.peerId, {
+        name: d.name, audio: d.audio, video: d.video,
+        screenSharing: d.screenSharing ?? false, videoHeld: d.videoHeld ?? false,
+      })
       playPeerJoined()
     }
 
@@ -146,28 +99,16 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       )
     }
 
-    // P2P only
-    const handleSignal = (env: Envelope) => {
-      if (!env.from) return
-      const conn = store.getState().peerConnections.get(env.from)
-      if (!conn) {
-        const buf = pendingSignals.get(env.from) ?? []
-        buf.push(env.data as SignalData)
-        pendingSignals.set(env.from, buf)
-        return
-      }
-      void conn.session?.signal(env.data as SignalData)
-    }
-
-    // SFU only
     const handleSfuTracks = (env: Envelope<SfuTracksData>) => {
       if (!env.from || !env.data) return
       const trackNames = env.data.tracks.map((t) => t.trackName)
-      // Always record the mapping — needed even when session isn't ready yet.
+      // Record the CF sessionId → signaling peerId mapping so onRemoteTrack
+      // (fired by partytracks when a pull resolves) can attribute the track
+      // to the right participant.
       remoteSessionToPeer.set(env.data.sessionId, env.from)
       const sfuSession = store.getState().sfuSession
       if (!sfuSession) {
-        // SFU session is still being created (HTTP roundtrip to CF). Buffer for drain below.
+        // partytracks instance not constructed yet — buffer until init below.
         pendingSfuTracks.push({ sessionId: env.data.sessionId, trackNames })
         return
       }
@@ -178,10 +119,10 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
 
     client.setReconnectedHandler(() => {
       if (disposed) return
-      pendingSignals.clear()
       remoteSessionToPeer.clear()
       pendingSfuTracks.length = 0
       store.getState().clearPeers()
+      resetJoinedAck()
       const a = joinArgs.current
       client.send('join', {
         name: a.userName,
@@ -189,8 +130,11 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
         video: a.initialVideo,
         presenceId: client.getPresenceId(),
       }, { room: roomId })
-      // In SFU mode: re-publish local tracks after reconnect.
-      if (sfuEnabled) {
+      // Wait for the server to re-add us to the room before re-publishing.
+      // Same race as the initial join: publish before join → tracks not stored.
+      void (async () => {
+        await joinedAck
+        if (disposed) return
         const sfuSession = store.getState().sfuSession
         const localStream = store.getState().localStream
         if (sfuSession && localStream) {
@@ -198,18 +142,14 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
             console.error('[use-call] sfu re-publish failed after reconnect', e)
           })
         }
-      }
+      })()
     })
 
     client.on('joined', handleJoined as (env: Envelope) => void)
     client.on('peer-joined', handlePeerJoined as (env: Envelope) => void)
     client.on('peer-left', handlePeerLeft as (env: Envelope) => void)
     client.on('peer-state', handlePeerState as (env: Envelope) => void)
-    if (!sfuEnabled) {
-      client.on('signal', handleSignal)
-    } else {
-      client.on('sfu-tracks', handleSfuTracks as (env: Envelope) => void)
-    }
+    client.on('sfu-tracks', handleSfuTracks as (env: Envelope) => void)
 
     ;(async () => {
       try {
@@ -225,8 +165,11 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
         }
         if (disposed) return
 
-        // Join the signaling room first so the broadcaster is in the room when
-        // sfuTracksNew fires — the server only stores/broadcasts to room members.
+        // Join the signaling room and WAIT for the server's ack before any SFU
+        // work. Publishing before the server's hub.join has run would race with
+        // hub.BroadcastSfuTracks, which silently drops the storeSfuTracks call
+        // when the room doesn't exist yet — meaning late joiners never receive
+        // our tracks during their join replay.
         const a = joinArgs.current
         client.send('join', {
           name: a.userName,
@@ -235,59 +178,73 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
           presenceId: client.getPresenceId(),
         }, { room: roomId })
 
-        if (sfuEnabled) {
-          // Create SFU session and publish AFTER joining so BroadcastSfuTracks
-          // reaches peers already in the room and storeSfuTracks has a valid room.
-          const iceServers = store.getState().iceServers as RTCIceServer[]
-          const peerId = client.getPeerId()
-          if (!peerId) {
-            console.error('[use-call] SFU: peerId not set yet — welcome message not received')
-            return
-          }
-          const sfuSession = await RealtimeSfuSession.create({
-            roomId,
-            peerId,
-            iceServers,
-            onRemoteTrack: (_track, stream, remoteSessionId) => {
-              const peerId = remoteSessionToPeer.get(remoteSessionId)
-              if (!peerId) {
-                console.warn('[use-call] onRemoteTrack: no peer for remoteSessionId', remoteSessionId)
-                return
-              }
-              store.getState().updatePeerStream(peerId, stream)
-            },
-            onConnectionStateChange: (state) => {
-              if (disposed) return
-              if (state === 'failed') {
-                console.warn('[use-call] SFU connection failed')
-              }
-            },
+        await joinedAck
+        if (disposed) return
+
+        const iceServers = store.getState().iceServers as RTCIceServer[]
+        const peerId = client.getPeerId()
+        if (!peerId) {
+          console.error('[use-call] peerId not set yet — welcome message not received')
+          return
+        }
+        // Per-peer remote stream accumulator so audio+video tracks for the
+        // same peer surface as one MediaStream to the UI.
+        const remoteStreams = new Map<string, MediaStream>()
+        const sfuSession = new SfuSession({
+          roomId,
+          peerId,
+          iceServers,
+          // Server intercepts /sfu/sessions/{id}/tracks/new and broadcasts
+          // sfu-tracks via hub.BroadcastSfuTracks (sfu_handler.go), so we
+          // don't announce from the client.
+          onRemoteTrack: (track, remoteSessionId) => {
+            const remotePeerId = remoteSessionToPeer.get(remoteSessionId)
+            if (!remotePeerId) {
+              console.warn('[use-call] onRemoteTrack: no peer for remoteSessionId', remoteSessionId)
+              return
+            }
+            let stream = remoteStreams.get(remotePeerId)
+            if (!stream) {
+              stream = new MediaStream()
+              remoteStreams.set(remotePeerId, stream)
+            }
+            // Replace any existing track of the same kind — partytracks can
+            // re-emit a fresh MediaStreamTrack if the PC is recreated.
+            for (const existing of stream.getTracks()) {
+              if (existing.kind === track.kind) stream.removeTrack(existing)
+            }
+            stream.addTrack(track)
+            store.getState().updatePeerStream(remotePeerId, stream)
+          },
+          onConnectionStateChange: (state) => {
+            if (disposed) return
+            if (state === 'failed') {
+              console.warn('[use-call] SFU connection failed')
+            }
+          },
+        })
+        if (disposed) {
+          sfuSession.close()
+          return
+        }
+        store.getState().setSfuSession(sfuSession)
+
+        // Drain sfu-tracks that arrived while the session was being constructed.
+        for (const { sessionId, trackNames } of pendingSfuTracks) {
+          sfuSession.subscribe(sessionId, trackNames).catch((e) => {
+            console.error('[use-call] sfu subscribe failed (buffered)', e)
           })
-          if (disposed) {
-            sfuSession.close()
-            return
-          }
-          store.getState().setSfuSession(sfuSession)
+        }
+        pendingSfuTracks.length = 0
 
-          // Drain sfu-tracks that arrived while the CF session was being created.
-          for (const { sessionId, trackNames } of pendingSfuTracks) {
-            sfuSession.subscribe(sessionId, trackNames).catch((e) => {
-              console.error('[use-call] sfu subscribe failed (buffered)', e)
+        const localStream = store.getState().localStream
+        if (localStream) {
+          await sfuSession.publish(localStream).catch((e) => {
+            console.error('[use-call] sfu publish failed — no media will be sent', e)
+            import('sonner').then(({ toast }) => {
+              toast.error('Could not start your camera or microphone. Try leaving and rejoining.')
             })
-          }
-          pendingSfuTracks.length = 0
-
-          const localStream = store.getState().localStream
-          if (localStream) {
-            await sfuSession.publish(localStream).catch((e) => {
-              // Publish failure leaves the call in a broken state — no media will
-              // flow and P2P handlers are disabled. Surface it so the user knows.
-              console.error('[use-call] sfu publish failed — no media will be sent', e)
-              import('sonner').then(({ toast }) => {
-                toast.error('Could not start your camera or microphone. Try leaving and rejoining.')
-              })
-            })
-          }
+          })
         }
       } catch (e) {
         console.error('failed to init call', e)
@@ -302,15 +259,10 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       client.off('peer-joined', handlePeerJoined as (env: Envelope) => void)
       client.off('peer-left', handlePeerLeft as (env: Envelope) => void)
       client.off('peer-state', handlePeerState as (env: Envelope) => void)
-      if (!sfuEnabled) {
-        client.off('signal', handleSignal)
-      } else {
-        client.off('sfu-tracks', handleSfuTracks as (env: Envelope) => void)
-      }
-      pendingSignals.clear()
+      client.off('sfu-tracks', handleSfuTracks as (env: Envelope) => void)
       store.getState().clearAll()
     }
     // Intentionally excluding userName/initialAudio/initialVideo: they're
     // captured via joinArgs ref so mute toggles don't rejoin the room.
-  }, [client, roomId, enabled, sfuEnabled])
+  }, [client, roomId, enabled])
 }

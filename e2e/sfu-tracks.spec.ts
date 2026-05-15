@@ -10,7 +10,7 @@
  */
 
 import { test, expect, type Page, type BrowserContext } from '@playwright/test'
-import { CALL_CONTEXT_OPTIONS, joinRoom, randomRoom } from './helpers/call'
+import { createCallContexts, joinRoom, createRoom, fillName } from './helpers/call'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -64,9 +64,9 @@ async function unmuteMic(page: Page) {
 /** Joins the room from the pre-join screen *with* camera enabled before clicking Join. */
 async function joinWithCamera(page: Page, roomCode: string, name: string) {
   await page.goto(`/${roomCode}`, { waitUntil: 'domcontentloaded' })
-  const nameInput = page.getByPlaceholder(/your name/i)
-  await expect(nameInput).toBeVisible()
-  await nameInput.fill(name)
+  // fillName polls until the Join button is enabled, ensuring React has committed
+  // the onChange state update before camera enabling triggers re-renders.
+  await fillName(page, name)
   await enableCamera(page)
   // Camera button should now show "off" state — camera is on
   await expect(page.getByRole('button', { name: /turn camera off/i })).toBeVisible({ timeout: 5_000 })
@@ -83,8 +83,7 @@ test.describe('SFU track publishing and subscription', () => {
   let ctx2: BrowserContext
 
   test.beforeEach(async ({ browser }) => {
-    ctx1 = await browser.newContext(CALL_CONTEXT_OPTIONS)
-    ctx2 = await browser.newContext(CALL_CONTEXT_OPTIONS)
+    ;({ ctx1, ctx2 } = await createCallContexts(browser))
   })
 
   test.afterEach(async () => {
@@ -96,7 +95,7 @@ test.describe('SFU track publishing and subscription', () => {
   // CF returns 406 "Missing location for track" when `location` is omitted.
   // This test proves publish succeeds end-to-end (no console errors).
   test('publishing local tracks does not throw a CF error', async () => {
-    const room = randomRoom()
+    const room = await createRoom()
     const alice = await ctx1.newPage()
     const errors: string[] = []
     alice.on('console', (msg) => {
@@ -112,7 +111,7 @@ test.describe('SFU track publishing and subscription', () => {
 
   // ── Core two-peer scenario: both join with cameras on ────────────────────
   test('both users join with cameras on and see each other', async () => {
-    const room = randomRoom()
+    const room = await createRoom()
     const alice = await ctx1.newPage()
     const bob = await ctx2.newPage()
 
@@ -130,7 +129,7 @@ test.describe('SFU track publishing and subscription', () => {
   // Late-joining peer never received an sfu-tracks broadcast because the server
   // only broadcasts on publish — never replays for new joiners.
   test('late joiner receives video from a peer who published before they joined', async () => {
-    const room = randomRoom()
+    const room = await createRoom()
     const alice = await ctx1.newPage()
     const bob = await ctx2.newPage()
 
@@ -151,7 +150,7 @@ test.describe('SFU track publishing and subscription', () => {
   // When a user joins with camera off, no video sender is created.
   // Enabling camera later must publish the track to CF (not silently no-op).
   test('enabling camera after joining sends video to the other peer', async () => {
-    const room = randomRoom()
+    const room = await createRoom()
     const alice = await ctx1.newPage()
     const bob = await ctx2.newPage()
 
@@ -173,7 +172,7 @@ test.describe('SFU track publishing and subscription', () => {
   // Same as 3a but for audio — no audio sender exists when user joins muted.
   // Unmuting must add an audio track to the SFU session, not silently skip.
   test('unmuting after joining with mic off sends audio to the other peer', async () => {
-    const room = randomRoom()
+    const room = await createRoom()
     const alice = await ctx1.newPage()
     const bob = await ctx2.newPage()
 
@@ -205,7 +204,7 @@ test.describe('SFU track publishing and subscription', () => {
 
   // ── Mixed join: one peer joins with cam on, other joins with cam off ──────
   test('peer with camera on is visible to peer who joined with camera off', async () => {
-    const room = randomRoom()
+    const room = await createRoom()
     const alice = await ctx1.newPage()
     const bob = await ctx2.newPage()
 
@@ -219,8 +218,10 @@ test.describe('SFU track publishing and subscription', () => {
   })
 
   // ── Tracks survive a participant leaving and rejoining ────────────────────
+  // Two full page-loads + SFU re-publish + video decode exceeds the 30 s default.
   test('video still flows after the remote peer leaves and rejoins', async () => {
-    const room = randomRoom()
+    test.setTimeout(60_000)
+    const room = await createRoom()
     const alice = await ctx1.newPage()
     const bob = await ctx2.newPage()
 

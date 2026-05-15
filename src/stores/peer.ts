@@ -1,8 +1,7 @@
 import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
 import { toast } from 'sonner'
-import { WebRTCSession, type SignalData, type WebRTCSessionOptions } from '@/src/services/webrtc/session'
-import { RealtimeSfuSession } from '@/src/services/webrtc/realtime-sfu-session'
+import { SfuSession } from '@/src/services/webrtc/sfu-session'
 import type { IceServer } from '@/src/services/api/ice'
 import { getSharedAudioContext, setAudioOutputDevice } from '@/src/lib/audio-context'
 import { BackgroundBlurProcessor } from '@/src/lib/background-blur'
@@ -56,7 +55,6 @@ export interface PeerStats {
 
 interface PeerConnection {
   id: string
-  session?: WebRTCSession // undefined in SFU mode — all media goes through sfuSession
   stream?: MediaStream
   name: string
   audio: boolean
@@ -84,15 +82,14 @@ interface PeerState {
   noiseSuppressor: NoiseSuppressor | null
   rawMicTrack: MediaStreamTrack | null
   suppressNoise: boolean
-  sfuSession: RealtimeSfuSession | null
+  sfuSession: SfuSession | null
 
   setIceServers: (s: IceServer[]) => void
   setSuppressNoise: (enabled: boolean) => Promise<void>
-  setSfuSession: (s: RealtimeSfuSession | null) => void
+  setSfuSession: (s: SfuSession | null) => void
 
   addPeerConnection: (
     id: string,
-    session: WebRTCSession | undefined,
     info?: { name?: string; audio?: boolean; video?: boolean; screenSharing?: boolean; videoHeld?: boolean },
   ) => void
   removePeerConnection: (id: string) => void
@@ -117,9 +114,6 @@ interface PeerState {
   startScreenShare: () => Promise<MediaStreamTrack | null>
   stopScreenShare: () => void
 
-  createSession: (
-    options: Pick<WebRTCSessionOptions, 'initiator' | 'onSignal' | 'onRemoteStream' | 'onConnectionStateChange'> & { localStream: MediaStream }
-  ) => WebRTCSession
   clearPeers: () => void
   clearAll: () => void
 }
@@ -152,19 +146,11 @@ const createBackgroundProcessor = (preference: BackgroundEffectPreference) => {
 
 const replaceVideoTrackOnPeers = (
   newTrack: MediaStreamTrack,
-  peers: Map<string, PeerConnection>,
-  sfuSession?: RealtimeSfuSession | null,
+  _peers: Map<string, PeerConnection>,
+  sfuSession?: SfuSession | null,
 ) => {
-  if (sfuSession) {
-    sfuSession.replaceTrack('video', newTrack).catch(e => {
-      console.error('[peer] sfuSession replaceTrack video failed', e)
-    })
-    return
-  }
-  peers.forEach((c) => {
-    c.session?.replaceTrack('video', newTrack).catch(e => {
-      console.error('[peer] replaceTrack video failed', e)
-    })
+  sfuSession?.replaceTrack('video', newTrack).catch(e => {
+    console.error('[peer] sfuSession replaceTrack video failed', e)
   })
 }
 
@@ -241,19 +227,11 @@ const createSilentAudioTrack = (): MediaStreamTrack | null => {
 
 const replaceAudioSenderOnPeers = (
   track: MediaStreamTrack,
-  peers: Map<string, PeerConnection>,
-  sfuSession?: RealtimeSfuSession | null,
+  _peers: Map<string, PeerConnection>,
+  sfuSession?: SfuSession | null,
 ) => {
-  if (sfuSession) {
-    sfuSession.replaceTrack('audio', track).catch(e => {
-      console.error('[peer] sfuSession replaceTrack audio failed', e)
-    })
-    return
-  }
-  peers.forEach((c) => {
-    c.session?.replaceTrack('audio', track).catch(e => {
-      console.error('[peer] replaceTrack audio failed', e)
-    })
+  sfuSession?.replaceTrack('audio', track).catch(e => {
+    console.error('[peer] sfuSession replaceTrack audio failed', e)
   })
 }
 
@@ -323,12 +301,11 @@ export const usePeerStore = create<PeerState>()(
       }
     },
 
-    addPeerConnection: (id, session, info) =>
+    addPeerConnection: (id, info) =>
       set((state) => {
         const next = new Map(state.peerConnections)
         next.set(id, {
           id,
-          session,
           name: info?.name ?? '',
           audio: info?.audio ?? false,
           video: info?.video ?? false,
@@ -343,8 +320,7 @@ export const usePeerStore = create<PeerState>()(
     removePeerConnection: (id) =>
       set((state) => {
         const next = new Map(state.peerConnections)
-        const c = next.get(id)
-        if (c) { c.session?.close(); next.delete(id) }
+        next.delete(id)
         const nextStats = new Map(state.peerStats)
         nextStats.delete(id)
         return { peerConnections: next, peerStats: nextStats }
@@ -739,34 +715,8 @@ export const usePeerStore = create<PeerState>()(
 
     setBackgroundBlur: async (enabled) => get().setBackgroundEffect({ mode: enabled ? 'blur-medium' : 'off' }),
 
-    createSession: ({ initiator, localStream, onSignal, onRemoteStream, onConnectionStateChange }) => {
-      const { iceServers, screenTrack } = get()
-
-      // Prefer real tracks; placeholders only when nothing live is available.
-      // Senders for both audio and video are pre-negotiated at creation so
-      // replaceTrack() always finds an existing sender — no renegotiation needed.
-      const audioTrack = localStream.getAudioTracks()[0] ?? createSilentAudioTrack()
-      // Screen share takes priority: late-joining peers get the active screen
-      // share without any replaceTrack dance.
-      const videoTrack = screenTrack ?? localStream.getVideoTracks()[0] ?? createBlackVideoTrack()
-
-      const initStream = new MediaStream()
-      if (audioTrack) initStream.addTrack(audioTrack)
-      if (videoTrack) initStream.addTrack(videoTrack)
-
-      return new WebRTCSession({
-        iceServers: iceServers as RTCIceServer[],
-        initiator,
-        localStream: initStream,
-        onSignal,
-        onRemoteStream,
-        onConnectionStateChange,
-      })
-    },
-
     clearPeers: () => {
-      const { peerConnections, sfuSession } = get()
-      peerConnections.forEach((c) => c.session?.close())
+      const { sfuSession } = get()
       sfuSession?.close()
       set({ peerConnections: new Map(), peerStats: new Map(), sfuSession: null })
     },
@@ -779,7 +729,6 @@ export const usePeerStore = create<PeerState>()(
       noiseSuppressor?.stop()
       rawMicTrack?.stop()
       localStream?.getTracks().forEach((t) => t.stop())
-      peerConnections.forEach((c) => c.session?.close())
       sfuSession?.close()
       set({
         localStream: null,

@@ -10,7 +10,6 @@ import { useEffect } from "react";
 import { usePeerStore } from "@/src/stores/peer";
 import { useSignaling } from "@/src/hooks/use-signaling";
 import { useCall } from "@/src/hooks/use-call";
-import { useAuth } from "@/src/hooks/use-auth";
 
 export default function MeetManager() {
     const params = useParams<{ meetCode: string }>();
@@ -18,7 +17,6 @@ export default function MeetManager() {
     const { hasJoinedMeet, setMeetCode, setHasJoinedMeet, userName } = useJoinMeetStore();
     const { clearMeet, setCurrentMeet, isMuted, isVideoOff } = useMeetStore();
     const { clearAll } = usePeerStore();
-    const { isAuthenticated } = useAuth();
 
     const { client, connState, reconnectAttempt } = useSignaling(hasJoinedMeet);
     useCall({
@@ -28,9 +26,6 @@ export default function MeetManager() {
         userName,
         initialAudio: !isMuted,
         initialVideo: !isVideoOff,
-        // SFU routes require a JWT — only enable for authenticated users.
-        // Unauthenticated / guest participants fall back to P2P signaling.
-        sfuEnabled: isAuthenticated,
     });
 
     useEffect(() => {

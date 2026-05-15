@@ -251,94 +251,10 @@ export function usePeerStats(client: SignalingClient | null) {
     const restoreCnt     = new Map<string, number>()
     const videoHeldPeers = new Set<string>()           // peers with outbound video held
 
-    const pollTimer = setInterval(async () => {
-      const { peerConnections, updatePeerStats, localStream } = usePeerStore.getState()
-      const localVideoTrack = localStream?.getVideoTracks()[0] ?? null
-
-      for (const [id, conn] of peerConnections) {
-        if (!conn.session) continue // SFU mode — no per-peer session to stat
-        if (conn.session.destroyed || conn.session.connectionState === 'closed') continue
-
-        try {
-          const report       = await conn.session.getStats()
-          const currentLevel = adaptLevels.get(id) ?? 2
-          const isHeld       = videoHeldPeers.has(id)
-          const stats        = parseReport(report, id, prevRef.current, currentLevel, isHeld)
-
-          const newLevel = stepAdaptation(
-            id, conn.session, stats,
-            adaptLevels, badSamples, goodSamples,
-          )
-
-          // ── Audio-only degradation ─────────────────────────────────────────
-          // If we're already at the lowest encoding level and quality is still
-          // poor, hold back outbound video entirely to preserve the audio path.
-          if (newLevel === 0 && (stats.networkPressure === 'high' || stats.networkPressure === 'severe')) {
-            const cnt = (audioOnlyCnt.get(id) ?? 0) + 1
-            audioOnlyCnt.set(id, cnt)
-            const threshold = stats.networkPressure === 'severe'
-              ? AUDIO_ONLY_SEVERE_SAMPLES
-              : AUDIO_ONLY_POOR_SAMPLES
-            if (cnt >= threshold && !videoHeldPeers.has(id)) {
-              console.info('[adaptive] peer=%s holding outbound video to protect audio', id.slice(0, 8))
-              videoHeldPeers.add(id)
-              void conn.session.replaceTrack('video', null)
-              const { isMuted, isVideoOff, isScreenSharing } = useMeetStore.getState()
-              clientRef.current?.send('peer-state', {
-                audio: !isMuted,
-                video: !isVideoOff,
-                screenSharing: isScreenSharing,
-                videoHeld: true,
-              }, { to: id })
-            }
-          } else if (videoHeldPeers.has(id) && stats.networkPressure === 'low') {
-            const restored = (restoreCnt.get(id) ?? 0) + 1
-            restoreCnt.set(id, restored)
-            // Quality has recovered and stayed clean — restore outbound video
-            // if the user still has their camera on.
-            const { isVideoOff } = useMeetStore.getState()
-            if (restored >= VIDEO_RESTORE_SAMPLES && !isVideoOff && localVideoTrack) {
-              console.info('[adaptive] peer=%s restoring outbound video after recovery', id.slice(0, 8))
-              videoHeldPeers.delete(id)
-              audioOnlyCnt.set(id, 0)
-              restoreCnt.set(id, 0)
-              void conn.session.replaceTrack('video', localVideoTrack)
-              const { isMuted, isVideoOff, isScreenSharing } = useMeetStore.getState()
-              clientRef.current?.send('peer-state', {
-                audio: !isMuted,
-                video: !isVideoOff,
-                screenSharing: isScreenSharing,
-                videoHeld: false,
-              }, { to: id })
-            }
-          } else if (videoHeldPeers.has(id)) {
-            restoreCnt.set(id, 0)
-          } else if (!videoHeldPeers.has(id)) {
-            restoreCnt.set(id, 0)
-            if (stats.networkPressure === 'low' || stats.networkPressure === 'medium') {
-              audioOnlyCnt.set(id, 0)
-            }
-          }
-
-          updatePeerStats(id, { ...stats, encodingLevel: newLevel, videoHeld: videoHeldPeers.has(id) })
-        } catch {
-          // session is closing — skip silently
-        }
-      }
-
-      // Prune stale prev-entries for peers that left
-      for (const id of prevRef.current.keys()) {
-        if (!peerConnections.has(id)) {
-          prevRef.current.delete(id)
-          adaptLevels.delete(id)
-          badSamples.delete(id)
-          goodSamples.delete(id)
-          audioOnlyCnt.delete(id)
-          restoreCnt.delete(id)
-          videoHeldPeers.delete(id)
-        }
-      }
-    }, POLL_MS)
+    // Per-peer adaptive stats are not implemented for SFU mode — the SFU uses
+    // a single shared RTCPeerConnection; stats will be reimplemented per-track
+    // rather than per-peer once SFU stats are wired up.
+    const pollTimer = setInterval(() => {}, POLL_MS)
 
     const reportTimer = setInterval(() => {
       const c = clientRef.current

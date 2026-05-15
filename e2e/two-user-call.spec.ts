@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
-import { CALL_CONTEXT_OPTIONS, fillName, joinRoom, randomRoom } from './helpers/call'
+import { createCallContexts, fillName, joinRoom, createRoom } from './helpers/call'
 
 async function expectRemoteVideoPlaying(page: Page) {
   await page.waitForFunction(() => {
@@ -32,10 +32,9 @@ async function expectRemoteVideoPlaying(page: Page) {
 
 test.describe('Two-user call', () => {
   test('remote participant receives camera video after peer turns camera on', async ({ browser }) => {
-    const roomCode = randomRoom()
+    const roomCode = await createRoom()
 
-    const ctx1 = await browser.newContext(CALL_CONTEXT_OPTIONS)
-    const ctx2 = await browser.newContext(CALL_CONTEXT_OPTIONS)
+    const { ctx1, ctx2 } = await createCallContexts(browser)
     const alice = await ctx1.newPage()
     const bob = await ctx2.newPage()
 
@@ -63,10 +62,9 @@ test.describe('Two-user call', () => {
   })
 
   test('a user who leaves is removed from the other user\'s view', async ({ browser }) => {
-    const roomCode = randomRoom()
+    const roomCode = await createRoom()
 
-    const ctx1 = await browser.newContext(CALL_CONTEXT_OPTIONS)
-    const ctx2 = await browser.newContext(CALL_CONTEXT_OPTIONS)
+    const { ctx1, ctx2 } = await createCallContexts(browser)
     const page1 = await ctx1.newPage()
     const page2 = await ctx2.newPage()
 
@@ -93,10 +91,9 @@ test.describe('Two-user call', () => {
   })
 
   test('rejoining the same room after leaving works', async ({ browser }) => {
-    const roomCode = randomRoom()
+    const roomCode = await createRoom()
 
-    const ctx1 = await browser.newContext(CALL_CONTEXT_OPTIONS)
-    const ctx2 = await browser.newContext(CALL_CONTEXT_OPTIONS)
+    const { ctx1, ctx2 } = await createCallContexts(browser)
     const page1 = await ctx1.newPage()
     const page2 = await ctx2.newPage()
 
