@@ -2,23 +2,26 @@
 
 @layer base {
     :root {
-        --background: 210 33% 98%;
-        --foreground: 222 47% 11%;
+        --font-sessionly: var(--font-montserrat), Helvetica, Arial, sans-serif;
+
+        --background: 0 0% 99%;
+        --foreground: 240 20% 10%;
 
         --card: 0 0% 100%;
-        --card-foreground: 222 47% 11%;
+        --card-foreground: 240 20% 10%;
 
         --popover: 0 0% 100%;
-        --popover-foreground: 222 47% 11%;
+        --popover-foreground: 240 20% 10%;
 
-        --primary: 205 89% 40%;
+        /* Indigo — premium, distinctive, trustworthy */
+        --primary: 243 75% 58%;
         --primary-foreground: 0 0% 100%;
 
-        --secondary: 204 82% 94%;
-        --secondary-foreground: 207 90% 25%;
+        --secondary: 243 30% 94%;
+        --secondary-foreground: 243 50% 30%;
 
-        --muted: 210 28% 94%;
-        --muted-foreground: 215 16% 47%;
+        --muted: 240 8% 96%;
+        --muted-foreground: 240 6% 46%;
 
         --accent: 39 100% 93%;
         --accent-foreground: 29 66% 22%;
@@ -26,45 +29,44 @@
         --destructive: 0 78% 55%;
         --destructive-foreground: 0 0% 100%;
 
-        --border: 215 20% 86%;
-        --input: 214 24% 90%;
-        --ring: 205 89% 40%;
+        --border: 240 8% 90%;
+        --input: 240 8% 90%;
+        --ring: 243 75% 58%;
 
         --surface: 0 0% 100%;
-        --surface-2: 210 26% 96%;
-        --surface-3: 212 24% 91%;
+        --surface-2: 240 8% 97%;
+        --surface-3: 240 8% 93%;
 
-        /* Subtle cool-white gradient — no amber on non-call pages */
-        --hero-from: 210 50% 99%;
-        --hero-via: 210 35% 98%;
-        --hero-to: 215 28% 96%;
+        --hero-from: 0 0% 100%;
+        --hero-via: 240 8% 99%;
+        --hero-to: 243 20% 97%;
 
-        --brand-soft: 205 92% 84%;
-        /* Amber — reserved for the speaking ring only */
+        --brand-soft: 243 80% 84%;
         --brand-glow: 43 96% 62%;
-        --shadow-color: 214 40% 18%;
+        --shadow-color: 240 30% 15%;
 
         --radius: 0.75rem;
     }
 
     .dark {
-        --background: 223 35% 10%;
-        --foreground: 210 40% 96%;
+        /* Linear-inspired: very dark navy, not just "dark grey" */
+        --background: 240 18% 6%;
+        --foreground: 240 15% 94%;
 
-        --card: 222 30% 13%;
-        --card-foreground: 210 40% 96%;
+        --card: 240 14% 9%;
+        --card-foreground: 240 15% 94%;
 
-        --popover: 222 30% 13%;
-        --popover-foreground: 210 40% 96%;
+        --popover: 240 14% 9%;
+        --popover-foreground: 240 15% 94%;
 
-        --primary: 199 94% 68%;
-        --primary-foreground: 222 47% 11%;
+        --primary: 239 82% 72%;
+        --primary-foreground: 240 25% 8%;
 
-        --secondary: 216 34% 20%;
-        --secondary-foreground: 205 100% 91%;
+        --secondary: 240 16% 16%;
+        --secondary-foreground: 239 82% 82%;
 
-        --muted: 219 28% 18%;
-        --muted-foreground: 215 16% 62%;
+        --muted: 240 12% 14%;
+        --muted-foreground: 240 8% 58%;
 
         --accent: 31 68% 23%;
         --accent-foreground: 42 100% 88%;
@@ -72,19 +74,19 @@
         --destructive: 0 68% 52%;
         --destructive-foreground: 0 0% 100%;
 
-        --border: 218 20% 22%;
-        --input: 218 20% 22%;
-        --ring: 199 94% 68%;
+        --border: 240 10% 16%;
+        --input: 240 10% 16%;
+        --ring: 239 82% 72%;
 
-        --surface: 222 30% 13%;
-        --surface-2: 223 28% 16%;
-        --surface-3: 222 26% 20%;
-        --hero-from: 223 35% 10%;
-        --hero-via: 224 32% 12%;
-        --hero-to: 222 30% 13%;
-        --brand-soft: 201 88% 32%;
+        --surface: 240 14% 9%;
+        --surface-2: 240 12% 12%;
+        --surface-3: 240 10% 16%;
+        --hero-from: 240 18% 6%;
+        --hero-via: 240 16% 7%;
+        --hero-to: 240 14% 9%;
+        --brand-soft: 243 60% 35%;
         --brand-glow: 41 89% 56%;
-        --shadow-color: 220 60% 3%;
+        --shadow-color: 240 60% 3%;
     }
 }
 
@@ -159,7 +161,7 @@
 }
 
 .brand-badge {
-    background-image: linear-gradient(145deg, hsl(var(--primary)), hsl(195 80% 58%));
+    background-image: linear-gradient(145deg, hsl(var(--primary)), hsl(262 70% 62%));
     box-shadow:
         0 16px 28px -18px hsl(var(--shadow-color) / 0.45),
         inset 0 1px 0 hsl(0 0% 100% / 0.28);
@@ -317,12 +319,21 @@
     transition: box-shadow 140ms ease-out;
 }
 
-/* Amber speaking indicator — the one deliberate use of brand-glow */
-.speaking-ring {
-    box-shadow:
-        0 0 0 2.5px hsl(var(--brand-glow) / 0.95),
-        0 0 20px 4px hsl(var(--brand-glow) / 0.22);
+/* Audio pulse bars — shown inside the name pill when a participant is speaking */
+@keyframes audio-bar {
+    0%, 100% { transform: scaleY(0.35); }
+    50%       { transform: scaleY(1); }
 }
+.audio-bar {
+    display: inline-block;
+    width: 2px;
+    border-radius: 1px;
+    background: currentColor;
+    transform-origin: bottom;
+    animation: audio-bar 700ms ease-in-out infinite;
+}
+.audio-bar:nth-child(2) { animation-delay: 140ms; }
+.audio-bar:nth-child(3) { animation-delay: 280ms; }
 
 /* Press / tap feedback for interactive surfaces */
 .press {

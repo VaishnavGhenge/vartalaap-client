@@ -94,7 +94,7 @@ export default function JoinMeet() {
     const handleShare = async () => {
         try {
             if (canShare) {
-                await navigator.share({ title: 'Join my Vartalaap call', url: window.location.href });
+                await navigator.share({ title: 'Join my Sessionly call', url: window.location.href });
             } else {
                 await navigator.clipboard.writeText(window.location.href);
                 setCopied(true);

@@ -1,27 +1,8 @@
 import { httpServerUri } from '@/src/services/api/config'
-import { getAccessToken } from '@/src/services/api/token'
+import { apiFetch } from '@/src/services/api/fetch'
 
-function authHeaders(): Record<string, string> {
-    const token = getAccessToken()
-    return {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    }
-}
-
-async function sfuFetch<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const res = await fetch(`${httpServerUri}${path}`, {
-        method,
-        credentials: 'include',
-        headers: authHeaders(),
-        body: body !== undefined ? JSON.stringify(body) : undefined,
-    })
-    if (!res.ok) {
-        const text = await res.text()
-        throw new Error(text.trim() || `sfu ${method} ${path}: ${res.status}`)
-    }
-    if (res.status === 204) return undefined as T
-    return res.json()
+function sfuFetch<T>(method: string, path: string, body?: unknown): Promise<T> {
+    return apiFetch<T>(method, `${httpServerUri}${path}`, { body })
 }
 
 export interface SfuTrackObject {

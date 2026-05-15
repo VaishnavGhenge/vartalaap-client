@@ -1,16 +1,18 @@
 import "./globals.css";
 import type {Metadata, Viewport} from "next";
-import {Inter} from "next/font/google";
+import { Inter, Montserrat, Plus_Jakarta_Sans } from "next/font/google";
 import React from "react";
 import {HomeWrapper} from "@/src/components/ui/HomeWrapper";
 import {Providers} from "@/src/components/providers";
 import {SentryInit} from "@/src/components/SentryInit";
 
-const inter = Inter({subsets: ["latin"]});
+const inter = Inter({ subsets: ["latin"] });
+const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], variable: "--font-jakarta", display: "swap" });
+const montserrat = Montserrat({ subsets: ["latin"], variable: "--font-montserrat", display: "swap" });
 
 export const metadata: Metadata = {
-    title: "Vartalaap",
-    description: "Video chat app",
+    title: "Sessionly — Book, meet, and get paid",
+    description: "The scheduling tool for coaches, consultants, and independent professionals. Booking pages and video calls in one place.",
 };
 
 export const viewport: Viewport = {
@@ -41,7 +43,7 @@ export default async function RootLayout({
                 {/* biome-ignore lint: theme init must run before paint to avoid flash */}
                 <script suppressHydrationWarning dangerouslySetInnerHTML={{ __html: themeScript }} />
             </head>
-            <body className={inter.className}>
+            <body className={`${inter.className} ${jakarta.variable} ${montserrat.variable}`}>
                 <SentryInit />
                 <Providers>
                     <HomeWrapper>

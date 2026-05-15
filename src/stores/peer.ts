@@ -190,12 +190,24 @@ const createBlackVideoTrack = (): MediaStreamTrack | null => {
 
 // Old Android devices throw NotReadableError when the camera hardware is still held
 // by a previous track, or NotFoundError when exact constraints aren't supported.
+// OverconstrainedError fires when a saved deviceId no longer matches any device.
 // Retries with progressively simpler constraints before giving up.
 async function getUserMediaWithFallback(constraints: MediaStreamConstraints): Promise<MediaStream> {
   try {
     return await navigator.mediaDevices.getUserMedia(constraints)
   } catch (e) {
     const name = (e as DOMException).name
+    // OverconstrainedError: stale saved deviceId — retry without it
+    if (name === 'OverconstrainedError') {
+      const videoConstraints = constraints.video
+      const facingMode = typeof videoConstraints === 'object'
+        ? (videoConstraints as MediaTrackConstraints).facingMode
+        : undefined
+      return navigator.mediaDevices.getUserMedia({
+        video: facingMode ? { facingMode: { ideal: facingMode as string } } : true,
+        audio: constraints.audio,
+      })
+    }
     if (name !== 'NotReadableError' && name !== 'NotFoundError') throw e
 
     // Second attempt: keep facingMode preference but strip resolution/framerate hints

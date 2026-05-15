@@ -3,9 +3,10 @@
 import { BufferingButtonLabel } from "@/src/components/ui/BufferingButtonLabel";
 import Link from "next/link";
 import { useState } from "react";
-import Navbar from "@/src/components/ui/Navbar";
 import { Input } from "@/src/components/ui/input";
 import { Button } from "@/src/components/ui/button";
+import { SessionlyWordmark } from "@/src/components/ui/SessionlyWordmark";
+import { ThemeToggle } from "@/src/components/ui/ThemeToggle";
 import { useRegister } from "@/src/hooks/use-auth";
 import { toast } from "sonner";
 
@@ -31,10 +32,16 @@ export default function Register() {
     }
 
     return (
-        <div className="flex min-h-dvh flex-col">
-            <Navbar />
+        <div className="relative flex min-h-dvh flex-col">
+            <div className="absolute right-4 top-4 z-10">
+                <ThemeToggle />
+            </div>
 
-            <main className="flex flex-1 items-center justify-center px-4 py-12 sm:px-6">
+            <main className="flex flex-1 flex-col items-center justify-center px-4 py-12 sm:px-6">
+                <Link href="/" className="mb-8">
+                    <SessionlyWordmark className="text-3xl text-[hsl(var(--foreground))]" />
+                </Link>
+
                 <div className="app-panel w-full max-w-sm sm:max-w-md rounded-2xl p-6 sm:p-8">
 
                     <h1 className="text-xl font-semibold tracking-tight text-[hsl(var(--foreground))]">

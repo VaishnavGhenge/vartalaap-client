@@ -59,3 +59,26 @@ export async function getMe(): Promise<User> {
     if (!res.ok) throw new Error('unauthorized')
     return res.json()
 }
+
+export async function updateProfile(payload: {
+    name: string
+    slug: string
+    timezone: string
+    onboardingStep: number
+}): Promise<User> {
+    const token = getAccessToken()
+    const res = await fetch(`${httpServerUri}/auth/me`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(payload),
+    })
+    if (!res.ok) {
+        const text = await res.text()
+        throw new Error(text.trim() || `${res.status}`)
+    }
+    return res.json()
+}

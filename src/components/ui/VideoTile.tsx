@@ -1,6 +1,6 @@
 "use client";
 
-import { MicOff, Pin, PinOff, WifiOff, Loader2 } from "lucide-react";
+import { Mic, MicOff, Pin, PinOff, WifiOff, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { AudioStream, VideoStream } from "@/src/components/ui/Video";
 import { useAudioLevel } from "@/src/hooks/use-audio-level";
@@ -102,10 +102,13 @@ export const VideoTile = ({
         <div
             aria-label={speaking ? `${label}, speaking` : label}
             className={`group tile-in relative h-full w-full overflow-hidden rounded-2xl
-                         border border-[hsl(var(--border))]/50
                          bg-[linear-gradient(160deg,hsl(var(--surface-2)),hsl(var(--surface-3)))]
-                         ${speaking ? 'speaking-ring' : ''}
-                         ${isPinned ? 'ring-2 ring-[hsl(var(--primary))]/60' : ''}`}
+                         transition-[border-color,box-shadow] duration-150
+                         ${speaking
+                             ? 'border-2 border-white/70 shadow-[0_0_0_2px_hsl(var(--primary)/0.5)]'
+                             : 'border border-[hsl(var(--border))]/50'
+                         }
+                         ${isPinned && !speaking ? 'ring-2 ring-[hsl(var(--primary))]/60' : ''}`}
         >
 
             {/* Avatar (camera off or no stream yet) */}
@@ -141,25 +144,45 @@ export const VideoTile = ({
                 />
             )}
 
-            {/* Quality dot — remote tiles only, top-right corner */}
-            {!isLocal && quality && quality !== 'unknown' && (
-                <div className="absolute top-2.5 right-2.5 flex items-center gap-1">
-                    <button
-                        type="button"
-                        aria-label={`Connection quality: ${QUALITY_LABEL[quality]}`}
-                        className="group/quality relative flex h-5 w-5 items-center justify-center rounded-full"
-                    >
-                        <span className={`block w-2 h-2 rounded-full ${QUALITY_DOT_COLOR[quality]}`} />
-                        <span
-                            role="tooltip"
-                            className="pointer-events-none absolute right-0 top-full mt-1 whitespace-nowrap rounded-md
-                                       bg-[hsl(var(--surface-3))] px-2 py-1 text-[10px] font-medium
-                                       text-[hsl(var(--foreground))] opacity-0 shadow-lg
-                                       transition-opacity group-hover/quality:opacity-100 group-focus-visible/quality:opacity-100"
+            {/* Media status — high-contrast badges that stay readable over bright video. */}
+            {!compact && (
+                <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1.5">
+                    {/* Quality dot */}
+                    {!isLocal && quality && quality !== 'unknown' && (
+                        <button
+                            type="button"
+                            aria-label={`Connection quality: ${QUALITY_LABEL[quality]}`}
+                            className="group/quality relative flex size-7 cursor-pointer items-center justify-center rounded-full
+                                       border border-white/25 bg-zinc-950/75 text-white shadow-lg shadow-black/25 backdrop-blur-md
+                                       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
                         >
-                            {QUALITY_LABEL[quality]}
-                        </span>
-                    </button>
+                            <span className={`block size-2 rounded-full ${QUALITY_DOT_COLOR[quality]}`} />
+                            <span
+                                role="tooltip"
+                                className="pointer-events-none absolute right-0 top-full mt-1 whitespace-nowrap rounded-md
+                                           bg-[hsl(var(--surface-3))] px-2 py-1 text-[10px] font-medium
+                                           text-[hsl(var(--foreground))] opacity-0 shadow-lg
+                                           transition-opacity group-hover/quality:opacity-100 group-focus-visible/quality:opacity-100"
+                            >
+                                {QUALITY_LABEL[quality]}
+                            </span>
+                        </button>
+                    )}
+                    {/* Mic badge */}
+                    <div
+                        role="img"
+                        aria-label={muted ? 'Microphone muted' : 'Microphone on'}
+                        className={`flex size-7 items-center justify-center rounded-full border shadow-lg shadow-black/25 backdrop-blur-md
+                                    ${muted
+                                        ? 'border-red-300/35 bg-red-600/85 text-white'
+                                        : 'border-white/25 bg-zinc-950/75 text-white'
+                                    }`}
+                    >
+                        {muted
+                            ? <MicOff className="size-3.5" strokeWidth={2.4} />
+                            : <Mic className="size-3.5" strokeWidth={2.4} />
+                        }
+                    </div>
                 </div>
             )}
 
@@ -221,7 +244,13 @@ export const VideoTile = ({
             {/* Name pill — compact tiles show initials so the pill never overflows. */}
             <div aria-hidden="true"
                  className={`glass-pill absolute bottom-2 left-2 gap-1 px-2 py-0.5 ${compact ? 'text-[10px]' : 'text-[12px] overflow-hidden max-w-[calc(100%-1rem)]'}`}>
-                {muted && <MicOff className={`shrink-0 text-[hsl(var(--destructive))] ${compact ? 'w-2.5 h-2.5' : 'w-3 h-3'}`} />}
+                {speaking && !muted && !compact && (
+                    <span className="flex items-end gap-[2px] h-3 shrink-0" style={{ height: 12 }}>
+                        <span className="audio-bar" style={{ height: 8 }} />
+                        <span className="audio-bar" style={{ height: 10 }} />
+                        <span className="audio-bar" style={{ height: 7 }} />
+                    </span>
+                )}
                 {compact
                     ? <span>{initials}</span>
                     : <span className="truncate min-w-0">{isScreenSharing ? `${label} • Screen` : label}</span>

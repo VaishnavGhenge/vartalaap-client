@@ -13,8 +13,8 @@ export const useLogin = () => {
         mutationFn: (creds: UserCredentials) => login(creds),
         onSuccess: ({ user }) => {
             storeLogin(user)
-            toast.success('Signed in')
-            router.push('/')
+            // Resume onboarding if not complete
+            router.push(user.onboardingStep < 5 ? '/onboarding' : '/dashboard')
         },
         onError: (err: Error) => {
             toast.error(err.message || 'Login failed')
@@ -30,8 +30,7 @@ export const useRegister = () => {
         mutationFn: (creds: RegisterCredentials) => register(creds),
         onSuccess: ({ user }) => {
             storeLogin(user)
-            toast.success('Account created')
-            router.push('/')
+            router.push('/onboarding')
         },
         onError: (err: Error) => {
             toast.error(err.message || 'Registration failed')

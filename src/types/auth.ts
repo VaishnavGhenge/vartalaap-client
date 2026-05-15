@@ -3,6 +3,8 @@ export interface User {
     email: string
     name: string
     slug: string
+    timezone: string
+    onboardingStep: number
     avatarUrl?: string
 }
 
