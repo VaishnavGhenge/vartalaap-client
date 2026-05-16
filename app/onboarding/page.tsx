@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Copy, ExternalLink, Lock } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
+import { Select } from "@/src/components/ui/select";
 import { useAuth } from "@/src/hooks/use-auth";
 import { updateProfile } from "@/src/services/api/auth";
+import { getAvailability, putAvailability, type AvailabilityRule } from "@/src/services/api/availability";
+import { createEventType, listEventTypes } from "@/src/services/api/event-types";
 import { useAuthStore } from "@/src/stores/auth";
 
 const TOTAL_STEPS = 5;
@@ -27,6 +30,37 @@ const TIMEZONES = [
 ];
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+// Index in DAYS → day_of_week the server uses (JS Date.getDay() — 0=Sun..6=Sat).
+// Sunday lives at position 6 in the UI but is day_of_week 0 on the wire.
+const DAY_TO_DOW = [1, 2, 3, 4, 5, 6, 0];
+
+// "08:00", "08:30", ... "21:30" — half-hour slots from 7am to 10pm cover
+// almost every coaching practice. The picker stays compact (32 options each)
+// vs. exposing arbitrary times, which the dashboard will offer later.
+const TIME_OPTIONS: string[] = (() => {
+    const out: string[] = [];
+    for (let h = 7; h <= 22; h++) {
+        for (const m of [0, 30]) {
+            if (h === 22 && m === 30) continue;
+            out.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
+        }
+    }
+    return out;
+})();
+
+// "09:00" → "9:00 AM". Display only — the wire format stays 24h.
+function formatTime12h(hhmm: string): string {
+    const [hStr, mStr] = hhmm.split(":");
+    const h = Number(hStr);
+    const m = Number(mStr);
+    const period = h >= 12 ? "PM" : "AM";
+    const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+    return `${h12}:${String(m).padStart(2, "0")} ${period}`;
+}
+
+const DEFAULT_START = "09:00";
+const DEFAULT_END = "17:00";
 
 const slugPattern = /^[a-z0-9-]{3,30}$/;
 
@@ -204,18 +238,15 @@ function Step1({
                 </div>
                 <div>
                     <label htmlFor="onboarding-timezone" className="label-caps block mb-1.5">Your timezone</label>
-                    <select
+                    <Select
                         id="onboarding-timezone"
                         value={tz}
                         onChange={e => setTz(e.target.value)}
-                        className="w-full rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))]
-                                   px-3 py-2 text-sm text-[hsl(var(--foreground))] outline-none
-                                   focus:ring-2 focus:ring-[hsl(var(--primary))]/30"
                     >
                         {TIMEZONES.map(t => (
                             <option key={t} value={t}>{t.replace("_", " ")}</option>
                         ))}
-                    </select>
+                    </Select>
                 </div>
                 {error && <p className="text-xs text-red-500">{error}</p>}
             </div>
@@ -225,10 +256,145 @@ function Step1({
 
 // ─── Step 2: Set your hours ───────────────────────────────────────────────────
 
-function Step2({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
-    const [enabled, setEnabled] = useState<Record<string, boolean>>({
-        Mon: true, Tue: true, Wed: true, Thu: true, Fri: true, Sat: false, Sun: false,
+// One UI-side row per (enabled) weekday. The server stores availability as
+// rules keyed by day; we collapse to one rule per day in onboarding to keep
+// the form scannable. Power users can add split shifts from the dashboard
+// later (Phase 2 follow-up).
+interface DaySlot {
+    enabled: boolean;
+    start: string; // "HH:MM"
+    end: string;   // "HH:MM"
+}
+
+type SlotsByDay = Record<string, DaySlot>;
+
+const defaultSlots: SlotsByDay = {
+    Mon: { enabled: true,  start: DEFAULT_START, end: DEFAULT_END },
+    Tue: { enabled: true,  start: DEFAULT_START, end: DEFAULT_END },
+    Wed: { enabled: true,  start: DEFAULT_START, end: DEFAULT_END },
+    Thu: { enabled: true,  start: DEFAULT_START, end: DEFAULT_END },
+    Fri: { enabled: true,  start: DEFAULT_START, end: DEFAULT_END },
+    Sat: { enabled: false, start: DEFAULT_START, end: DEFAULT_END },
+    Sun: { enabled: false, start: DEFAULT_START, end: DEFAULT_END },
+};
+
+// Build the slots shape from server rules so the form reflects whatever the
+// user saved on a prior visit. If multiple rules cover the same day we take
+// the earliest start + latest end so the user still sees their full range;
+// split shifts will be revealed by the dashboard editor, not silently dropped.
+function slotsFromRules(rules: AvailabilityRule[]): SlotsByDay {
+    const next: SlotsByDay = { ...defaultSlots };
+    // Mark every day disabled before applying rules; otherwise saved Mon/Tue
+    // would coexist with defaults' Wed/Thu/Fri.
+    for (const k of DAYS) next[k] = { ...next[k], enabled: false };
+    for (const rule of rules) {
+        // Server day_of_week 0..6 (Sun..Sat) — find the UI label.
+        const idx = DAY_TO_DOW.indexOf(rule.dayOfWeek);
+        if (idx < 0) continue;
+        const label = DAYS[idx];
+        const existing = next[label];
+        if (!existing.enabled) {
+            next[label] = { enabled: true, start: rule.startTime, end: rule.endTime };
+        } else {
+            next[label] = {
+                enabled: true,
+                start: rule.startTime < existing.start ? rule.startTime : existing.start,
+                end:   rule.endTime   > existing.end   ? rule.endTime   : existing.end,
+            };
+        }
+    }
+    return next;
+}
+
+// Inverse of slotsFromRules: only enabled days produce rules. Times are
+// already in HH:MM, so this is a straight projection.
+function rulesFromSlots(slots: SlotsByDay, timezone: string): AvailabilityRule[] {
+    const out: AvailabilityRule[] = [];
+    DAYS.forEach((label, idx) => {
+        const slot = slots[label];
+        if (!slot?.enabled) return;
+        out.push({
+            dayOfWeek: DAY_TO_DOW[idx],
+            startTime: slot.start,
+            endTime: slot.end,
+            timezone,
+        });
     });
+    return out;
+}
+
+function Step2({
+    timezone,
+    onBack,
+    onNext,
+}: {
+    timezone: string;
+    onBack: () => void;
+    onNext: () => void;
+}) {
+    const [slots, setSlots] = useState<SlotsByDay>(defaultSlots);
+    // Distinguish "still fetching" from "fetched, but empty" so we don't flash
+    // the default Mon-Fri set over a user who deliberately cleared it.
+    const [loaded, setLoaded] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState("");
+
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const rules = await getAvailability();
+                if (cancelled) return;
+                if (rules.length > 0) setSlots(slotsFromRules(rules));
+            } catch (e) {
+                // Non-fatal: the user can still enter availability for the first
+                // time. Surface the message so they know the load failed but
+                // don't block them from continuing.
+                if (!cancelled) setError(e instanceof Error ? e.message : "Could not load saved hours");
+            } finally {
+                if (!cancelled) setLoaded(true);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, []);
+
+    // Disable Continue when no day is enabled — saving zero rules is valid on
+    // the server but defeats the whole point of the step. The dashboard can
+    // clear later.
+    const hasEnabledDay = useMemo(
+        () => DAYS.some(d => slots[d]?.enabled),
+        [slots],
+    );
+
+    // Pre-check that every enabled day has end > start so we don't burn a
+    // round-trip on something the user can fix in-place.
+    const localValidationError = useMemo<string | null>(() => {
+        for (const d of DAYS) {
+            const s = slots[d];
+            if (!s?.enabled) continue;
+            if (s.end <= s.start) return `${d}: end time must be after start time`;
+        }
+        return null;
+    }, [slots]);
+
+    const update = (day: string, patch: Partial<DaySlot>) => {
+        setSlots(prev => ({ ...prev, [day]: { ...prev[day], ...patch } }));
+        if (error) setError("");
+    };
+
+    const handleContinue = async () => {
+        if (localValidationError) { setError(localValidationError); return; }
+        setSaving(true);
+        setError("");
+        try {
+            await putAvailability(rulesFromSlots(slots, timezone));
+            onNext();
+        } catch (e) {
+            setError(e instanceof Error ? e.message : "Could not save your hours");
+        } finally {
+            setSaving(false);
+        }
+    };
 
     return (
         <StepShell
@@ -236,49 +402,61 @@ function Step2({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
             heading="When are you available?"
             sub="Choose the days and hours clients can book with you."
             onBack={onBack}
-            onContinue={onNext}
+            onContinue={handleContinue}
+            continueDisabled={!hasEnabledDay || !!localValidationError || !loaded}
+            loading={saving}
         >
             <div className="flex flex-col gap-2">
-                {DAYS.map(day => (
+                {DAYS.map(day => {
+                    const slot = slots[day];
+                    return (
                     <div key={day} className="flex items-center gap-3">
                         <button
                             type="button"
-                            onClick={() => setEnabled(e => ({ ...e, [day]: !e[day] }))}
-                            aria-label={`${enabled[day] ? "Disable" : "Enable"} ${day} availability`}
-                            aria-pressed={enabled[day]}
+                            onClick={() => update(day, { enabled: !slot.enabled })}
+                            aria-label={`${slot.enabled ? "Disable" : "Enable"} ${day} availability`}
+                            aria-pressed={slot.enabled}
                             className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent
                                        transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]/50
-                                       ${enabled[day] ? "bg-[hsl(var(--primary))]" : "bg-[hsl(var(--border))]"}`}
+                                       ${slot.enabled ? "bg-[hsl(var(--primary))]" : "bg-[hsl(var(--border))]"}`}
                         >
                             <span className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow
                                             transform transition-transform
-                                            ${enabled[day] ? "translate-x-4" : "translate-x-0"}`} />
+                                            ${slot.enabled ? "translate-x-4" : "translate-x-0"}`} />
                         </button>
-                        <span className={`w-8 text-sm font-medium ${enabled[day] ? "text-[hsl(var(--foreground))]" : "text-[hsl(var(--muted-foreground))]"}`}>
+                        <span className={`w-8 text-sm font-medium ${slot.enabled ? "text-[hsl(var(--foreground))]" : "text-[hsl(var(--muted-foreground))]"}`}>
                             {day}
                         </span>
-                        {enabled[day] && (
+                        {slot.enabled && (
                             <div className="flex items-center gap-1.5 ml-auto">
-                                <select
+                                <Select
                                     aria-label={`${day} start time`}
-                                    className="text-xs rounded border border-[hsl(var(--border))] bg-[hsl(var(--background))]
-                                                   px-2 py-1 text-[hsl(var(--foreground))] outline-none">
-                                    {["9:00 AM","10:00 AM","11:00 AM"].map(t => <option key={t}>{t}</option>)}
-                                </select>
+                                    value={slot.start}
+                                    onChange={e => update(day, { start: e.target.value })}
+                                    selectSize="sm"
+                                    wrapperClassName="w-[6.75rem]">
+                                    {TIME_OPTIONS.map(t => <option key={t} value={t}>{formatTime12h(t)}</option>)}
+                                </Select>
                                 <span className="text-xs text-[hsl(var(--muted-foreground))]">to</span>
-                                <select
+                                <Select
                                     aria-label={`${day} end time`}
-                                    className="text-xs rounded border border-[hsl(var(--border))] bg-[hsl(var(--background))]
-                                                   px-2 py-1 text-[hsl(var(--foreground))] outline-none">
-                                    {["5:00 PM","6:00 PM","7:00 PM"].map(t => <option key={t}>{t}</option>)}
-                                </select>
+                                    value={slot.end}
+                                    onChange={e => update(day, { end: e.target.value })}
+                                    selectSize="sm"
+                                    wrapperClassName="w-[6.75rem]">
+                                    {TIME_OPTIONS.map(t => <option key={t} value={t}>{formatTime12h(t)}</option>)}
+                                </Select>
                             </div>
                         )}
                     </div>
-                ))}
+                    );
+                })}
             </div>
+            {error && (
+                <p className="mt-3 text-xs text-red-500">{error}</p>
+            )}
             <p className="mt-4 text-xs text-[hsl(var(--muted-foreground))]">
-                You can fine-tune this anytime from your dashboard.
+                You can fine-tune this anytime from your dashboard. Times are in {timezone.replace("_", " ")}.
             </p>
         </StepShell>
     );
@@ -286,15 +464,81 @@ function Step2({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
 
 // ─── Step 3: First event type ─────────────────────────────────────────────────
 
+// Slugify the title for the public booking URL. Server enforces the same
+// pattern; rolling our own here lets the UI preview the URL before submitting.
+function slugifyTitle(s: string): string {
+    return s
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, "-")
+        .replace(/[^a-z0-9-]/g, "")
+        .replace(/-{2,}/g, "-")
+        .slice(0, 40);
+}
+
 function Step3({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
     const [duration, setDuration] = useState(30);
     const [title, setTitle] = useState("30-minute call");
+    // Whether the user is auto-naming the event (title tracks duration) or
+    // has explicitly typed a custom title (don't clobber it).
+    const [titleTouched, setTitleTouched] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [skipCreate, setSkipCreate] = useState(false);
+    const [error, setError] = useState("");
 
     const durations = [15, 30, 45, 60];
 
+    // Skip create on re-onboarding: if the user already has at least one
+    // active event type, don't try to create a duplicate. The free-plan cap
+    // would 403 us anyway, but checking upfront avoids the user thinking the
+    // step failed.
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const events = await listEventTypes();
+                if (cancelled) return;
+                if (events.some(e => e.isActive)) setSkipCreate(true);
+            } catch {
+                // Non-fatal — proceed as if no events exist; the POST will
+                // surface a 403 if one does.
+            }
+        })();
+        return () => { cancelled = true; };
+    }, []);
+
     const handleDuration = (d: number) => {
         setDuration(d);
-        setTitle(`${d}-minute call`);
+        if (!titleTouched) setTitle(`${d}-minute call`);
+    };
+
+    const handleTitleChange = (v: string) => {
+        setTitle(v);
+        setTitleTouched(true);
+    };
+
+    const handleContinue = async () => {
+        const trimmed = title.trim();
+        if (!trimmed) { setError("Give your event a name."); return; }
+        if (skipCreate) { onNext(); return; }
+        setSaving(true);
+        setError("");
+        try {
+            const slug = slugifyTitle(trimmed) || `call-${duration}`;
+            await createEventType({
+                slug,
+                title: trimmed,
+                durationMin: duration,
+                bufferMin: 0,
+                isPaid: false,
+                isActive: true,
+            });
+            onNext();
+        } catch (e) {
+            setError(e instanceof Error ? e.message : "Could not save your event type");
+        } finally {
+            setSaving(false);
+        }
     };
 
     return (
@@ -303,9 +547,16 @@ function Step3({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
             heading="Create your first booking type"
             sub="Clients will use this to schedule time with you."
             onBack={onBack}
-            onContinue={onNext}
+            onContinue={handleContinue}
+            continueDisabled={!title.trim()}
+            loading={saving}
         >
             <div className="flex flex-col gap-5">
+                {skipCreate && (
+                    <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                        You already have a booking type set up. Continue to the next step.
+                    </p>
+                )}
                 <div>
                     <label className="label-caps block mb-2">Session length</label>
                     <div className="grid grid-cols-4 gap-2" role="group" aria-label="Session length">
@@ -315,11 +566,12 @@ function Step3({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
                                 type="button"
                                 onClick={() => handleDuration(d)}
                                 aria-pressed={duration === d}
+                                disabled={skipCreate}
                                 className={`cursor-pointer rounded-lg border py-2 text-sm font-medium transition-colors
                                            ${duration === d
                                     ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]"
                                     : "border-[hsl(var(--border))] text-[hsl(var(--foreground))] hover:border-[hsl(var(--primary))]/50"
-                                }`}
+                                } ${skipCreate ? "opacity-60 cursor-not-allowed" : ""}`}
                             >
                                 {d}m
                             </button>
@@ -331,9 +583,15 @@ function Step3({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
                     <Input
                         id="event-title"
                         value={title}
-                        onChange={e => setTitle(e.target.value)}
+                        onChange={e => handleTitleChange(e.target.value)}
                         placeholder="e.g. Discovery call"
+                        disabled={skipCreate}
                     />
+                    {title.trim() && !skipCreate && (
+                        <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">
+                            Public URL: /u/{"{your-slug}"}/{slugifyTitle(title) || `call-${duration}`}
+                        </p>
+                    )}
                 </div>
                 <div>
                     <label className="label-caps block mb-2">Pricing</label>
@@ -362,6 +620,7 @@ function Step3({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
                         Paid sessions are available on the Solo plan.
                     </p>
                 </div>
+                {error && <p className="text-xs text-red-500">{error}</p>}
             </div>
         </StepShell>
     );
@@ -513,7 +772,11 @@ export default function OnboardingPage() {
                     />
                 )}
                 {step === 2 && (
-                    <Step2 onBack={() => setStep(1)} onNext={() => setStep(3)} />
+                    <Step2
+                        timezone={profileData?.timezone ?? user.timezone}
+                        onBack={() => setStep(1)}
+                        onNext={() => setStep(3)}
+                    />
                 )}
                 {step === 3 && (
                     <Step3 onBack={() => setStep(2)} onNext={() => setStep(4)} />

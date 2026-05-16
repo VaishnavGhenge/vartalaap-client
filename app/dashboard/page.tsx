@@ -23,21 +23,10 @@ import { NewMeetingButton } from "@/src/components/ui/NewMeetButton";
 import { SessionlyWordmark } from "@/src/components/ui/SessionlyWordmark";
 import { ThemeMode, useTheme } from "@/src/components/theme-provider";
 import { useAuth } from "@/src/hooks/use-auth";
+import { normalizeMeetCodeInput, roomPath } from "@/src/lib/room-routes";
 import { cn } from "@/src/lib/utils";
 
 const meetCodePattern = /^[a-z2-9]{3}-[a-z2-9]{4}-[a-z2-9]{3}$/;
-
-function normalizeMeetCode(raw: string): string {
-    const trimmed = raw.trim();
-    try {
-        const url = new URL(trimmed.includes("://") ? trimmed : `https://${trimmed}`);
-        const path = url.pathname.replace(/^\/+|\/+$/g, "");
-        if (path) return path.toLowerCase();
-    } catch {
-        // The value is a plain room code.
-    }
-    return trimmed.replace(/^\/+|\/+$/g, "").toLowerCase();
-}
 
 type PanelKey = "overview" | "availability" | "booking-types" | "payments" | "rooms" | "settings";
 
@@ -343,14 +332,14 @@ export default function DashboardPage() {
     }
 
     const bookingPath = user.slug ? `getsessionly.com/${user.slug}` : "getsessionly.com/your-name";
-    const code = normalizeMeetCode(meetingCode);
+    const code = normalizeMeetCodeInput(meetingCode);
     const canJoin = meetCodePattern.test(code);
     const panelCopy = PANEL_COPY[activePanel];
 
     const handleJoin = () => {
         if (!canJoin || isJoining) return;
         startJoinTransition(() => {
-            router.push(`/${code}`);
+            router.push(roomPath(code));
         });
     };
 

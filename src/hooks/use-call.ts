@@ -1,12 +1,20 @@
 import { useEffect, useRef } from 'react'
+import * as Sentry from '@sentry/nextjs'
 import type { SignalingClient } from '@/src/services/signaling/client'
 import { usePeerStore } from '@/src/stores/peer'
 import { fetchIceServers } from '@/src/services/api/ice'
 import type {
+  CallAttemptResult,
+  ClientMetricData,
   Envelope, JoinedData, PeerJoinedData, PeerLeftData, PeerStateData, SfuTracksData,
 } from '@/src/services/signaling/protocol'
 import { SfuSession } from '@/src/services/webrtc/sfu-session'
 import { playPeerJoined, playPeerLeft, playScreenShareStart, playScreenShareStop } from '@/src/lib/sounds'
+
+// The CLAUDE.md SLO calls anything over 10s a failed connection attempt rather
+// than a slow success. If we don't see a remote frame within this window we
+// emit result=timeout so the call-success-rate SLO reflects the user's view.
+const TTFM_TIMEOUT_MS = 10_000
 
 interface Args {
   client: SignalingClient | null
@@ -34,6 +42,39 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
     const remoteSessionToPeer = new Map<string, string>()
     // sfu-tracks messages that arrive before sfuSession is ready are buffered here.
     const pendingSfuTracks: Array<{ sessionId: string; trackNames: string[] }> = []
+
+    // ── Time-to-first-media instrumentation ────────────────────────────────
+    // joinSentAt is captured the moment we hand the `join` envelope to the
+    // signaling client. ttfmRecorded latches so we emit exactly one observation
+    // per call (a peer might publish multiple tracks; only the first matters).
+    // ttfmTimeout fires at TTFM_TIMEOUT_MS and emits result=timeout so the
+    // call-success-rate SLO captures users who gave up waiting.
+    let joinSentAt = 0
+    let ttfmRecorded = false
+    let ttfmTimeout: ReturnType<typeof setTimeout> | null = null
+
+    const emitMetric = (data: ClientMetricData) => {
+      if (!client) return
+      // Silently swallow if the WS is gone — observability traffic should
+      // never crash a call. The server retries by aggregation, not per-event.
+      try {
+        client.send('client-metric', data)
+      } catch {}
+    }
+
+    const recordCallAttempt = (result: CallAttemptResult) => {
+      // call_attempt is the denominator for the connection-success-rate SLO.
+      // Idempotent on success: ttfmRecorded guards repeats; this guard is for
+      // timeout/error/abandoned races. We always emit exactly one outcome per
+      // call lifecycle.
+      if (ttfmRecorded && result !== 'success') return
+      ttfmRecorded = true
+      if (ttfmTimeout) {
+        clearTimeout(ttfmTimeout)
+        ttfmTimeout = null
+      }
+      emitMetric({ name: 'call_attempt', value: 0, result })
+    }
 
     // Resolves when the server sends `joined` after our `join`. We must not call
     // sfuSession.publish() before the server has added us to the room — otherwise
@@ -171,6 +212,22 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
         // when the room doesn't exist yet — meaning late joiners never receive
         // our tracks during their join replay.
         const a = joinArgs.current
+        joinSentAt = performance.now()
+        // The TTFM clock starts the moment the join envelope leaves the client.
+        // Anything that prevents a remote frame from arriving — server-side
+        // join failure, SFU 5xx, peer never publishing — should land as a
+        // timeout, not silence. The timer is cancelled on success, error, or
+        // unmount.
+        ttfmTimeout = setTimeout(() => {
+          if (ttfmRecorded) return
+          ttfmRecorded = true
+          emitMetric({ name: 'call_attempt', value: 0, result: 'timeout' })
+          Sentry.captureMessage('call setup timeout', {
+            level: 'warning',
+            tags: { ttfm_outcome: 'timeout' },
+          })
+        }, TTFM_TIMEOUT_MS)
+
         client.send('join', {
           name: a.userName,
           audio: a.initialAudio,
@@ -185,8 +242,14 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
         const peerId = client.getPeerId()
         if (!peerId) {
           console.error('[use-call] peerId not set yet — welcome message not received')
+          recordCallAttempt('error')
           return
         }
+        // Tag every Sentry event that fires during this call lifecycle. Lets
+        // us pivot from a Sentry alert to the specific room/peer without
+        // grepping logs. Cleared on unmount below.
+        Sentry.setTag('roomId', roomId)
+        Sentry.setTag('peerId', peerId)
         // Per-peer remote stream accumulator so audio+video tracks for the
         // same peer surface as one MediaStream to the UI.
         const remoteStreams = new Map<string, MediaStream>()
@@ -198,23 +261,62 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
           // sfu-tracks via hub.BroadcastSfuTracks (sfu_handler.go), so we
           // don't announce from the client.
           onRemoteTrack: (track, remoteSessionId) => {
+            // First remote track for this call = end of TTFM window. Latch so
+            // additional tracks (audio after video, or a second peer's tracks)
+            // don't re-emit. We measure the user-visible "I can see/hear the
+            // other person" moment, not per-track timings.
+            if (!ttfmRecorded && joinSentAt > 0) {
+              const ttfmSeconds = (performance.now() - joinSentAt) / 1000
+              ttfmRecorded = true
+              if (ttfmTimeout) {
+                clearTimeout(ttfmTimeout)
+                ttfmTimeout = null
+              }
+              emitMetric({ name: 'time_to_first_media', value: ttfmSeconds })
+              emitMetric({ name: 'call_attempt', value: 0, result: 'success' })
+              // Sentry breadcrumb so a later error in the same call carries the
+              // TTFM context — useful when investigating "call worked then froze".
+              Sentry.addBreadcrumb({
+                category: 'call',
+                message: 'first remote frame',
+                level: 'info',
+                data: { ttfm_seconds: Number(ttfmSeconds.toFixed(2)) },
+              })
+            }
             const remotePeerId = remoteSessionToPeer.get(remoteSessionId)
             if (!remotePeerId) {
               console.warn('[use-call] onRemoteTrack: no peer for remoteSessionId', remoteSessionId)
               return
             }
-            let stream = remoteStreams.get(remotePeerId)
-            if (!stream) {
-              stream = new MediaStream()
-              remoteStreams.set(remotePeerId, stream)
-            }
-            // Replace any existing track of the same kind — partytracks can
-            // re-emit a fresh MediaStreamTrack if the PC is recreated.
-            for (const existing of stream.getTracks()) {
-              if (existing.kind === track.kind) stream.removeTrack(existing)
-            }
-            stream.addTrack(track)
-            store.getState().updatePeerStream(remotePeerId, stream)
+            // Build a NEW MediaStream containing the existing tracks of other
+            // kinds plus the incoming track. Mutating the prior MediaStream via
+            // stream.addTrack/removeTrack does NOT fire the `addtrack` /
+            // `removetrack` events — per the MediaStream spec, those only fire
+            // for tracks added by the WebRTC stack, not by JS calls. The
+            // VideoStream component (src/components/ui/Video.tsx) listens to
+            // those events to re-sync srcObject; without them, a track arriving
+            // after a peer's tile mounted (e.g. remote camera enabled mid-call)
+            // is invisible to the <video> element and the user sees a frozen/
+            // black frame. Allocating a new MediaStream changes the prop
+            // reference, so Zustand re-renders the tile, the useEffect dep
+            // changes, and sync() reassigns srcObject with the new tracks.
+            const prev = remoteStreams.get(remotePeerId)
+            const keptTracks = prev
+              ? prev.getTracks().filter((t) => t.kind !== track.kind)
+              : []
+            const nextStream = new MediaStream([...keptTracks, track])
+            remoteStreams.set(remotePeerId, nextStream)
+            store.getState().updatePeerStream(remotePeerId, nextStream)
+            Sentry.addBreadcrumb({
+              category: 'call',
+              message: 'remote track attached',
+              level: 'info',
+              data: {
+                peer_id: remotePeerId,
+                kind: track.kind,
+                kept_kinds: keptTracks.map((t) => t.kind).join(','),
+              },
+            })
           },
           onConnectionStateChange: (state) => {
             if (disposed) return
@@ -241,6 +343,11 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
         if (localStream) {
           await sfuSession.publish(localStream).catch((e) => {
             console.error('[use-call] sfu publish failed — no media will be sent', e)
+            // Publish failure means peers will never see our tracks. Even if
+            // their tracks arrive (TTFM success), the call is one-sided. Record
+            // as error so the success-rate SLO reflects this.
+            recordCallAttempt('error')
+            Sentry.captureException(e, { tags: { stage: 'sfu_publish' } })
             import('sonner').then(({ toast }) => {
               toast.error('Could not start your camera or microphone. Try leaving and rejoining.')
             })
@@ -248,12 +355,28 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
         }
       } catch (e) {
         console.error('failed to init call', e)
+        recordCallAttempt('error')
+        Sentry.captureException(e, { tags: { stage: 'call_init' } })
       }
     })()
 
     return () => {
       client.send('leave', undefined, { room: roomId })
       disposed = true
+      // If the user navigated away before TTFM resolved, count it as abandoned —
+      // not as success or timeout. Distinguishes "user gave up" from "we failed
+      // to deliver" in the SLO breakdown.
+      if (!ttfmRecorded && joinSentAt > 0) {
+        recordCallAttempt('abandoned')
+      }
+      if (ttfmTimeout) {
+        clearTimeout(ttfmTimeout)
+        ttfmTimeout = null
+      }
+      // Clear call-scoped Sentry tags so errors after unmount aren't mis-tagged
+      // with a stale room/peer.
+      Sentry.setTag('roomId', undefined)
+      Sentry.setTag('peerId', undefined)
       client.setReconnectedHandler(undefined)
       client.off('joined', handleJoined as (env: Envelope) => void)
       client.off('peer-joined', handlePeerJoined as (env: Envelope) => void)

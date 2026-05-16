@@ -6,6 +6,9 @@ export interface User {
     timezone: string
     onboardingStep: number
     avatarUrl?: string
+    // Server emits 'free' by default; plan gating reads from here in later
+    // phases. Optional in TS so older cached responses don't fail to parse.
+    plan?: 'free' | 'solo' | 'teams'
 }
 
 export interface UserCredentials {

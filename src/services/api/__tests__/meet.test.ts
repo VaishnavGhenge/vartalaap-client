@@ -28,8 +28,9 @@ describe('createMeet', () => {
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
             ok: false,
             status: 429,
+            text: () => Promise.resolve(''),
         }))
 
-        await expect(createMeet()).rejects.toThrow('meets/new 429')
+        await expect(createMeet()).rejects.toThrow('POST http://localhost:8080/meets/new: 429')
     })
 })

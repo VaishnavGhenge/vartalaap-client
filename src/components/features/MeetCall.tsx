@@ -19,7 +19,6 @@ import { usePip } from "@/src/hooks/use-pip";
 import { useMeetStore } from "@/src/stores/meet";
 import { usePeerStore } from "@/src/stores/peer";
 import { useJoinMeetStore } from "@/src/stores/joinMeet";
-import { usePeerStats } from "@/src/hooks/use-peer-stats";
 import type { SignalingClient, ConnState } from "@/src/services/signaling/client";
 
 const LOCAL_TILE_ID = 'local'
@@ -37,8 +36,6 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
     const { localStream, screenTrack, enableMic, disableMic, enableCamera, disableCamera, switchCamera, startScreenShare, stopScreenShare, peerConnections, peerStats } = usePeerStore();
     const hasMultipleCameras = useHasMultipleCameras();
     const { userName, meetCode, clearJoinMeet } = useJoinMeetStore();
-
-    usePeerStats(client);
 
     const [copied, setCopied] = useState(false);
     const [canShare, setCanShare] = useState(false);

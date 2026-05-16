@@ -1,4 +1,4 @@
-import { expect, request, type Browser, type BrowserContext, type Page } from '@playwright/test'
+import { expect, request, type Browser, type BrowserContext, type BrowserContextOptions, type Page } from '@playwright/test'
 import { E2E_EMAIL, E2E_PASSWORD } from '../global-setup'
 
 const SERVER = `http://${process.env.NEXT_PUBLIC_SERVER_DOMAIN ?? 'localhost:8080'}`
@@ -18,7 +18,7 @@ export const CALL_CONTEXT_OPTIONS = {
 // Login once via the API and return a Playwright storageState suitable for a
 // new browser context.  Each call creates an independent server session so
 // concurrent contexts each get their own single-use rt token.
-async function freshAuthState(): Promise<Parameters<Browser['newContext']>[0]['storageState']> {
+async function freshAuthState(): Promise<BrowserContextOptions['storageState']> {
   const reqCtx = await request.newContext({ baseURL: SERVER })
   const res = await reqCtx.post('/auth/login', {
     data: { email: E2E_EMAIL, password: E2E_PASSWORD },
@@ -60,7 +60,7 @@ export async function createRoom(): Promise<string> {
 }
 
 export async function gotoRoom(page: Page, roomCode: string) {
-  await page.goto(`/${roomCode}`, { waitUntil: 'domcontentloaded' })
+  await page.goto(`/room/${roomCode}`, { waitUntil: 'domcontentloaded' })
 }
 
 export async function fillName(page: Page, name: string) {

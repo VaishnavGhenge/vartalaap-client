@@ -4,6 +4,7 @@ import { ComponentProps, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { createMeet } from "@/src/services/api/meet";
+import { roomPath } from "@/src/lib/room-routes";
 
 export const NewMeetingButton = (props: Omit<ComponentProps<typeof Button>, "onClick">) => {
     const router = useRouter();
@@ -14,7 +15,7 @@ export const NewMeetingButton = (props: Omit<ComponentProps<typeof Button>, "onC
         setIsCreating(true);
         try {
             const meet = await createMeet();
-            router.push(`/${meet.meetCode}`);
+            router.push(roomPath(meet.meetCode));
         } catch {
             toast.error("Could not create meeting. Please try again.");
             setIsCreating(false);

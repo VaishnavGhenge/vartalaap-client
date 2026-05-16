@@ -103,7 +103,7 @@ function VideoRoomMockup() {
     return (
         <div className="relative w-full rounded-xl overflow-hidden border border-[hsl(var(--border))] bg-[hsl(var(--background))] shadow-xl" aria-hidden="true">
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-[hsl(var(--border))]/60 bg-[hsl(var(--surface-2))]/60">
-                <span className="text-[11px] text-[hsl(var(--muted-foreground))] font-medium">sessionly.com/jane-smith/room</span>
+                <span className="text-[11px] text-[hsl(var(--muted-foreground))] font-medium">getsessionly.com/room/abc-defg-hij</span>
                 <span className="flex items-center gap-1.5 text-[11px] font-medium text-emerald-500">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
                     Live

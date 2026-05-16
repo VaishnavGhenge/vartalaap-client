@@ -63,7 +63,7 @@ async function unmuteMic(page: Page) {
 
 /** Joins the room from the pre-join screen *with* camera enabled before clicking Join. */
 async function joinWithCamera(page: Page, roomCode: string, name: string) {
-  await page.goto(`/${roomCode}`, { waitUntil: 'domcontentloaded' })
+  await page.goto(`/room/${roomCode}`, { waitUntil: 'domcontentloaded' })
   // fillName polls until the Join button is enabled, ensuring React has committed
   // the onChange state update before camera enabling triggers re-renders.
   await fillName(page, name)

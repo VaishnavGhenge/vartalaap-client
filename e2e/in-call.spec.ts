@@ -1,9 +1,9 @@
 import { test, expect, type Page } from '@playwright/test'
 
-const ROOM = 'test-room-call'
+const ROOM = 'cal-defg-hij'
 
 async function joinCall(page: Page, name = 'Alice') {
-  await page.goto(`/${ROOM}`)
+  await page.goto(`/room/${ROOM}`)
   await page.getByPlaceholder(/your name/i).fill(name)
   await page.getByRole('button', { name: /join now/i }).click()
   await expect(page.getByRole('button', { name: /leave call/i })).toBeVisible({ timeout: 10_000 })
@@ -16,6 +16,6 @@ test.describe('In-call UI', () => {
 
     // Should stay on the same room URL and show the join screen
     await expect(page.getByRole('button', { name: /join now/i })).toBeVisible({ timeout: 5_000 })
-    await expect(page).toHaveURL(new RegExp(ROOM))
+    await expect(page).toHaveURL(new RegExp(`/room/${ROOM}`))
   })
 })
