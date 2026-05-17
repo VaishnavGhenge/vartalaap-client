@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { Button } from "@/src/components/ui/button";
 import { SessionlyBrand } from "@/src/components/ui/SessionlyBrand";
-import { ThemeToggle } from "@/src/components/ui/ThemeToggle";
 
 const NAV = [
     { label: "Features",   href: "/#features" },
@@ -38,7 +37,6 @@ export function LandingHeader() {
                 </nav>
 
                 <div className="flex items-center gap-2 justify-end">
-                    <ThemeToggle />
                     <Button
                         variant="ghost"
                         size="sm"

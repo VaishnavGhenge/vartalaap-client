@@ -1,5 +1,6 @@
 'use client'
 
+import { Switch } from '@/src/components/ui/Switch'
 import { cn } from '@/src/lib/utils'
 
 interface ToggleProps {
@@ -28,28 +29,7 @@ export function Toggle({ checked, onChange, label, description, disabled, id }: 
           <span className="text-xs text-[hsl(var(--muted-foreground))]">{description}</span>
         )}
       </div>
-
-      <button
-        id={id}
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        disabled={disabled}
-        onClick={() => onChange(!checked)}
-        className={cn(
-          'relative h-6 w-11 shrink-0 rounded-full transition-colors',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--surface))]',
-          'disabled:cursor-not-allowed',
-          checked ? 'bg-[hsl(var(--primary))]' : 'bg-[hsl(var(--border))]',
-        )}
-      >
-        <span
-          className={cn(
-            'absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform',
-            checked ? 'translate-x-5' : 'translate-x-0',
-          )}
-        />
-      </button>
+      <Switch id={id} checked={checked} onChange={onChange} disabled={disabled} />
     </label>
   )
 }

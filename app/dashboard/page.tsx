@@ -179,139 +179,135 @@ function DashboardInner() {
     };
 
     return (
-        <div className="min-h-dvh bg-[hsl(var(--background))]">
-            <main className="py-3 pl-2 pr-3 sm:py-4 sm:pl-2 sm:pr-5 lg:py-4 lg:pl-3 lg:pr-6">
-                <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
-                    <aside className="lg:sticky lg:top-6 lg:self-start">
-                        <div className="flex min-h-[calc(100dvh-2rem)] flex-col rounded-2xl border border-[hsl(var(--border))]/80 bg-[hsl(var(--surface))] p-3 shadow-sm">
-                            <Link href="/dashboard" className="mb-3 flex items-center rounded-xl px-3 py-2.5 hover:bg-[hsl(var(--surface-2))]">
-                                <span className="min-w-0">
-                                    <SessionlyBrand size="sm" />
-                                    <span className="block truncate text-xs text-[hsl(var(--muted-foreground))]">Workspace</span>
-                                </span>
-                            </Link>
+        <div className="min-h-dvh bg-[hsl(var(--background))] lg:grid lg:grid-cols-[260px_minmax(0,1fr)]">
+            <aside className="border-b border-[hsl(var(--border))]/60 lg:sticky lg:top-0 lg:h-dvh lg:border-b-0 lg:border-r">
+                <div className="flex h-full flex-col px-3 py-4">
+                    <Link href="/dashboard" className="mb-1 flex items-center rounded-xl px-3 py-2 hover:bg-[hsl(var(--surface-2))]">
+                        <span className="min-w-0">
+                            <SessionlyBrand size="sm" />
+                            <span className="block truncate text-xs text-[hsl(var(--muted-foreground))]">Workspace</span>
+                        </span>
+                    </Link>
 
-                            <div className="border-t border-[hsl(var(--border))]/70 px-3 py-4">
-                                <p className="truncate text-sm font-medium text-[hsl(var(--foreground))]">
-                                    {user.name || user.email}
-                                </p>
-                                <p className="mt-1 truncate text-xs text-[hsl(var(--muted-foreground))]">
-                                    {bookingPath}
-                                </p>
-                            </div>
+                    <div className="mb-3 mt-2 border-t border-[hsl(var(--border))]/50 px-3 pt-4">
+                        <p className="truncate text-sm font-medium text-[hsl(var(--foreground))]">
+                            {user.name || user.email}
+                        </p>
+                        <p className="mt-1 truncate text-xs text-[hsl(var(--muted-foreground))]">
+                            {bookingPath}
+                        </p>
+                    </div>
 
-                            <nav className="flex flex-col gap-1" aria-label="Dashboard sections">
-                                {SIDEBAR_ITEMS.map(({ key, icon: Icon, label }) => {
-                                    const active = activePanel === key;
-                                    return (
-                                        <button
-                                            key={key}
-                                            type="button"
-                                            onClick={() => handleSelectPanel(key)}
-                                            aria-current={active ? "page" : undefined}
-                                            className={cn(
-                                                "flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]/50",
-                                                active
-                                                    ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]"
-                                                    : "text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--surface-2))] hover:text-[hsl(var(--foreground))]",
-                                            )}
-                                        >
-                                            <Icon className="size-4 shrink-0" />
-                                            <span className="min-w-0 flex-1 truncate text-sm font-medium">{label}</span>
-                                        </button>
-                                    );
-                                })}
-                            </nav>
-
-                            <div className="mt-auto border-t border-[hsl(var(--border))]/70 p-3">
-                                <Button variant="outline" size="sm" className="w-full" asChild>
-                                    <Link href="/pricing">View plans</Link>
-                                </Button>
+                    <nav className="flex flex-col gap-0.5" aria-label="Dashboard sections">
+                        {SIDEBAR_ITEMS.map(({ key, icon: Icon, label }) => {
+                            const active = activePanel === key;
+                            return (
                                 <button
+                                    key={key}
                                     type="button"
-                                    onClick={logout}
-                                    className="mt-2 flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--surface-2))] hover:text-[hsl(var(--foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]/50"
+                                    onClick={() => handleSelectPanel(key)}
+                                    aria-current={active ? "page" : undefined}
+                                    className={cn(
+                                        "flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]/50",
+                                        active
+                                            ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]"
+                                            : "text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--surface-2))] hover:text-[hsl(var(--foreground))]",
+                                    )}
                                 >
-                                    <LogOut className="size-3.5" />
-                                    Sign out
+                                    <Icon className="size-4 shrink-0" />
+                                    <span className="min-w-0 flex-1 truncate text-sm font-medium">{label}</span>
                                 </button>
-                            </div>
-                        </div>
-                    </aside>
+                            );
+                        })}
+                    </nav>
 
-                    <section className="flex min-w-0 flex-col gap-6">
-                        <div className="rounded-2xl border border-[hsl(var(--border))]/80 bg-[hsl(var(--surface))] p-5 shadow-sm sm:p-6">
-                            <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-                                <div>
-                                    <p className="label-caps mb-3 text-[hsl(var(--primary))]">{panelCopy.eyebrow}</p>
-                                    <h1 className="text-2xl font-semibold tracking-tight text-[hsl(var(--foreground))] sm:text-3xl">
-                                        {panelCopy.title}
-                                    </h1>
-                                    <p className="mt-2 max-w-2xl text-sm leading-6 text-[hsl(var(--muted-foreground))]">
-                                        {panelCopy.body}
-                                    </p>
-                                </div>
-                                {publicHref && (
-                                    <ShareLinkBlock url={bookingPath} href={publicHref} />
-                                )}
-                            </div>
-                        </div>
+                    <div className="mt-auto border-t border-[hsl(var(--border))]/50 px-1 pt-3">
+                        <Button variant="outline" size="sm" className="w-full" asChild>
+                            <Link href="/pricing">View plans</Link>
+                        </Button>
+                        <button
+                            type="button"
+                            onClick={logout}
+                            className="mt-2 flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--surface-2))] hover:text-[hsl(var(--foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]/50"
+                        >
+                            <LogOut className="size-3.5" />
+                            Sign out
+                        </button>
+                    </div>
+                </div>
+            </aside>
 
-                        {activePanel === "overview" && (
-                            <OverviewPanel
-                                setup={setup}
-                                setupLoaded={setupLoaded}
-                                refreshKey={refreshKey}
+            <main className="px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-7">
+                <section className="flex min-w-0 flex-col gap-5">
+                    <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+                        <div>
+                            <p className="label-caps mb-3 text-[hsl(var(--primary))]">{panelCopy.eyebrow}</p>
+                            <h1 className="text-2xl font-semibold tracking-tight text-[hsl(var(--foreground))] sm:text-3xl">
+                                {panelCopy.title}
+                            </h1>
+                            <p className="mt-2 max-w-2xl text-sm leading-6 text-[hsl(var(--muted-foreground))]">
+                                {panelCopy.body}
+                            </p>
+                        </div>
+                        {publicHref && (
+                            <ShareLinkBlock url={bookingPath} href={publicHref} />
+                        )}
+                    </div>
+
+                    {activePanel === "overview" && (
+                        <OverviewPanel
+                            setup={setup}
+                            setupLoaded={setupLoaded}
+                            refreshKey={refreshKey}
+                            meetingCode={meetingCode}
+                            setMeetingCode={setMeetingCode}
+                            canJoin={canJoin}
+                            isJoining={isJoining}
+                            onJoin={handleJoin}
+                        />
+                    )}
+
+                    {activePanel === "availability" && (
+                        <PanelShell>
+                            <AvailabilityEditor
+                                timezone={user.timezone}
+                                onSaved={() => setRefreshKey((k) => k + 1)}
+                            />
+                        </PanelShell>
+                    )}
+
+                    {activePanel === "booking-types" && (
+                        <PanelShell>
+                            <EventTypesPanel
+                                hostSlug={user.slug || null}
+                                onChange={() => setRefreshKey((k) => k + 1)}
+                            />
+                        </PanelShell>
+                    )}
+
+                    {activePanel === "rooms" && (
+                        <PanelShell>
+                            <RoomsBody
                                 meetingCode={meetingCode}
                                 setMeetingCode={setMeetingCode}
                                 canJoin={canJoin}
                                 isJoining={isJoining}
                                 onJoin={handleJoin}
                             />
-                        )}
+                        </PanelShell>
+                    )}
 
-                        {activePanel === "availability" && (
-                            <PanelShell>
-                                <AvailabilityEditor
-                                    timezone={user.timezone}
-                                    onSaved={() => setRefreshKey((k) => k + 1)}
-                                />
-                            </PanelShell>
-                        )}
+                    {activePanel === "payments" && (
+                        <PanelShell>
+                            <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                                Paid event types are disabled until Stripe Connect ships. Solo plan
+                                activation will live here.
+                            </p>
+                        </PanelShell>
+                    )}
 
-                        {activePanel === "booking-types" && (
-                            <PanelShell>
-                                <EventTypesPanel
-                                    hostSlug={user.slug || null}
-                                    onChange={() => setRefreshKey((k) => k + 1)}
-                                />
-                            </PanelShell>
-                        )}
-
-                        {activePanel === "rooms" && (
-                            <PanelShell>
-                                <RoomsBody
-                                    meetingCode={meetingCode}
-                                    setMeetingCode={setMeetingCode}
-                                    canJoin={canJoin}
-                                    isJoining={isJoining}
-                                    onJoin={handleJoin}
-                                />
-                            </PanelShell>
-                        )}
-
-                        {activePanel === "payments" && (
-                            <PanelShell>
-                                <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                                    Paid event types are disabled until Stripe Connect ships. Solo plan
-                                    activation will live here.
-                                </p>
-                            </PanelShell>
-                        )}
-
-                        {activePanel === "settings" && <SettingsPanel />}
-                    </section>
-                </div>
+                    {activePanel === "settings" && <SettingsPanel />}
+                </section>
             </main>
         </div>
     );

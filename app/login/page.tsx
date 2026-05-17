@@ -6,7 +6,6 @@ import { BufferingButtonLabel } from "@/src/components/ui/BufferingButtonLabel";
 import { Input } from "@/src/components/ui/input";
 import { Button } from "@/src/components/ui/button";
 import { SessionlyBrand } from "@/src/components/ui/SessionlyBrand";
-import { ThemeToggle } from "@/src/components/ui/ThemeToggle";
 import { useLogin } from "@/src/hooks/use-auth";
 
 export default function Login() {
@@ -21,10 +20,6 @@ export default function Login() {
 
     return (
         <div className="relative flex min-h-dvh flex-col">
-            <div className="absolute right-4 top-4 z-10">
-                <ThemeToggle />
-            </div>
-
             <main className="flex flex-1 flex-col items-center justify-center px-4 py-12 sm:px-6">
                 <Link href="/" className="mb-8">
                     <SessionlyBrand size="lg" />

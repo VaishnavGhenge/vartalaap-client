@@ -1,21 +1,16 @@
 "use client";
 
-import { Plus, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/src/components/ui/button";
 import { BufferingButtonLabel } from "@/src/components/ui/BufferingButtonLabel";
-import { Select } from "@/src/components/ui/select";
+import { cn } from "@/src/lib/utils";
 import {
     DAYS,
-    DEFAULT_END,
-    DEFAULT_START,
-    TIME_OPTIONS,
     type DayLabel,
     type DayMap,
     daysToRules,
     defaultDays,
-    formatTime12h,
     rulesToDays,
     validateDays,
 } from "@/src/lib/availability";
@@ -26,16 +21,27 @@ interface Props {
     onSaved?: () => void;
 }
 
-// Split-shift weekly availability editor. Unlike the onboarding Step 2 form,
-// this one supports multiple windows per day (e.g. 9-12 + 2-5 with a lunch
-// gap) — that's the only Cal.com-style power feature scheduling needs at
-// launch. Everything else (overrides, custom dates) waits.
+// Grid covers 7:00 AM → 10:00 PM in 30-minute slots, matching the legacy
+// dropdown range so existing data round-trips cleanly. 15 hrs × 2 = 30 slots.
+const START_HOUR = 7;
+const END_HOUR = 22;
+const SLOTS_PER_DAY = (END_HOUR - START_HOUR) * 2;
+const AXIS_LABELS = ["7a", "10a", "1p", "4p", "7p", "10p"];
+
+type Drag = {
+    dayIdx: number;
+    startSlot: number;
+    endSlot: number;
+    mode: "paint" | "erase";
+} | null;
+
 export function AvailabilityEditor({ timezone, onSaved }: Props) {
     const [days, setDays] = useState<DayMap>(defaultDays);
     const [loaded, setLoaded] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [savedHint, setSavedHint] = useState(false);
+    const [drag, setDrag] = useState<Drag>(null);
 
     useEffect(() => {
         let cancelled = false;
@@ -50,62 +56,94 @@ export function AvailabilityEditor({ timezone, onSaved }: Props) {
                 if (!cancelled) setLoaded(true);
             }
         })();
-        return () => { cancelled = true; };
+        return () => {
+            cancelled = true;
+        };
     }, []);
 
-    const localError = useMemo(() => validateDays(days), [days]);
+    const grid = useMemo(() => daysToGrid(days), [days]);
+    const displayGrid = useMemo(() => withDrag(grid, drag), [grid, drag]);
 
-    function setDay(day: DayLabel, patch: Partial<DayMap[DayLabel]>) {
-        setDays((prev) => ({ ...prev, [day]: { ...prev[day], ...patch } }));
+    const localError = useMemo(() => validateDays(days), [days]);
+    const weeklyMins = useMemo(() => weeklyMinutes(days), [days]);
+    const enabledCount = useMemo(
+        () => DAYS.reduce((n, d) => (days[d].enabled ? n + 1 : n), 0),
+        [days],
+    );
+
+    function markDirty() {
         if (error) setError(null);
         if (savedHint) setSavedHint(false);
     }
-    function toggleDay(day: DayLabel) {
-        const cfg = days[day];
-        if (cfg.enabled) {
-            setDay(day, { enabled: false });
-        } else {
-            // Re-enabling restores at least one shift so the user has something
-            // to edit immediately.
-            const shifts = cfg.shifts.length > 0
-                ? cfg.shifts
-                : [{ start: DEFAULT_START, end: DEFAULT_END }];
-            setDay(day, { enabled: true, shifts });
-        }
+
+    const commitDrag = useCallback(() => {
+        setDrag((current) => {
+            if (!current) return null;
+            const next = withDrag(daysToGrid(days), current);
+            setDays(gridToDays(next, days));
+            return null;
+        });
+        markDirty();
+        // markDirty depends on error/savedHint, but we want a stable callback;
+        // re-running on those flag flips is fine because the listener resets.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [days]);
+
+    // A drag can end anywhere — outside the grid, outside the window. Listen
+    // globally so we never leave the editor stuck in mid-drag state.
+    useEffect(() => {
+        if (!drag) return;
+        const onUp = () => commitDrag();
+        window.addEventListener("pointerup", onUp);
+        window.addEventListener("pointercancel", onUp);
+        return () => {
+            window.removeEventListener("pointerup", onUp);
+            window.removeEventListener("pointercancel", onUp);
+        };
+    }, [drag, commitDrag]);
+
+    function handleCellDown(dayIdx: number, slotIdx: number) {
+        const painted = grid[dayIdx][slotIdx];
+        setDrag({
+            dayIdx,
+            startSlot: slotIdx,
+            endSlot: slotIdx,
+            mode: painted ? "erase" : "paint",
+        });
     }
-    function setShift(day: DayLabel, idx: number, patch: { start?: string; end?: string }) {
-        setDays((prev) => ({
-            ...prev,
-            [day]: {
-                ...prev[day],
-                shifts: prev[day].shifts.map((s, i) => (i === idx ? { ...s, ...patch } : s)),
-            },
-        }));
-        if (error) setError(null);
-        if (savedHint) setSavedHint(false);
+    function handleCellEnter(dayIdx: number, slotIdx: number) {
+        setDrag((d) => {
+            if (!d || d.dayIdx !== dayIdx) return d;
+            return { ...d, endSlot: slotIdx };
+        });
     }
-    function addShift(day: DayLabel) {
-        const cfg = days[day];
-        // Default new shift to start where the previous one ends — common case
-        // is "lunch break", so 09-12 + 13-17 type patterns.
-        const last = cfg.shifts[cfg.shifts.length - 1];
-        const next = last
-            ? { start: last.end, end: nextDefault(last.end) }
-            : { start: DEFAULT_START, end: DEFAULT_END };
-        setDay(day, { enabled: true, shifts: [...cfg.shifts, next] });
+
+    function copyMondayToWeekdays() {
+        const mon = days.Mon;
+        if (!mon.enabled) return;
+        setDays((prev) => {
+            const next = { ...prev };
+            for (const d of ["Tue", "Wed", "Thu", "Fri"] as DayLabel[]) {
+                next[d] = { enabled: true, shifts: mon.shifts.map((s) => ({ ...s })) };
+            }
+            return next;
+        });
+        markDirty();
     }
-    function removeShift(day: DayLabel, idx: number) {
-        const cfg = days[day];
-        const remaining = cfg.shifts.filter((_, i) => i !== idx);
-        if (remaining.length === 0) {
-            setDay(day, { enabled: false, shifts: [] });
-        } else {
-            setDay(day, { shifts: remaining });
-        }
+    function clearWeek() {
+        setDays((prev) => {
+            const next = {} as DayMap;
+            for (const d of DAYS) next[d] = { enabled: false, shifts: [] };
+            return next;
+        });
+        markDirty();
     }
 
     async function handleSave() {
-        if (localError) { setError(localError); return; }
+        if (localError) {
+            setError(localError);
+            return;
+        }
         setSaving(true);
         setError(null);
         try {
@@ -121,93 +159,103 @@ export function AvailabilityEditor({ timezone, onSaved }: Props) {
 
     return (
         <div>
-            <div className="flex flex-col gap-3">
-                {DAYS.map((day) => {
-                    const cfg = days[day];
-                    return (
-                        <div key={day} className="flex flex-wrap items-start gap-3">
-                            <button
-                                type="button"
-                                onClick={() => toggleDay(day)}
-                                aria-label={`${cfg.enabled ? "Disable" : "Enable"} ${day}`}
-                                aria-pressed={cfg.enabled}
-                                className={
-                                    "press relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors " +
-                                    (cfg.enabled
-                                        ? "bg-[hsl(var(--primary))]"
-                                        : "bg-[hsl(var(--border))]")
-                                }
-                            >
-                                <span
-                                    className={
-                                        "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform " +
-                                        (cfg.enabled ? "translate-x-4" : "translate-x-0")
-                                    }
-                                />
-                            </button>
-                            <span className={
-                                "w-8 pt-0.5 text-sm font-medium " +
-                                (cfg.enabled ? "text-[hsl(var(--foreground))]" : "text-[hsl(var(--muted-foreground))]")
-                            }>
-                                {day}
-                            </span>
+            <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                All times in {timezone.replace(/_/g, " ")}. Click and drag to paint bookable hours;
+                drag over painted hours to remove.
+            </p>
 
-                            <div className="ml-auto flex flex-1 flex-col items-end gap-2">
-                                {cfg.enabled ? (
-                                    <>
-                                        {cfg.shifts.map((shift, idx) => (
-                                            <div key={idx} className="flex items-center gap-1.5">
-                                                <Select
-                                                    aria-label={`${day} shift ${idx + 1} start`}
-                                                    value={shift.start}
-                                                    onChange={(e) => setShift(day, idx, { start: e.target.value })}
-                                                    selectSize="sm"
-                                                    wrapperClassName="w-[6.75rem]"
-                                                >
-                                                    {TIME_OPTIONS.map((t) => (
-                                                        <option key={t} value={t}>{formatTime12h(t)}</option>
-                                                    ))}
-                                                </Select>
-                                                <span className="text-xs text-[hsl(var(--muted-foreground))]">to</span>
-                                                <Select
-                                                    aria-label={`${day} shift ${idx + 1} end`}
-                                                    value={shift.end}
-                                                    onChange={(e) => setShift(day, idx, { end: e.target.value })}
-                                                    selectSize="sm"
-                                                    wrapperClassName="w-[6.75rem]"
-                                                >
-                                                    {TIME_OPTIONS.map((t) => (
-                                                        <option key={t} value={t}>{formatTime12h(t)}</option>
-                                                    ))}
-                                                </Select>
-                                                <button
-                                                    type="button"
-                                                    aria-label={`Remove ${day} shift ${idx + 1}`}
-                                                    onClick={() => removeShift(day, idx)}
-                                                    className="press cursor-pointer rounded-md p-1 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--surface-3))] hover:text-[hsl(var(--foreground))]"
-                                                >
-                                                    <X className="size-3.5" />
-                                                </button>
-                                            </div>
-                                        ))}
+            <div className="mt-5">
+                {/* Time axis */}
+                <div className="flex pl-10 pr-1">
+                    <div className="flex flex-1 justify-between text-[10px] font-medium uppercase tracking-wider text-[hsl(var(--muted-foreground))]">
+                        {AXIS_LABELS.map((label) => (
+                            <span key={label}>{label}</span>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Day rows */}
+                <div className="mt-2 flex select-none flex-col gap-1.5 touch-none">
+                    {DAYS.map((day, dayIdx) => {
+                        const row = displayGrid[dayIdx];
+                        const active = row.some(Boolean);
+                        return (
+                            <div key={day} className="flex items-center gap-3">
+                                <span
+                                    className={cn(
+                                        "w-7 text-sm font-semibold tracking-wide",
+                                        active
+                                            ? "text-[hsl(var(--foreground))]"
+                                            : "text-[hsl(var(--muted-foreground))]/60",
+                                    )}
+                                >
+                                    {day}
+                                </span>
+                                <div
+                                    role="grid"
+                                    aria-label={`${day} availability`}
+                                    className="grid h-8 flex-1 grid-cols-[repeat(30,minmax(0,1fr))] overflow-hidden rounded-lg bg-[hsl(var(--surface-3))]/50 ring-1 ring-[hsl(var(--border))]/40"
+                                >
+                                    {row.map((on, slotIdx) => (
                                         <button
+                                            key={slotIdx}
                                             type="button"
-                                            onClick={() => addShift(day)}
-                                            className="press inline-flex cursor-pointer items-center gap-1 text-xs font-medium text-[hsl(var(--primary))] hover:underline"
-                                        >
-                                            <Plus className="size-3.5" /> Add window
-                                        </button>
-                                    </>
-                                ) : (
-                                    <span className="pt-0.5 text-xs text-[hsl(var(--muted-foreground))]">Off</span>
-                                )}
+                                            role="gridcell"
+                                            aria-pressed={on}
+                                            aria-label={`${day} ${slotLabel(slotIdx)}`}
+                                            tabIndex={-1}
+                                            onPointerDown={(e) => {
+                                                e.preventDefault();
+                                                handleCellDown(dayIdx, slotIdx);
+                                            }}
+                                            onPointerEnter={() => handleCellEnter(dayIdx, slotIdx)}
+                                            className={cn(
+                                                "h-full cursor-pointer transition-colors duration-75",
+                                                slotIdx > 0 &&
+                                                    slotIdx % 6 === 0 &&
+                                                    "border-l border-[hsl(var(--background))]/50",
+                                                on
+                                                    ? "bg-[hsl(var(--primary))]"
+                                                    : "hover:bg-[hsl(var(--primary))]/15",
+                                            )}
+                                        />
+                                    ))}
+                                </div>
                             </div>
-                        </div>
-                    );
-                })}
+                        );
+                    })}
+                </div>
             </div>
 
-            <div className="mt-5 flex items-center justify-between gap-3">
+            {/* Stats + bulk actions */}
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                    <span className="font-medium text-[hsl(var(--foreground))]">
+                        {formatHours(weeklyMins)} hrs
+                    </span>{" "}
+                    · {enabledCount} of 7 days bookable
+                </p>
+                <div className="flex gap-2">
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={enabledCount === 0 || saving}
+                        onClick={clearWeek}
+                    >
+                        Clear week
+                    </Button>
+                    <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled={!days.Mon.enabled || saving}
+                        onClick={copyMondayToWeekdays}
+                    >
+                        Copy Mon → weekdays
+                    </Button>
+                </div>
+            </div>
+
+            <div className="mt-5 flex items-center justify-between gap-3 border-t border-[hsl(var(--border))]/40 pt-4">
                 <div className="min-w-0 text-xs">
                     {error ? (
                         <span className="text-[hsl(var(--destructive))]">{error}</span>
@@ -215,7 +263,7 @@ export function AvailabilityEditor({ timezone, onSaved }: Props) {
                         <span className="text-[hsl(var(--primary))]">Saved.</span>
                     ) : (
                         <span className="text-[hsl(var(--muted-foreground))]">
-                            Times are in {timezone.replace(/_/g, " ")}.
+                            Changes apply to new bookings only.
                         </span>
                     )}
                 </div>
@@ -227,12 +275,108 @@ export function AvailabilityEditor({ timezone, onSaved }: Props) {
     );
 }
 
-// Pick a sensible default end-time for a new shift seeded from an existing
-// end-time. We bump by 1 hour but clamp inside the TIME_OPTIONS window so the
-// dropdown always has the value.
-function nextDefault(start: string): string {
-    const idx = TIME_OPTIONS.indexOf(start);
-    if (idx < 0) return DEFAULT_END;
-    const nextIdx = Math.min(idx + 2, TIME_OPTIONS.length - 1); // 2 × 30min = 1h
-    return TIME_OPTIONS[nextIdx];
+// ─── Grid ↔ DayMap conversion ────────────────────────────────────────────────
+
+function daysToGrid(days: DayMap): boolean[][] {
+    return DAYS.map((d) => {
+        const row = Array<boolean>(SLOTS_PER_DAY).fill(false);
+        const cfg = days[d];
+        if (!cfg.enabled) return row;
+        for (const s of cfg.shifts) {
+            const a = clampSlot(timeToSlot(s.start));
+            const b = clampSlot(timeToSlot(s.end));
+            for (let i = a; i < b; i++) row[i] = true;
+        }
+        return row;
+    });
+}
+
+function gridToDays(grid: boolean[][], previous: DayMap): DayMap {
+    const next = {} as DayMap;
+    DAYS.forEach((day, idx) => {
+        const row = grid[idx];
+        const shifts: { start: string; end: string }[] = [];
+        let runStart: number | null = null;
+        for (let i = 0; i < SLOTS_PER_DAY; i++) {
+            if (row[i] && runStart === null) runStart = i;
+            else if (!row[i] && runStart !== null) {
+                shifts.push({ start: slotStartTime(runStart), end: slotStartTime(i) });
+                runStart = null;
+            }
+        }
+        if (runStart !== null) {
+            shifts.push({
+                start: slotStartTime(runStart),
+                end: slotStartTime(SLOTS_PER_DAY),
+            });
+        }
+        next[day] = {
+            enabled: shifts.length > 0,
+            // Preserving the prior shifts when the row goes empty lets the
+            // user toggle a day back on (via Copy Mon → weekdays) without
+            // losing their old hours; the API only writes enabled days.
+            shifts: shifts.length > 0 ? shifts : previous[day].shifts,
+        };
+    });
+    return next;
+}
+
+function withDrag(grid: boolean[][], drag: Drag): boolean[][] {
+    if (!drag) return grid;
+    const next = grid.map((r) => r.slice());
+    const lo = Math.min(drag.startSlot, drag.endSlot);
+    const hi = Math.max(drag.startSlot, drag.endSlot);
+    const value = drag.mode === "paint";
+    for (let s = lo; s <= hi; s++) next[drag.dayIdx][s] = value;
+    return next;
+}
+
+// ─── Time helpers ────────────────────────────────────────────────────────────
+
+function timeToSlot(time: string): number {
+    const [h, m] = time.split(":").map(Number);
+    return Math.round((h * 60 + m - START_HOUR * 60) / 30);
+}
+
+function slotStartTime(slot: number): string {
+    const total = START_HOUR * 60 + slot * 30;
+    const h = Math.floor(total / 60);
+    const m = total % 60;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function slotLabel(slot: number): string {
+    const hhmm = slotStartTime(slot);
+    const [h, m] = hhmm.split(":").map(Number);
+    const period = h >= 12 ? "PM" : "AM";
+    const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+    return `${h12}:${String(m).padStart(2, "0")} ${period}`;
+}
+
+function clampSlot(s: number): number {
+    return Math.max(0, Math.min(SLOTS_PER_DAY, s));
+}
+
+function toMinutes(t: string): number {
+    const [h, m] = t.split(":").map(Number);
+    return h * 60 + m;
+}
+
+function weeklyMinutes(days: DayMap): number {
+    let total = 0;
+    for (const d of DAYS) {
+        const cfg = days[d];
+        if (!cfg.enabled) continue;
+        for (const s of cfg.shifts) {
+            total += Math.max(0, toMinutes(s.end) - toMinutes(s.start));
+        }
+    }
+    return total;
+}
+
+function formatHours(minutes: number): string {
+    if (minutes === 0) return "0";
+    const h = minutes / 60;
+    const rounded = Math.round(h * 10) / 10;
+    return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
 }
