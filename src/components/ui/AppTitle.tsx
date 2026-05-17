@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { SessionlyWordmark } from "@/src/components/ui/SessionlyWordmark";
+import { SessionlyBrand } from "@/src/components/ui/SessionlyBrand";
 
 const AppTitle = () => {
     return (
         <Link href="/" className="inline-flex items-center">
-            <SessionlyWordmark className="text-[1.05rem] text-[hsl(var(--foreground))]" />
+            <SessionlyBrand size="sm" />
         </Link>
     );
 };

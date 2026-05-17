@@ -5,7 +5,7 @@ import { useState } from "react";
 import { BufferingButtonLabel } from "@/src/components/ui/BufferingButtonLabel";
 import { Input } from "@/src/components/ui/input";
 import { Button } from "@/src/components/ui/button";
-import { SessionlyWordmark } from "@/src/components/ui/SessionlyWordmark";
+import { SessionlyBrand } from "@/src/components/ui/SessionlyBrand";
 import { ThemeToggle } from "@/src/components/ui/ThemeToggle";
 import { useLogin } from "@/src/hooks/use-auth";
 
@@ -27,7 +27,7 @@ export default function Login() {
 
             <main className="flex flex-1 flex-col items-center justify-center px-4 py-12 sm:px-6">
                 <Link href="/" className="mb-8">
-                    <SessionlyWordmark className="text-3xl text-[hsl(var(--foreground))]" />
+                    <SessionlyBrand size="lg" />
                 </Link>
 
                 <div className="app-panel w-full max-w-sm rounded-2xl p-6 sm:p-8">

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Button } from "@/src/components/ui/button";
-import { SessionlyWordmark } from "@/src/components/ui/SessionlyWordmark";
+import { SessionlyBrand } from "@/src/components/ui/SessionlyBrand";
 import { ThemeToggle } from "@/src/components/ui/ThemeToggle";
 import { httpServerUri } from "@/src/services/api/config";
 import type { HostProfile } from "@/src/services/api/public";
@@ -53,7 +53,7 @@ export default async function HostProfilePage({ params }: PageProps) {
 
             <main className="flex flex-1 flex-col items-center px-4 py-12 sm:px-6">
                 <Link href="/" className="mb-8">
-                    <SessionlyWordmark className="text-2xl text-[hsl(var(--foreground))]" />
+                    <SessionlyBrand size="md" wordmarkClassName="text-2xl" markClassName="size-8" />
                 </Link>
 
                 <div className="w-full max-w-xl">

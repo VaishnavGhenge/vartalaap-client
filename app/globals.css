@@ -2,7 +2,7 @@
 
 @layer base {
     :root {
-        --font-sessionly: var(--font-montserrat), Helvetica, Arial, sans-serif;
+        --font-sessionly: var(--font-jakarta), var(--font-montserrat), Helvetica, Arial, sans-serif;
 
         --background: 0 0% 99%;
         --foreground: 240 20% 10%;

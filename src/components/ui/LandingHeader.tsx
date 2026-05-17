@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Button } from "@/src/components/ui/button";
-import { SessionlyWordmark } from "@/src/components/ui/SessionlyWordmark";
+import { SessionlyBrand } from "@/src/components/ui/SessionlyBrand";
 import { ThemeToggle } from "@/src/components/ui/ThemeToggle";
 
 const NAV = [
@@ -18,7 +18,7 @@ export function LandingHeader() {
                             grid-cols-[1fr_auto_1fr]">
 
                 <Link href="/" className="flex items-center select-none">
-                    <SessionlyWordmark className="text-[1.05rem] text-[hsl(var(--foreground))]" />
+                    <SessionlyBrand size="sm" />
                 </Link>
 
                 <nav className="hidden md:flex items-center gap-1">

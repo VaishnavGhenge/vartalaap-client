@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { BufferingButtonLabel } from "@/src/components/ui/BufferingButtonLabel";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
-import { SessionlyWordmark } from "@/src/components/ui/SessionlyWordmark";
+import { SessionlyBrand } from "@/src/components/ui/SessionlyBrand";
 import { ThemeToggle } from "@/src/components/ui/ThemeToggle";
 import {
     PublicApiError,
@@ -293,7 +293,7 @@ function Shell({ children }: { children: React.ReactNode }) {
             </div>
             <main className="flex flex-1 flex-col items-center px-4 py-12 sm:px-6">
                 <Link href="/" className="mb-8">
-                    <SessionlyWordmark className="text-2xl text-[hsl(var(--foreground))]" />
+                    <SessionlyBrand size="md" wordmarkClassName="text-2xl" markClassName="size-8" />
                 </Link>
                 {children}
             </main>
