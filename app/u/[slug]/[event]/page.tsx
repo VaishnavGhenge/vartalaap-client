@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { BufferingButtonLabel } from "@/src/components/ui/BufferingButtonLabel";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
 import { SessionlyBrand } from "@/src/components/ui/SessionlyBrand";
-import { ThemeToggle } from "@/src/components/ui/ThemeToggle";
+import { useSlotHold } from "@/src/hooks/use-slot-hold";
 import {
     PublicApiError,
     createBooking,
@@ -37,7 +38,14 @@ export default function PublicEventPage({ params }: PageProps) {
     const [slotsLoading, setSlotsLoading] = useState(true);
 
     const [windowStart, setWindowStart] = useState<Date>(() => startOfTodayUTC());
-    const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
+    const [selectedDay, setSelectedDay] = useState<string | null>(null);
+
+    // Slot reservation lifecycle: hook owns the POST /holds + DELETE /holds
+    // round-trips so the page stays free of network mechanics.
+    const {
+        selectedSlot, holdToken, holdError,
+        selectSlot, consumeHold,
+    } = useSlotHold({ hostSlug: slug, eventTypeSlug: eventSlug });
 
     const [guestName, setGuestName] = useState("");
     const [guestEmail, setGuestEmail] = useState("");
@@ -89,8 +97,7 @@ export default function PublicEventPage({ params }: PageProps) {
     const slotsByDay = useMemo(() => {
         const map = new Map<string, string[]>();
         for (const iso of slots ?? []) {
-            const d = new Date(iso);
-            const key = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+            const key = isoDate(new Date(iso));
             const list = map.get(key) ?? [];
             list.push(iso);
             map.set(key, list);
@@ -104,11 +111,38 @@ export default function PublicEventPage({ params }: PageProps) {
         return out;
     }, [windowStart]);
 
+    // When the slot window changes, jump to the first day that has openings so
+    // the user always sees times immediately instead of an empty column.
+    useEffect(() => {
+        if (!slots) return;
+        if (slots.length === 0) {
+            setSelectedDay(null);
+            return;
+        }
+        for (const day of days) {
+            const key = isoDate(day);
+            if ((slotsByDay.get(key)?.length ?? 0) > 0) {
+                setSelectedDay(key);
+                return;
+            }
+        }
+        setSelectedDay(null);
+    }, [slots, days, slotsByDay]);
+
+    const selectedDaySlots = selectedDay ? (slotsByDay.get(selectedDay) ?? []) : [];
+    const selectedDate = useMemo(
+        () => days.find((d) => isoDate(d) === selectedDay) ?? null,
+        [days, selectedDay],
+    );
+
     async function handleConfirm(e: React.FormEvent) {
         e.preventDefault();
         if (!selectedSlot) return;
         setSubmitting(true);
         setSubmitError(null);
+        // Capture the token now; consumeHold clears local state so the page
+        // shows a clean reset on the (rare) error path below.
+        const token = consumeHold() ?? undefined;
         try {
             const booking = await createBooking({
                 hostSlug: slug,
@@ -116,12 +150,12 @@ export default function PublicEventPage({ params }: PageProps) {
                 startsAt: selectedSlot,
                 guestName,
                 guestEmail,
+                holdToken: token,
             });
             router.push(`/m/${booking.meetCode}`);
         } catch (err: unknown) {
             if (err instanceof PublicApiError && err.code === "SLOT_TAKEN") {
                 setSubmitError("Someone just booked this time. Pick another.");
-                setSelectedSlot(null);
                 // Refresh the slot grid so the just-taken slot disappears.
                 listSlots(slug, eventSlug, isoDate(windowStart),
                     isoDate(addDays(windowStart, PAGE_DAYS)))
@@ -182,13 +216,15 @@ export default function PublicEventPage({ params }: PageProps) {
                                 disabled={isSameDay(windowStart, startOfTodayUTC())}
                                 onClick={() => setWindowStart((d) => maxDate(addDays(d, -PAGE_DAYS), startOfTodayUTC()))}
                             >
-                                ← Earlier
+                                <ChevronLeft />
+                                Earlier
                             </Button>
                             <Button
                                 variant="secondary" size="sm"
                                 onClick={() => setWindowStart((d) => addDays(d, PAGE_DAYS))}
                             >
-                                Later →
+                                Later
+                                <ChevronRight />
                             </Button>
                         </div>
                     </div>
@@ -206,36 +242,61 @@ export default function PublicEventPage({ params }: PageProps) {
                             No times available in this window. Try the next two weeks.
                         </div>
                     ) : (
-                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-                            {days.map((day) => {
-                                const key = `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`;
-                                const dayList = slotsByDay.get(key) ?? [];
-                                if (dayList.length === 0) return null;
-                                return (
-                                    <div key={key} className="app-panel rounded-2xl px-3 py-3">
-                                        <p className="px-1 pb-2 text-xs font-medium text-[hsl(var(--muted-foreground))]">
-                                            {day.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
-                                        </p>
-                                        <div className="flex flex-col gap-1.5">
-                                            {dayList.map((iso) => (
-                                                <button
-                                                    key={iso}
-                                                    type="button"
-                                                    onClick={() => setSelectedSlot(iso)}
-                                                    className={
-                                                        "press cursor-pointer w-full rounded-lg px-2 py-1.5 text-xs " +
-                                                        (selectedSlot === iso
-                                                            ? "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]"
-                                                            : "bg-[hsl(var(--surface-2))] text-[hsl(var(--foreground))] hover:bg-[hsl(var(--surface-3))]")
-                                                    }
-                                                >
-                                                    {new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-                                                </button>
-                                            ))}
-                                        </div>
+                        <div className="app-panel rounded-2xl p-4">
+                            <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-2">
+                                {days.map((day) => {
+                                    const key = isoDate(day);
+                                    const dayCount = slotsByDay.get(key)?.length ?? 0;
+                                    const isSelected = selectedDay === key;
+                                    const isDisabled = dayCount === 0;
+                                    return (
+                                        <button
+                                            key={key}
+                                            type="button"
+                                            disabled={isDisabled}
+                                            onClick={() => setSelectedDay(key)}
+                                            className={
+                                                "press flex shrink-0 cursor-pointer flex-col items-center rounded-xl px-3 py-2 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-30 " +
+                                                (isSelected
+                                                    ? "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]"
+                                                    : "bg-[hsl(var(--surface-2))] text-[hsl(var(--foreground))] hover:bg-[hsl(var(--surface-3))]")
+                                            }
+                                        >
+                                            <span className="text-[10px] uppercase tracking-wider opacity-70">
+                                                {day.toLocaleDateString(undefined, { weekday: "short" })}
+                                            </span>
+                                            <span className="mt-0.5 text-sm font-medium">
+                                                {day.getDate()}
+                                            </span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {selectedDate && selectedDaySlots.length > 0 && (
+                                <div className="mt-4">
+                                    <p className="mb-3 px-1 text-xs font-medium text-[hsl(var(--muted-foreground))]">
+                                        {selectedDate.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+                                    </p>
+                                    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                                        {selectedDaySlots.map((iso) => (
+                                            <button
+                                                key={iso}
+                                                type="button"
+                                                onClick={() => { void selectSlot(iso); }}
+                                                className={
+                                                    "press cursor-pointer w-full rounded-lg px-2 py-3 text-sm " +
+                                                    (selectedSlot === iso
+                                                        ? "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]"
+                                                        : "bg-[hsl(var(--surface-2))] text-[hsl(var(--foreground))] hover:bg-[hsl(var(--surface-3))]")
+                                                }
+                                            >
+                                                {new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                                            </button>
+                                        ))}
                                     </div>
-                                );
-                            })}
+                                </div>
+                            )}
                         </div>
                     )}
                 </section>
@@ -270,12 +331,21 @@ export default function PublicEventPage({ params }: PageProps) {
                                 />
                             </div>
 
-                            {submitError && (
-                                <p className="text-xs text-[hsl(var(--destructive))]">{submitError}</p>
+                            {(submitError || holdError) && (
+                                <p className="text-xs text-[hsl(var(--destructive))]">
+                                    {submitError ?? holdError}
+                                </p>
                             )}
 
-                            <Button type="submit" size="lg" disabled={submitting}>
-                                {submitting ? <BufferingButtonLabel label="Confirming…" /> : "Confirm booking"}
+                            <Button
+                                type="submit" size="lg"
+                                disabled={submitting || !holdToken || !!holdError}
+                            >
+                                {submitting
+                                    ? <BufferingButtonLabel label="Confirming…" />
+                                    : !holdToken && !holdError
+                                        ? <BufferingButtonLabel label="Reserving…" />
+                                        : "Confirm booking"}
                             </Button>
                         </form>
                     </section>
@@ -288,9 +358,6 @@ export default function PublicEventPage({ params }: PageProps) {
 function Shell({ children }: { children: React.ReactNode }) {
     return (
         <div className="relative flex min-h-dvh flex-col">
-            <div className="absolute right-4 top-4 z-10">
-                <ThemeToggle />
-            </div>
             <main className="flex flex-1 flex-col items-center px-4 py-12 sm:px-6">
                 <Link href="/" className="mb-8">
                     <SessionlyBrand size="md" wordmarkClassName="text-2xl" markClassName="size-8" />

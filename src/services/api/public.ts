@@ -119,6 +119,65 @@ export interface CreateBookingInput {
     startsAt: string
     guestName: string
     guestEmail: string
+    // Optional hold token from a prior /holds call. When present, the server
+    // ignores the guest's own hold during conflict checks and deletes it on
+    // success so it doesn't expire blocking the just-booked slot.
+    holdToken?: string
+}
+
+export interface HoldResponse {
+    holdToken: string
+    expiresAt: string
+}
+
+// createSlotHold reserves a slot for the duration of the booking form. The
+// server enforces a 5-minute TTL; callers should release on submit/abandon
+// and re-hold when the picker selection changes.
+export async function createSlotHold(input: {
+    hostSlug: string
+    eventTypeSlug: string
+    startsAt: string
+}): Promise<HoldResponse> {
+    const res = await fetch(`${httpServerUri}/holds`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+    })
+    if (!res.ok) {
+        throw await asPublicError(res)
+    }
+    return (await res.json()) as HoldResponse
+}
+
+// releaseSlotHold is the explicit DELETE. For onunload we use
+// releaseSlotHoldBeacon instead — sendBeacon survives the page transition
+// in browsers that block fetch() during unload.
+export async function releaseSlotHold(token: string): Promise<void> {
+    const res = await fetch(`${httpServerUri}/holds/${encodeURIComponent(token)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+    })
+    if (!res.ok) {
+        throw await asPublicError(res)
+    }
+}
+
+// releaseSlotHoldKeepalive is the unload-safe variant. fetch(keepalive:true)
+// lets the browser finish the request even after the page navigates away —
+// the modern replacement for sendBeacon when the method isn't POST. Server
+// treats DELETE as idempotent so a missed call simply falls back to the TTL.
+export function releaseSlotHoldKeepalive(token: string): void {
+    if (typeof fetch === 'undefined') return
+    try {
+        void fetch(`${httpServerUri}/holds/${encodeURIComponent(token)}`, {
+            method: 'DELETE',
+            credentials: 'include',
+            keepalive: true,
+        })
+    } catch {
+        // Best-effort: if the browser refuses, TTL is the safety net.
+    }
 }
 
 export async function createBooking(input: CreateBookingInput): Promise<BookingResponse> {
