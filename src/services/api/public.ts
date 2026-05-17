@@ -11,6 +11,10 @@ export interface PublicEvent {
     title: string
     description?: string
     durationMin: number
+    // Time reserved before/after each booking. Already baked into the slot
+    // spacing returned by /slots, but exposed so the picker can label what
+    // the guest is reserving.
+    bufferMin: number
     isPaid: boolean
 }
 
