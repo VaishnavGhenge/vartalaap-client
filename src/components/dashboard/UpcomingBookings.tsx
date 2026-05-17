@@ -1,11 +1,11 @@
 "use client";
 
-import { Calendar, Video } from "lucide-react";
+import { Calendar, Video, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/src/components/ui/button";
-import { listMyBookings, type HostBooking } from "@/src/services/api/bookings";
+import { cancelBooking, listMyBookings, type HostBooking } from "@/src/services/api/bookings";
 
 interface Props {
     refreshKey?: number;
@@ -54,6 +54,16 @@ export function UpcomingBookings({ refreshKey }: Props) {
 
     const visible = bookings.slice(0, MAX_VISIBLE);
 
+    async function handleCancel(id: string) {
+        if (!confirm("Cancel this booking? The guest will be emailed.")) return;
+        try {
+            await cancelBooking(id);
+            setBookings((prev) => prev.filter((b) => b.id !== id));
+        } catch (e) {
+            alert(e instanceof Error ? e.message : "Could not cancel");
+        }
+    }
+
     return (
         <div className="flex flex-col gap-2">
             {visible.map((b) => {
@@ -72,11 +82,19 @@ export function UpcomingBookings({ refreshKey }: Props) {
                                 {" · "}{b.guestName}
                             </p>
                         </div>
-                        <Button asChild variant="secondary" size="sm">
-                            <Link href={`/room/${b.meetCode}`} prefetch>
-                                <Video className="size-3.5" /> Open
-                            </Link>
-                        </Button>
+                        <div className="flex items-center gap-1">
+                            <Button asChild variant="secondary" size="sm">
+                                <Link href={`/room/${b.meetCode}`} prefetch>
+                                    <Video className="size-3.5" /> Open
+                                </Link>
+                            </Button>
+                            <Button
+                                variant="ghost" size="sm" aria-label="Cancel booking"
+                                onClick={() => handleCancel(b.id)}
+                            >
+                                <X className="size-3.5" />
+                            </Button>
+                        </div>
                     </div>
                 );
             })}

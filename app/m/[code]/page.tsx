@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { CancelBookingButton } from "@/src/components/booking/CancelBookingButton";
 import { Button } from "@/src/components/ui/button";
 import { SessionlyBrand } from "@/src/components/ui/SessionlyBrand";
-import { ThemeToggle } from "@/src/components/ui/ThemeToggle";
 import { httpServerUri } from "@/src/services/api/config";
 import type { BookingResponse } from "@/src/services/api/public";
 
@@ -43,10 +43,6 @@ export default async function ConfirmationPage({ params }: PageProps) {
 
     return (
         <div className="relative flex min-h-dvh flex-col">
-            <div className="absolute right-4 top-4 z-10">
-                <ThemeToggle />
-            </div>
-
             <main className="flex flex-1 flex-col items-center px-4 py-12 sm:px-6">
                 <Link href="/" className="mb-8">
                     <SessionlyBrand size="md" wordmarkClassName="text-2xl" markClassName="size-8" />
@@ -94,6 +90,9 @@ export default async function ConfirmationPage({ params }: PageProps) {
                                 <p className="text-center text-xs text-[hsl(var(--muted-foreground))]">
                                     The room opens at the booked time. Bookmark this page.
                                 </p>
+                                <div className="mt-3 border-t border-[hsl(var(--border))]/60 pt-3">
+                                    <CancelBookingButton meetCode={booking.meetCode} />
+                                </div>
                             </div>
                         )}
                     </div>

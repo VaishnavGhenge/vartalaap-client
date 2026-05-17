@@ -133,3 +133,16 @@ export async function createBooking(input: CreateBookingInput): Promise<BookingR
 export async function getBookingByMeetCode(code: string): Promise<BookingResponse> {
     return get<BookingResponse>(`/m/${encodeURIComponent(code)}`)
 }
+
+// cancelBookingByMeetCode is the guest-facing cancel. The server returns 204
+// on success (and on a re-cancel — the endpoint is idempotent), so there's
+// no body to parse.
+export async function cancelBookingByMeetCode(code: string): Promise<void> {
+    const res = await fetch(`${httpServerUri}/m/${encodeURIComponent(code)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+    })
+    if (!res.ok) {
+        throw await asPublicError(res)
+    }
+}

@@ -42,3 +42,18 @@ export async function listMyBookings(): Promise<HostBooking[]> {
     const body = (await res.json()) as ListResponse
     return body.bookings ?? []
 }
+
+// cancelBooking is the host-side counterpart to public.cancelBookingByMeetCode.
+// Scoped server-side to bookings owned by the authed user — cross-host
+// attempts return 404 so booking IDs can't be probed.
+export async function cancelBooking(id: string): Promise<void> {
+    const res = await fetch(`${httpServerUri}/bookings/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: authHeaders(),
+    })
+    if (!res.ok) {
+        const text = await res.text()
+        throw new Error(text.trim() || `booking cancel ${res.status}`)
+    }
+}
