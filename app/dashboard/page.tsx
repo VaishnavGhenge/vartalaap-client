@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState, useTransition } from "react";
 import {
     ArrowRight,
     CalendarCheck,
     CheckCircle2,
+    Copy,
     CreditCard,
     Link2,
     LogOut,
@@ -16,121 +17,74 @@ import {
     SunMedium,
     Video,
 } from "lucide-react";
+
+import { AvailabilityEditor } from "@/src/components/dashboard/AvailabilityEditor";
+import { EventTypesPanel } from "@/src/components/dashboard/EventTypesPanel";
+import { SetupChecklist, type SetupState } from "@/src/components/dashboard/SetupChecklist";
+import { UpcomingBookings } from "@/src/components/dashboard/UpcomingBookings";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
 import { JoinMeetButton } from "@/src/components/ui/JoinMeetButton";
 import { NewMeetingButton } from "@/src/components/ui/NewMeetButton";
-import { SessionlyWordmark } from "@/src/components/ui/SessionlyWordmark";
+import { SessionlyBrand } from "@/src/components/ui/SessionlyBrand";
 import { ThemeMode, useTheme } from "@/src/components/theme-provider";
 import { useAuth } from "@/src/hooks/use-auth";
 import { normalizeMeetCodeInput, roomPath } from "@/src/lib/room-routes";
 import { cn } from "@/src/lib/utils";
+import { getAvailability } from "@/src/services/api/availability";
+import { listEventTypes } from "@/src/services/api/event-types";
 
 const meetCodePattern = /^[a-z2-9]{3}-[a-z2-9]{4}-[a-z2-9]{3}$/;
 
-type PanelKey = "overview" | "availability" | "booking-types" | "payments" | "rooms" | "settings";
+type PanelKey = "overview" | "availability" | "booking-types" | "rooms" | "payments" | "settings";
 
-const SIDEBAR_ITEMS: Array<{
+const SIDEBAR_ITEMS: ReadonlyArray<{
     key: PanelKey;
     icon: typeof CheckCircle2;
     label: string;
-    status: string;
 }> = [
-    {
-        key: "overview",
-        icon: CheckCircle2,
-        label: "Overview",
-        status: "Ready",
-    },
-    {
-        key: "availability",
-        icon: CalendarCheck,
-        label: "Availability",
-        status: "Next",
-    },
-    {
-        key: "booking-types",
-        icon: Link2,
-        label: "Booking types",
-        status: "Next",
-    },
-    {
-        key: "payments",
-        icon: CreditCard,
-        label: "Payments",
-        status: "Later",
-    },
-    {
-        key: "rooms",
-        icon: Video,
-        label: "Vartalaap rooms",
-        status: "Live",
-    },
-    {
-        key: "settings",
-        icon: Settings,
-        label: "Settings",
-        status: "Ready",
-    },
-];
-
-const SETUP_ITEMS = [
-    {
-        title: "Profile",
-        status: "Complete",
-        body: "Name, URL, and timezone are saved.",
-    },
-    {
-        title: "Availability",
-        status: "Next",
-        body: "Persist weekly hours so clients only see real openings.",
-    },
-    {
-        title: "Booking type",
-        status: "Next",
-        body: "Create a free 30-minute session type tied to the reserved URL.",
-    },
-    {
-        title: "Payments",
-        status: "Later",
-        body: "Add Stripe after free booking creation works end to end.",
-    },
+    { key: "overview", icon: CheckCircle2, label: "Overview" },
+    { key: "availability", icon: CalendarCheck, label: "Availability" },
+    { key: "booking-types", icon: Link2, label: "Event types" },
+    { key: "rooms", icon: Video, label: "Instant rooms" },
+    { key: "payments", icon: CreditCard, label: "Payments" },
+    { key: "settings", icon: Settings, label: "Settings" },
 ];
 
 const PANEL_COPY: Record<PanelKey, { eyebrow: string; title: string; body: string }> = {
     overview: {
         eyebrow: "Overview",
-        title: "Finish the booking workspace",
-        body: "Sessionly is the scheduling product. Vartalaap stays as the video room module, available from the sidebar while booking pages are still being wired up.",
+        title: "Your scheduling hub",
+        body: "Share your booking link, watch upcoming sessions, and pick up where you left off in setup.",
     },
     availability: {
         eyebrow: "Availability",
         title: "Set bookable hours",
-        body: "Availability should be the next functional slice so clients only see real openings instead of a static onboarding preview.",
+        body: "Guests only see times inside these windows. Add split shifts when a day has a break.",
     },
     "booking-types": {
-        eyebrow: "Booking types",
-        title: "Publish your first session",
-        body: "Booking types should turn your reserved URL into a usable public page with duration, description, and pricing.",
+        eyebrow: "Event types",
+        title: "Manage what guests can book",
+        body: "Each event type is its own bookable link with a duration, optional description, and buffer.",
     },
     payments: {
         eyebrow: "Payments",
-        title: "Prepare paid sessions",
-        body: "Payments should come after free booking works end to end, then connect Stripe for Solo users without platform fees.",
+        title: "Paid sessions are coming",
+        body: "Stripe Connect arrives in the next phase. Until then, everything stays free.",
     },
     rooms: {
         eyebrow: "Vartalaap",
-        title: "Video rooms",
-        body: "Vartalaap is the video room product inside Sessionly. Keep instant rooms accessible here without making them the whole app.",
+        title: "Instant video rooms",
+        body: "Spin up a room without a booking — useful for ad-hoc calls and testing the SFU.",
     },
     settings: {
         eyebrow: "Settings",
-        title: "Configure your workspace",
-        body: "Personal and workspace preferences belong here, away from the primary product navigation.",
+        title: "Appearance and account",
+        body: "Theme and workspace preferences live here, separate from the product surface.",
     },
 };
 
-const THEME_OPTIONS: Array<{
+const THEME_OPTIONS: ReadonlyArray<{
     label: string;
     value: ThemeMode;
     icon: typeof SunMedium;
@@ -141,206 +95,87 @@ const THEME_OPTIONS: Array<{
     { label: "System", value: "system", icon: LaptopMinimal, body: "Follow this device automatically." },
 ];
 
-function SettingsPanel() {
-    const { theme, resolvedTheme, setTheme } = useTheme();
-
-    return (
-        <section className="app-panel rounded-2xl p-5 sm:p-6">
-            <div className="mb-6">
-                <p className="label-caps mb-2">Settings</p>
-                <h2 className="text-xl font-semibold tracking-tight text-[hsl(var(--foreground))]">
-                    Appearance
-                </h2>
-                <p className="mt-2 max-w-xl text-sm leading-6 text-[hsl(var(--muted-foreground))]">
-                    Theme selection lives here instead of the dashboard chrome. Current resolved theme: {resolvedTheme}.
-                </p>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-3">
-                {THEME_OPTIONS.map(({ label, value, icon: Icon, body }) => {
-                    const active = theme === value;
-                    return (
-                        <button
-                            key={value}
-                            type="button"
-                            onClick={() => setTheme(value)}
-                            aria-label={`Use ${label.toLowerCase()} theme`}
-                            aria-pressed={active}
-                            className={cn(
-                                "cursor-pointer rounded-xl border p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]/50",
-                                active
-                                    ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))]/10"
-                                    : "border-[hsl(var(--border))]/80 bg-[hsl(var(--surface-2))] hover:border-[hsl(var(--primary))]/50",
-                            )}
-                        >
-                            <span
-                                className={cn(
-                                    "mb-4 flex size-9 items-center justify-center rounded-lg",
-                                    active
-                                        ? "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]"
-                                        : "bg-[hsl(var(--surface-3))] text-[hsl(var(--muted-foreground))]",
-                                )}
-                            >
-                                <Icon className="size-4" />
-                            </span>
-                            <span className="block font-medium text-[hsl(var(--foreground))]">{label}</span>
-                            <span className="mt-1 block text-sm leading-5 text-[hsl(var(--muted-foreground))]">
-                                {body}
-                            </span>
-                        </button>
-                    );
-                })}
-            </div>
-        </section>
-    );
-}
-
-function RoadmapPanel({ activePanel }: { activePanel: PanelKey }) {
-    const activeTitle = PANEL_COPY[activePanel].title;
-
-    return (
-        <section className="app-panel rounded-2xl p-5 sm:p-6">
-            <div className="mb-5 flex items-center justify-between gap-4">
-                <div>
-                    <p className="label-caps mb-2">Setup path</p>
-                    <h2 className="text-xl font-semibold tracking-tight text-[hsl(var(--foreground))]">
-                        {activePanel === "overview" ? "What Sessionly should improve next" : activeTitle}
-                    </h2>
-                </div>
-                <span className="rounded-full border border-[hsl(var(--border))] px-3 py-1 text-xs font-medium text-[hsl(var(--muted-foreground))]">
-                    1 of 4
-                </span>
-            </div>
-
-            <div className="overflow-hidden rounded-xl border border-[hsl(var(--border))]/80">
-                {SETUP_ITEMS.map(({ title, status, body }, index) => {
-                    const highlighted =
-                        (activePanel === "availability" && title === "Availability") ||
-                        (activePanel === "booking-types" && title === "Booking type") ||
-                        (activePanel === "payments" && title === "Payments");
-
-                    return (
-                        <div
-                            key={title}
-                            className={cn(
-                                "grid gap-3 bg-[hsl(var(--surface-2))] p-4 sm:grid-cols-[140px_minmax(0,1fr)_90px] sm:items-center",
-                                index > 0 && "border-t border-[hsl(var(--border))]/80",
-                                highlighted && "bg-[hsl(var(--primary))]/10",
-                            )}
-                        >
-                            <p className="font-medium text-[hsl(var(--foreground))]">{title}</p>
-                            <p className="text-sm leading-5 text-[hsl(var(--muted-foreground))]">{body}</p>
-                            <span
-                                className={`w-fit rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                                    status === "Complete"
-                                        ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]"
-                                        : "bg-[hsl(var(--border))]/70 text-[hsl(var(--muted-foreground))]"
-                                }`}
-                            >
-                                {status}
-                            </span>
-                        </div>
-                    );
-                })}
-            </div>
-        </section>
-    );
-}
-
-function RoomsPanel({
-    meetingCode,
-    setMeetingCode,
-    isJoining,
-    canJoin,
-    onJoin,
-}: {
-    meetingCode: string;
-    setMeetingCode: (value: string) => void;
-    isJoining: boolean;
-    canJoin: boolean;
-    onJoin: () => void;
-}) {
-    return (
-        <section className="app-panel rounded-2xl p-5 sm:p-6">
-            <div className="mb-5 flex items-center gap-3">
-                <span className="flex size-10 items-center justify-center rounded-xl bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]">
-                    <Video className="size-5" />
-                </span>
-                <div>
-                    <p className="label-caps mb-1">Vartalaap</p>
-                    <h2 className="text-xl font-semibold tracking-tight text-[hsl(var(--foreground))]">
-                        Video rooms
-                    </h2>
-                </div>
-            </div>
-            <p className="mb-5 text-sm leading-6 text-[hsl(var(--muted-foreground))]">
-                Start or join an instant room from here. This is a Sessionly product area, not the primary app home.
-            </p>
-
-            <div className="flex max-w-md flex-col gap-3">
-                <NewMeetingButton className="w-full" />
-                <div className="relative flex items-center gap-2">
-                    <div className="h-px flex-1 bg-[hsl(var(--border))]" />
-                    <span className="label-caps">or join</span>
-                    <div className="h-px flex-1 bg-[hsl(var(--border))]" />
-                </div>
-                <div className="flex gap-2">
-                    <Input
-                        type="text"
-                        name="meet-code"
-                        value={meetingCode}
-                        onChange={(e) => setMeetingCode(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && onJoin()}
-                        placeholder="Code or link"
-                        className="meet-code flex-1"
-                        autoComplete="off"
-                        autoCorrect="off"
-                        spellCheck={false}
-                        disabled={isJoining}
-                    />
-                    <JoinMeetButton
-                        disabled={!canJoin || isJoining}
-                        loading={isJoining}
-                        onJoin={onJoin}
-                        className="shrink-0"
-                    />
-                </div>
-            </div>
-        </section>
-    );
-}
+const VALID_PANELS = new Set<PanelKey>([
+    "overview", "availability", "booking-types", "rooms", "payments", "settings",
+]);
 
 export default function DashboardPage() {
+    // useSearchParams needs a Suspense ancestor in Next 15+; the body of the
+    // dashboard is fine inside Suspense because its first render is interactive
+    // anyway.
+    return (
+        <Suspense fallback={<div className="min-h-dvh" />}>
+            <DashboardInner />
+        </Suspense>
+    );
+}
+
+function DashboardInner() {
     const router = useRouter();
+    const params = useSearchParams();
     const { user, isAuthenticated, isLoading, logout } = useAuth();
+
+    const initialPanel = (params.get("panel") as PanelKey | null);
+    const [activePanel, setActivePanel] = useState<PanelKey>(
+        initialPanel && VALID_PANELS.has(initialPanel) ? initialPanel : "overview",
+    );
     const [meetingCode, setMeetingCode] = useState("");
-    const [activePanel, setActivePanel] = useState<PanelKey>("overview");
     const [isJoining, startJoinTransition] = useTransition();
 
-    useEffect(() => {
-        if (!isLoading && !isAuthenticated) {
-            router.replace("/login");
+    // Setup state derived from the actual server data. Mirrors the
+    // SetupChecklist contract: profile is "complete" once the user has a slug
+    // (always true post-onboarding step 1); availability is complete with at
+    // least one rule; eventType is complete with at least one active type.
+    const [setup, setSetup] = useState<SetupState>({
+        profile: false, availability: false, eventType: false,
+    });
+    const [setupLoaded, setSetupLoaded] = useState(false);
+    const [refreshKey, setRefreshKey] = useState(0);
+
+    const refreshSetup = useCallback(async () => {
+        try {
+            const [rules, events] = await Promise.all([
+                getAvailability().catch(() => []),
+                listEventTypes().catch(() => []),
+            ]);
+            setSetup({
+                profile: !!(user?.slug && user.slug.length > 0),
+                availability: rules.length > 0,
+                eventType: events.some((e) => e.isActive),
+            });
+        } finally {
+            setSetupLoaded(true);
         }
+    }, [user?.slug]);
+
+    useEffect(() => {
+        if (!isAuthenticated) return;
+        void refreshSetup();
+    }, [isAuthenticated, refreshSetup, refreshKey]);
+
+    useEffect(() => {
+        if (!isLoading && !isAuthenticated) router.replace("/login");
     }, [isAuthenticated, isLoading, router]);
 
-    if (isLoading) {
-        return <div className="min-h-dvh" />;
-    }
+    if (isLoading) return <div className="min-h-dvh" />;
+    if (!isAuthenticated || !user) return null;
 
-    if (!isAuthenticated || !user) {
-        return null;
-    }
-
-    const bookingPath = user.slug ? `getsessionly.com/${user.slug}` : "getsessionly.com/your-name";
+    const bookingHost = process.env.NEXT_PUBLIC_BOOKING_HOST ?? "getsessionly.com";
+    const bookingPath = user.slug ? `${bookingHost}/u/${user.slug}` : `${bookingHost}/u/your-slug`;
+    const publicHref = user.slug ? `/u/${user.slug}` : null;
     const code = normalizeMeetCodeInput(meetingCode);
     const canJoin = meetCodePattern.test(code);
     const panelCopy = PANEL_COPY[activePanel];
 
     const handleJoin = () => {
         if (!canJoin || isJoining) return;
-        startJoinTransition(() => {
-            router.push(roomPath(code));
-        });
+        startJoinTransition(() => router.push(roomPath(code)));
+    };
+
+    const handleSelectPanel = (key: PanelKey) => {
+        setActivePanel(key);
+        // Reflect the panel in the URL so reload + share work.
+        router.replace(`/dashboard?panel=${key}`, { scroll: false });
     };
 
     return (
@@ -351,10 +186,8 @@ export default function DashboardPage() {
                         <div className="flex min-h-[calc(100dvh-2rem)] flex-col rounded-2xl border border-[hsl(var(--border))]/80 bg-[hsl(var(--surface))] p-3 shadow-sm">
                             <Link href="/dashboard" className="mb-3 flex items-center rounded-xl px-3 py-2.5 hover:bg-[hsl(var(--surface-2))]">
                                 <span className="min-w-0">
-                                    <SessionlyWordmark className="block text-sm text-[hsl(var(--foreground))]" />
-                                    <span className="block truncate text-xs text-[hsl(var(--muted-foreground))]">
-                                        Workspace
-                                    </span>
+                                    <SessionlyBrand size="sm" />
+                                    <span className="block truncate text-xs text-[hsl(var(--muted-foreground))]">Workspace</span>
                                 </span>
                             </Link>
 
@@ -368,32 +201,24 @@ export default function DashboardPage() {
                             </div>
 
                             <nav className="flex flex-col gap-1" aria-label="Dashboard sections">
-                                {SIDEBAR_ITEMS.map(({ key, icon: Icon, label, status }) => {
+                                {SIDEBAR_ITEMS.map(({ key, icon: Icon, label }) => {
                                     const active = activePanel === key;
                                     return (
-                                    <button
-                                        key={label}
-                                        type="button"
-                                        onClick={() => setActivePanel(key)}
-                                        aria-current={active ? "page" : undefined}
-                                        className={`flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]/50 ${
-                                            active
-                                                ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]"
-                                                : "text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--surface-2))] hover:text-[hsl(var(--foreground))]"
-                                        }`}
-                                    >
-                                        <Icon className="size-4 shrink-0" />
-                                        <span className="min-w-0 flex-1 truncate text-sm font-medium">{label}</span>
-                                        <span
-                                            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                                        <button
+                                            key={key}
+                                            type="button"
+                                            onClick={() => handleSelectPanel(key)}
+                                            aria-current={active ? "page" : undefined}
+                                            className={cn(
+                                                "flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]/50",
                                                 active
                                                     ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]"
-                                                    : "bg-[hsl(var(--border))]/60 text-[hsl(var(--muted-foreground))]"
-                                            }`}
+                                                    : "text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--surface-2))] hover:text-[hsl(var(--foreground))]",
+                                            )}
                                         >
-                                            {status}
-                                        </span>
-                                    </button>
+                                            <Icon className="size-4 shrink-0" />
+                                            <span className="min-w-0 flex-1 truncate text-sm font-medium">{label}</span>
+                                        </button>
                                     );
                                 })}
                             </nav>
@@ -418,9 +243,7 @@ export default function DashboardPage() {
                         <div className="rounded-2xl border border-[hsl(var(--border))]/80 bg-[hsl(var(--surface))] p-5 shadow-sm sm:p-6">
                             <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
                                 <div>
-                                    <p className="label-caps mb-3 text-[hsl(var(--primary))]">
-                                        {panelCopy.eyebrow}
-                                    </p>
+                                    <p className="label-caps mb-3 text-[hsl(var(--primary))]">{panelCopy.eyebrow}</p>
                                     <h1 className="text-2xl font-semibold tracking-tight text-[hsl(var(--foreground))] sm:text-3xl">
                                         {panelCopy.title}
                                     </h1>
@@ -428,41 +251,244 @@ export default function DashboardPage() {
                                         {panelCopy.body}
                                     </p>
                                 </div>
-                                {activePanel !== "settings" && activePanel !== "rooms" && (
-                                    <Button asChild>
-                                        <Link href="/onboarding">
-                                            Edit setup <ArrowRight className="size-4" />
-                                        </Link>
-                                    </Button>
+                                {publicHref && (
+                                    <ShareLinkBlock url={bookingPath} href={publicHref} />
                                 )}
                             </div>
                         </div>
 
-                        {activePanel === "settings" ? (
-                            <SettingsPanel />
-                        ) : activePanel === "rooms" ? (
-                            <RoomsPanel
+                        {activePanel === "overview" && (
+                            <OverviewPanel
+                                setup={setup}
+                                setupLoaded={setupLoaded}
+                                refreshKey={refreshKey}
                                 meetingCode={meetingCode}
                                 setMeetingCode={setMeetingCode}
-                                isJoining={isJoining}
                                 canJoin={canJoin}
+                                isJoining={isJoining}
                                 onJoin={handleJoin}
                             />
-                        ) : (
-                        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-                            <RoadmapPanel activePanel={activePanel} />
-                            <RoomsPanel
-                                meetingCode={meetingCode}
-                                setMeetingCode={setMeetingCode}
-                                isJoining={isJoining}
-                                canJoin={canJoin}
-                                onJoin={handleJoin}
-                            />
-                        </div>
                         )}
+
+                        {activePanel === "availability" && (
+                            <PanelShell>
+                                <AvailabilityEditor
+                                    timezone={user.timezone}
+                                    onSaved={() => setRefreshKey((k) => k + 1)}
+                                />
+                            </PanelShell>
+                        )}
+
+                        {activePanel === "booking-types" && (
+                            <PanelShell>
+                                <EventTypesPanel
+                                    hostSlug={user.slug || null}
+                                    onChange={() => setRefreshKey((k) => k + 1)}
+                                />
+                            </PanelShell>
+                        )}
+
+                        {activePanel === "rooms" && (
+                            <PanelShell>
+                                <RoomsBody
+                                    meetingCode={meetingCode}
+                                    setMeetingCode={setMeetingCode}
+                                    canJoin={canJoin}
+                                    isJoining={isJoining}
+                                    onJoin={handleJoin}
+                                />
+                            </PanelShell>
+                        )}
+
+                        {activePanel === "payments" && (
+                            <PanelShell>
+                                <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                                    Paid event types are disabled until Stripe Connect ships. Solo plan
+                                    activation will live here.
+                                </p>
+                            </PanelShell>
+                        )}
+
+                        {activePanel === "settings" && <SettingsPanel />}
                     </section>
                 </div>
             </main>
         </div>
+    );
+}
+
+// ─── Overview ────────────────────────────────────────────────────────────────
+
+function OverviewPanel({
+    setup, setupLoaded, refreshKey,
+    meetingCode, setMeetingCode, canJoin, isJoining, onJoin,
+}: {
+    setup: SetupState;
+    setupLoaded: boolean;
+    refreshKey: number;
+    meetingCode: string;
+    setMeetingCode: (v: string) => void;
+    canJoin: boolean;
+    isJoining: boolean;
+    onJoin: () => void;
+}) {
+    return (
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="flex flex-col gap-6">
+                <PanelShell title="Get bookable">
+                    {setupLoaded ? (
+                        <SetupChecklist state={setup} />
+                    ) : (
+                        <p className="text-sm text-[hsl(var(--muted-foreground))]">Loading status…</p>
+                    )}
+                </PanelShell>
+                <PanelShell title="Upcoming bookings">
+                    <UpcomingBookings refreshKey={refreshKey} />
+                </PanelShell>
+            </div>
+            <PanelShell title="Instant room">
+                <RoomsBody
+                    meetingCode={meetingCode}
+                    setMeetingCode={setMeetingCode}
+                    canJoin={canJoin}
+                    isJoining={isJoining}
+                    onJoin={onJoin}
+                />
+            </PanelShell>
+        </div>
+    );
+}
+
+// ─── Shared pieces ───────────────────────────────────────────────────────────
+
+function PanelShell({ title, children }: { title?: string; children: React.ReactNode }) {
+    return (
+        <section className="app-panel rounded-2xl p-5 sm:p-6">
+            {title && (
+                <p className="label-caps mb-4">{title}</p>
+            )}
+            {children}
+        </section>
+    );
+}
+
+function ShareLinkBlock({ url, href }: { url: string; href: string }) {
+    const [copied, setCopied] = useState(false);
+
+    async function copy() {
+        try {
+            await navigator.clipboard.writeText(`https://${url}`);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+        } catch {
+            // Clipboard denied — fall back to nothing. The link below is the
+            // visible affordance.
+        }
+    }
+
+    return (
+        <div className="flex flex-col items-stretch gap-2 sm:items-end">
+            <p className="label-caps text-[hsl(var(--muted-foreground))]">Your booking link</p>
+            <div className="flex items-center gap-2 rounded-xl border border-[hsl(var(--border))]/70 bg-[hsl(var(--surface-2))] px-3 py-2">
+                <Link href={href} target="_blank" className="link truncate text-sm">{url}</Link>
+                <button
+                    type="button"
+                    onClick={copy}
+                    aria-label="Copy booking link"
+                    className="press cursor-pointer rounded-md p-1 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--surface-3))] hover:text-[hsl(var(--foreground))]"
+                >
+                    <Copy className="size-3.5" />
+                </button>
+            </div>
+            {copied && (
+                <p className="text-right text-[10px] text-[hsl(var(--primary))]">Copied</p>
+            )}
+        </div>
+    );
+}
+
+function RoomsBody({
+    meetingCode, setMeetingCode, canJoin, isJoining, onJoin,
+}: {
+    meetingCode: string;
+    setMeetingCode: (v: string) => void;
+    canJoin: boolean;
+    isJoining: boolean;
+    onJoin: () => void;
+}) {
+    return (
+        <div className="flex max-w-md flex-col gap-3">
+            <NewMeetingButton className="w-full" />
+            <div className="relative flex items-center gap-2">
+                <div className="h-px flex-1 bg-[hsl(var(--border))]" />
+                <span className="label-caps">or join</span>
+                <div className="h-px flex-1 bg-[hsl(var(--border))]" />
+            </div>
+            <div className="flex gap-2">
+                <Input
+                    type="text"
+                    name="meet-code"
+                    value={meetingCode}
+                    onChange={(e) => setMeetingCode(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && onJoin()}
+                    placeholder="Code or link"
+                    className="meet-code flex-1"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    disabled={isJoining}
+                />
+                <JoinMeetButton
+                    disabled={!canJoin || isJoining}
+                    loading={isJoining}
+                    onJoin={onJoin}
+                    className="shrink-0"
+                />
+            </div>
+        </div>
+    );
+}
+
+function SettingsPanel() {
+    const { theme, resolvedTheme, setTheme } = useTheme();
+    return (
+        <section className="app-panel rounded-2xl p-5 sm:p-6">
+            <p className="label-caps mb-2">Appearance</p>
+            <p className="mb-5 text-sm text-[hsl(var(--muted-foreground))]">
+                Current theme: {resolvedTheme}.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-3">
+                {THEME_OPTIONS.map(({ label, value, icon: Icon, body }) => {
+                    const active = theme === value;
+                    return (
+                        <button
+                            key={value}
+                            type="button"
+                            onClick={() => setTheme(value)}
+                            aria-pressed={active}
+                            className={cn(
+                                "press cursor-pointer rounded-xl border p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]/50",
+                                active
+                                    ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))]/10"
+                                    : "border-[hsl(var(--border))]/80 bg-[hsl(var(--surface-2))] hover:border-[hsl(var(--primary))]/50",
+                            )}
+                        >
+                            <span
+                                className={cn(
+                                    "mb-4 flex size-9 items-center justify-center rounded-lg",
+                                    active
+                                        ? "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]"
+                                        : "bg-[hsl(var(--surface-3))] text-[hsl(var(--muted-foreground))]",
+                                )}
+                            >
+                                <Icon className="size-4" />
+                            </span>
+                            <span className="block font-medium text-[hsl(var(--foreground))]">{label}</span>
+                            <span className="mt-1 block text-sm leading-5 text-[hsl(var(--muted-foreground))]">{body}</span>
+                        </button>
+                    );
+                })}
+            </div>
+        </section>
     );
 }

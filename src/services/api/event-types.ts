@@ -57,3 +57,29 @@ export async function createEventType(input: EventType): Promise<EventType> {
     }
     return (await res.json()) as EventType
 }
+
+export async function updateEventType(id: string, patch: Partial<EventType>): Promise<EventType> {
+    const res = await fetch(`${httpServerUri}/me/event-types/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify(patch),
+    })
+    if (!res.ok) {
+        const text = await res.text()
+        throw new Error(text.trim() || `event-types update ${res.status}`)
+    }
+    return (await res.json()) as EventType
+}
+
+export async function deleteEventType(id: string): Promise<void> {
+    const res = await fetch(`${httpServerUri}/me/event-types/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: authHeaders(),
+    })
+    if (!res.ok) {
+        const text = await res.text()
+        throw new Error(text.trim() || `event-types delete ${res.status}`)
+    }
+}
