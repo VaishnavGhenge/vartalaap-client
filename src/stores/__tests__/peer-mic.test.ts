@@ -1,22 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { usePeerStore } from '../peer'
-import { WebRTCSession } from '@/src/services/webrtc/session'
-
-// ─── Mocks ────────────────────────────────────────────────────────────────────
-
-vi.mock('@/src/services/webrtc/session', () => {
-  class WebRTCSession {
-    replaceTrack = vi.fn().mockResolvedValue(undefined)
-    applyEncodingLevel = vi.fn().mockResolvedValue(undefined)
-    getStats = vi.fn().mockResolvedValue(new Map())
-    signal = vi.fn().mockResolvedValue(undefined)
-    close = vi.fn()
-    connectionState: RTCPeerConnectionState = 'connected'
-    destroyed = false
-    constructor(_opts: unknown) {}
-  }
-  return { WebRTCSession, ENCODING_LEVELS: [] }
-})
+import type { SfuSession } from '@/src/services/webrtc/sfu-session'
 
 // AudioContext stub for createSilentAudioTrack
 vi.mock('@/src/lib/audio-context', () => ({
@@ -56,12 +40,18 @@ function stubGetUserMedia(track: MediaStreamTrack) {
   })
 }
 
-function makeSession(): InstanceType<typeof WebRTCSession> {
-  return new WebRTCSession({} as never) as unknown as InstanceType<typeof WebRTCSession>
+function makeSfuSession(): SfuSession {
+  return {
+    replaceTrack: vi.fn().mockResolvedValue(undefined),
+    publish: vi.fn().mockResolvedValue([]),
+    subscribe: vi.fn().mockResolvedValue(undefined),
+    close: vi.fn(),
+    sessionId: 'test-session',
+  } as unknown as SfuSession
 }
 
-function peerConn(session: InstanceType<typeof WebRTCSession>, id = 'p1') {
-  return { id, session, name: '', audio: false, video: false, speaking: false, screenSharing: false, connectionState: 'connected' as RTCPeerConnectionState }
+function peerConn(id = 'p1') {
+  return { id, name: '', audio: false, video: false, speaking: false, screenSharing: false, connectionState: 'connected' as RTCPeerConnectionState }
 }
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
@@ -136,17 +126,18 @@ describe('enableMic', () => {
     expect(usePeerStore.getState().localStream).toBe(existing)
   })
 
-  it('calls session.replaceTrack to publish the audio track to peers', async () => {
-    const session = makeSession()
+  it('calls sfuSession.replaceTrack to publish the audio track', async () => {
+    const sfuSession = makeSfuSession()
     usePeerStore.setState({
-      peerConnections: new Map([['p1', peerConn(session)]]),
+      sfuSession,
+      peerConnections: new Map([['p1', peerConn()]]),
     })
     const track = makeTrack('audio')
     stubGetUserMedia(track)
 
     await usePeerStore.getState().enableMic()
 
-    expect(session.replaceTrack).toHaveBeenCalledWith('audio', track)
+    expect(sfuSession.replaceTrack).toHaveBeenCalledWith('audio', track)
   })
 
   it('returns null when getUserMedia rejects', async () => {
@@ -183,18 +174,19 @@ describe('disableMic', () => {
     expect(stream.getAudioTracks()).not.toContain(track)
   })
 
-  it('replaces the session audio sender with a silent placeholder before stopping', async () => {
-    const session = makeSession()
+  it('replaces the sfuSession audio sender with a silent placeholder before stopping', async () => {
+    const sfuSession = makeSfuSession()
     const track = makeTrack('audio')
     const stream = makeStream([track])
     usePeerStore.setState({
       localStream: stream,
-      peerConnections: new Map([['p1', { ...peerConn(session), audio: true }]]),
+      sfuSession,
+      peerConnections: new Map([['p1', { ...peerConn(), audio: true }]]),
     })
 
     usePeerStore.getState().disableMic()
 
-    expect(session.replaceTrack).toHaveBeenCalledWith('audio', expect.any(Object))
+    expect(sfuSession.replaceTrack).toHaveBeenCalledWith('audio', expect.any(Object))
   })
 
   it('sets localStream to null when no tracks remain', async () => {
@@ -227,19 +219,20 @@ describe('disableMic', () => {
 // ─── enableMic → disableMic cycle ────────────────────────────────────────────
 
 describe('enableMic → disableMic cycle', () => {
-  it('enable publishes track to session, disable sends silent placeholder', async () => {
-    const session = makeSession()
+  it('enable publishes track to sfuSession, disable sends silent placeholder', async () => {
+    const sfuSession = makeSfuSession()
     usePeerStore.setState({
-      peerConnections: new Map([['p1', peerConn(session)]]),
+      sfuSession,
+      peerConnections: new Map([['p1', peerConn()]]),
     })
     const liveTrack = makeTrack('audio')
     stubGetUserMedia(liveTrack)
 
     await usePeerStore.getState().enableMic()
-    expect(session.replaceTrack).toHaveBeenCalledWith('audio', liveTrack)
+    expect(sfuSession.replaceTrack).toHaveBeenCalledWith('audio', liveTrack)
 
     usePeerStore.getState().disableMic()
     expect(liveTrack.stop).toHaveBeenCalled()
-    expect(session.replaceTrack).toHaveBeenCalledTimes(2)
+    expect(sfuSession.replaceTrack).toHaveBeenCalledTimes(2)
   })
 })

@@ -12,6 +12,20 @@ interface ThemeContextValue {
 }
 
 const STORAGE_KEY = "vartalaap-theme";
+const COOKIE_KEY = "vartalaap-theme";
+// 1 year — cookie matches localStorage's effective lifetime so the server can
+// render the right class on first paint without an inline init script.
+const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
+
+function readThemeCookie(): ThemeMode | null {
+    if (typeof document === "undefined") return null;
+    const match = document.cookie.match(/(?:^|;\s*)vartalaap-theme=(light|dark|system)/);
+    return match ? (match[1] as ThemeMode) : null;
+}
+
+function writeThemeCookie(theme: ThemeMode) {
+    document.cookie = `${COOKIE_KEY}=${theme}; path=/; max-age=${COOKIE_MAX_AGE}; SameSite=Lax`;
+}
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
@@ -32,43 +46,48 @@ function applyTheme(theme: ThemeMode) {
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-    const [theme, setThemeState] = useState<ThemeMode>("light");
+    const [theme, setThemeState] = useState<ThemeMode>("system");
     const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>("light");
 
     useEffect(() => {
-        const savedTheme = window.localStorage.getItem(STORAGE_KEY) as ThemeMode | null;
+        // Cookie wins over localStorage — it's the source of truth the server
+        // reads to set the initial <html> class. localStorage stays as a
+        // legacy fallback for sessions that pre-date the cookie migration.
+        const cookieTheme = readThemeCookie();
+        const savedTheme = cookieTheme ?? (window.localStorage.getItem(STORAGE_KEY) as ThemeMode | null);
         const initialTheme = savedTheme === "light" || savedTheme === "dark" || savedTheme === "system"
             ? savedTheme
-            : "light";
+            : "system";
 
         setThemeState(initialTheme);
 
         const nextResolved = initialTheme === "system" ? getSystemTheme() : initialTheme;
         setResolvedTheme(nextResolved);
         applyTheme(initialTheme);
+
+        // Backfill persisted theme state so the next SSR can set the right
+        // class without a flash, and legacy/local client reads stay aligned.
+        window.localStorage.setItem(STORAGE_KEY, initialTheme);
+        if (!cookieTheme) writeThemeCookie(initialTheme);
     }, []);
 
     useEffect(() => {
+        if (theme !== "system") return;
+
         const media = window.matchMedia("(prefers-color-scheme: dark)");
         const handleChange = () => {
-            if (theme !== "system") {
-                return;
-            }
-
-            const nextResolved = getSystemTheme();
-            setResolvedTheme(nextResolved);
+            setResolvedTheme(getSystemTheme());
             applyTheme("system");
         };
 
-        handleChange();
         media.addEventListener("change", handleChange);
-
         return () => media.removeEventListener("change", handleChange);
     }, [theme]);
 
     const setTheme = (nextTheme: ThemeMode) => {
         setThemeState(nextTheme);
         window.localStorage.setItem(STORAGE_KEY, nextTheme);
+        writeThemeCookie(nextTheme);
 
         const nextResolved = nextTheme === "system" ? getSystemTheme() : nextTheme;
         setResolvedTheme(nextResolved);

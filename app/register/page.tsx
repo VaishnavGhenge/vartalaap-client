@@ -2,51 +2,84 @@
 
 import { BufferingButtonLabel } from "@/src/components/ui/BufferingButtonLabel";
 import Link from "next/link";
-import { useState } from "react";
-import Navbar from "@/src/components/ui/Navbar";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Input } from "@/src/components/ui/input";
 import { Button } from "@/src/components/ui/button";
+import { SessionlyBrand } from "@/src/components/ui/SessionlyBrand";
+import { useRegister } from "@/src/hooks/use-auth";
+import { useAuthStore } from "@/src/stores/auth";
+import { toast } from "sonner";
 
 export default function Register() {
-    const [isRegisterPending, setIsRegisterPending] = useState(false);
+    const [firstName, setFirstName] = useState("");
+    const [lastName, setLastName] = useState("");
+    const [email, setEmail] = useState("");
+    const [password, setPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
+    const { mutate: registerUser, isPending } = useRegister();
+    const { isAuthenticated, isLoading, user } = useAuthStore();
+    const router = useRouter();
+
+    useEffect(() => {
+        if (!isLoading && isAuthenticated && user) {
+            router.replace(user.onboardingStep < 5 ? "/onboarding" : "/dashboard");
+        }
+    }, [isLoading, isAuthenticated, user, router]);
+
+    function handleSubmit(e: React.FormEvent) {
+        e.preventDefault();
+        if (password !== confirmPassword) {
+            toast.error("Passwords don't match");
+            return;
+        }
+        registerUser({
+            name: `${firstName.trim()} ${lastName.trim()}`.trim(),
+            email,
+            password,
+        });
+    }
 
     return (
-        <div className="flex min-h-dvh flex-col">
-            <Navbar />
+        <div className="relative flex min-h-dvh flex-col">
+            <main className="flex flex-1 flex-col items-center justify-center px-4 pt-12 pb-24 sm:px-6 sm:pt-16 sm:pb-40">
+                <Link href="/" className="mb-12">
+                    <SessionlyBrand size="lg" />
+                </Link>
 
-            <main className="flex flex-1 items-center justify-center px-4 py-12 sm:px-6">
-                <div className="app-panel w-full max-w-sm sm:max-w-md rounded-2xl p-6 sm:p-8">
+                <div className="w-full max-w-sm sm:max-w-md">
 
                     <h1 className="text-xl font-semibold tracking-tight text-[hsl(var(--foreground))]">
                         Create account
                     </h1>
                     <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
-                        Join Vartalaap
+                        Join Sessionly
                     </p>
 
-                    <form className="mt-6 flex flex-col gap-4">
+                    <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
                         <div className="grid gap-4 sm:grid-cols-2">
                             <div className="flex flex-col gap-1.5">
-                                <label htmlFor="firstName" className="label-caps">
-                                    First name
-                                </label>
+                                <label htmlFor="firstName" className="label-caps">First name</label>
                                 <Input
                                     type="text"
                                     id="firstName"
                                     name="firstName"
                                     autoComplete="given-name"
+                                    value={firstName}
+                                    onChange={(e) => setFirstName(e.target.value)}
+                                    required
                                 />
                             </div>
 
                             <div className="flex flex-col gap-1.5">
-                                <label htmlFor="lastName" className="label-caps">
-                                    Last name
-                                </label>
+                                <label htmlFor="lastName" className="label-caps">Last name</label>
                                 <Input
                                     type="text"
                                     id="lastName"
                                     name="lastName"
                                     autoComplete="family-name"
+                                    value={lastName}
+                                    onChange={(e) => setLastName(e.target.value)}
                                 />
                             </div>
                         </div>
@@ -59,6 +92,9 @@ export default function Register() {
                                 name="email"
                                 placeholder="you@example.com"
                                 autoComplete="email"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                required
                             />
                         </div>
 
@@ -72,26 +108,32 @@ export default function Register() {
                                 name="password"
                                 autoComplete="new-password"
                                 minLength={8}
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                required
                             />
                         </div>
 
                         <div className="flex flex-col gap-1.5">
-                            <label htmlFor="password2" className="label-caps">Confirm password</label>
+                            <label htmlFor="confirmPassword" className="label-caps">Confirm password</label>
                             <Input
                                 type="password"
-                                id="password2"
-                                name="password2"
+                                id="confirmPassword"
+                                name="confirmPassword"
                                 autoComplete="new-password"
+                                value={confirmPassword}
+                                onChange={(e) => setConfirmPassword(e.target.value)}
+                                required
                             />
                         </div>
 
                         <Button
-                            type="button"
+                            type="submit"
                             size="lg"
                             className="mt-1 w-full"
-                            disabled={isRegisterPending}
+                            disabled={isPending}
                         >
-                            {isRegisterPending
+                            {isPending
                                 ? <BufferingButtonLabel label="Creating account…" />
                                 : "Create account"
                             }

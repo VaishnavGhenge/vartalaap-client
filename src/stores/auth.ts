@@ -1,49 +1,28 @@
 import { create } from 'zustand'
-import { devtools, persist } from 'zustand/middleware'
-
-interface User {
-  id: string
-  name: string
-  email: string
-  avatar?: string
-}
+import { devtools } from 'zustand/middleware'
+import type { User } from '@/src/types/auth'
 
 interface AuthState {
-  user: User | null
-  isAuthenticated: boolean
-  isLoading: boolean
-  login: (user: User) => void
-  logout: () => void
-  setLoading: (loading: boolean) => void
+    user: User | null
+    isAuthenticated: boolean
+    isLoading: boolean
+    login: (user: User) => void
+    logout: () => void
+    setLoading: (loading: boolean) => void
+    setUser: (user: User) => void
 }
 
 export const useAuthStore = create<AuthState>()(
-  devtools(
-    persist(
-      (set) => ({
-        user: null,
-        isAuthenticated: false,
-        isLoading: false,
-        login: (user) =>
-          set(() => ({
-            user,
-            isAuthenticated: true,
-            isLoading: false,
-          })),
-        logout: () =>
-          set(() => ({
+    devtools(
+        (set) => ({
             user: null,
             isAuthenticated: false,
-            isLoading: false,
-          })),
-        setLoading: (loading) =>
-          set(() => ({
-            isLoading: loading,
-          })),
-      }),
-      {
-        name: 'auth-storage',
-      }
+            isLoading: true, // true on boot until refresh attempt completes
+            login: (user) => set({ user, isAuthenticated: true, isLoading: false }),
+            logout: () => set({ user: null, isAuthenticated: false, isLoading: false }),
+            setLoading: (isLoading) => set({ isLoading }),
+            setUser: (user) => set({ user }),
+        }),
+        { name: 'auth' }
     )
-  )
 )

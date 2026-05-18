@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Copy, Check, Share2, Settings } from "lucide-react";
+import { Copy, Check, Share2, Settings, Loader2 } from "lucide-react";
 import { SettingsPanel } from "@/src/components/ui/SettingsPanel";
 import { resumeSharedAudioContext } from "@/src/lib/audio-context";
 import { playJoinCall } from "@/src/lib/sounds";
@@ -17,13 +17,14 @@ import { useHasMultipleCameras } from "@/src/hooks/use-has-multiple-cameras";
 import { useMeetStore } from "@/src/stores/meet";
 import { useJoinMeetStore } from "@/src/stores/joinMeet";
 import { avatarColor, initialsOf } from "@/src/lib/avatar";
-import { fetchIceServers } from "@/src/services/api/ice";
 import { useAudioLevel } from "@/src/hooks/use-audio-level";
 import { useMediaDevices } from "@/src/hooks/use-media-devices";
 import { supportsAudioOutputSelection } from "@/src/lib/audio-context";
 import { MicLevelMeter } from "@/src/components/ui/MicLevelMeter";
 import { DeviceSelect } from "@/src/components/ui/DeviceSelect";
 import { Collapsible } from "@/src/components/ui/Collapsible";
+
+const meetCodePattern = /^[a-z2-9]{3}-[a-z2-9]{4}-[a-z2-9]{3}$/;
 
 export default function JoinMeet() {
     const params = useParams<{ meetCode: string }>();
@@ -33,9 +34,10 @@ export default function JoinMeet() {
     const [copied, setCopied] = useState(false);
     const [canShare, setCanShare] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
+    const [isJoining, setIsJoining] = useState(false);
     useEffect(() => { setCanShare('share' in navigator); }, []);
 
-    const { localStream, enableMic, disableMic, enableCamera, disableCamera, switchCamera, setIceServers,
+    const { localStream, enableMic, disableMic, enableCamera, disableCamera, switchCamera,
             setAudioInput, setVideoInput, setAudioOutput,
             preferredAudioInputId, preferredVideoInputId, preferredAudioOutputId } = usePeerStore();
     const hasMultipleCameras = useHasMultipleCameras();
@@ -44,15 +46,9 @@ export default function JoinMeet() {
     const showSpeaker = supportsAudioOutputSelection() && audioOutputs.length > 0;
     const { speaking, level } = useAudioLevel(localStream, !isMuted);
     const { userName, setUserName, setMeetCode: setStoredMeetCode, setHasJoinedMeet } = useJoinMeetStore();
+    const canJoinMeet = meetCodePattern.test(params.meetCode);
 
     useEffect(() => { setMeetCode(params.meetCode); }, [params]);
-
-    useEffect(() => {
-        fetchIceServers()
-            .then(setIceServers)
-            .catch(() => { /* will retry inside use-call on join */ });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
 
     useEffect(() => {
         if (videoRef.current) videoRef.current.srcObject = localStream;
@@ -79,7 +75,8 @@ export default function JoinMeet() {
     };
 
     const handleJoin = () => {
-        if (!userName.trim()) return;
+        if (!userName.trim() || !canJoinMeet || isJoining) return;
+        setIsJoining(true);
         setStoredMeetCode(params.meetCode);
         resumeSharedAudioContext();
         playJoinCall();
@@ -89,7 +86,7 @@ export default function JoinMeet() {
     const handleShare = async () => {
         try {
             if (canShare) {
-                await navigator.share({ title: 'Join my Vartalaap call', url: window.location.href });
+                await navigator.share({ title: 'Join my Sessionly call', url: window.location.href });
             } else {
                 await navigator.clipboard.writeText(window.location.href);
                 setCopied(true);
@@ -256,14 +253,17 @@ export default function JoinMeet() {
                                     onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
                                     autoComplete="name"
                                     maxLength={40}
+                                    disabled={isJoining}
                                 />
                                 <Button
                                     onClick={handleJoin}
-                                    disabled={!userName.trim()}
+                                    disabled={!userName.trim() || !canJoinMeet || isJoining}
+                                    aria-busy={isJoining}
                                     size="lg"
                                     className="w-full"
                                 >
-                                    Join now
+                                    {isJoining && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
+                                    {isJoining ? "Joining..." : "Join now"}
                                 </Button>
                             </div>
                         </div>

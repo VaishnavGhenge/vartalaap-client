@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { CALL_CONTEXT_OPTIONS, joinRoom, randomRoom, type InitScriptTarget } from './helpers/call'
+import { createCallContexts, joinRoom, createRoom, type InitScriptTarget } from './helpers/call'
 
 async function installDocumentPipStub(
   target: InitScriptTarget,
@@ -231,7 +231,7 @@ test.describe('In-call feature controls', () => {
     // This test FAILS without a pagehide listener in use-pip.ts because the
     // button stays "Close picture-in-picture" after Arc closes the window.
     await installDocumentPipStub(page, { closeOnBlur: true })
-    await joinRoom(page, randomRoom(), 'Alice')
+    await joinRoom(page, await createRoom(), 'Alice')
 
     await page.getByRole('button', { name: /picture-in-picture/i }).click()
     await page.waitForFunction(() =>
@@ -261,7 +261,7 @@ test.describe('In-call feature controls', () => {
     // Our code must not close pip just because the host page fires blur — only
     // a pagehide event on the pip window itself should trigger state reset.
     await installDocumentPipStub(page)   // no closeOnBlur — normal Chrome behaviour
-    await joinRoom(page, randomRoom(), 'Alice')
+    await joinRoom(page, await createRoom(), 'Alice')
 
     await page.getByRole('button', { name: /picture-in-picture/i }).click()
     await page.waitForFunction(() =>
@@ -293,7 +293,7 @@ test.describe('In-call feature controls', () => {
     //
     // Expected: dispatching pagehide on the pip window deactivates the button.
     await installDocumentPipStub(page)
-    await joinRoom(page, randomRoom(), 'Alice')
+    await joinRoom(page, await createRoom(), 'Alice')
 
     // Open PiP
     await page.getByRole('button', { name: /picture-in-picture/i }).click()
@@ -322,7 +322,7 @@ test.describe('In-call feature controls', () => {
 
   test('PiP button deactivates when the pip window disappears without pagehide', async ({ page }) => {
     await installDocumentPipStub(page, { dropWindowOnBlurWithoutPagehide: true })
-    await joinRoom(page, randomRoom(), 'Alice')
+    await joinRoom(page, await createRoom(), 'Alice')
 
     await page.getByRole('button', { name: /picture-in-picture/i }).click()
     await page.waitForFunction(() => {
@@ -340,7 +340,7 @@ test.describe('In-call feature controls', () => {
 
   test('PiP button deactivates when pagehide fires on the pip document', async ({ page }) => {
     await installDocumentPipStub(page)
-    await joinRoom(page, randomRoom(), 'Alice')
+    await joinRoom(page, await createRoom(), 'Alice')
 
     await page.getByRole('button', { name: /picture-in-picture/i }).click()
     await page.waitForFunction(() => {
@@ -359,7 +359,7 @@ test.describe('In-call feature controls', () => {
 
   test('PiP button deactivates when the pip document becomes hidden', async ({ page }) => {
     await installDocumentPipStub(page, { hideDocumentOnBlurWithoutPagehide: true })
-    await joinRoom(page, randomRoom(), 'Alice')
+    await joinRoom(page, await createRoom(), 'Alice')
 
     await page.getByRole('button', { name: /picture-in-picture/i }).click()
     await page.waitForFunction(() => {
@@ -374,7 +374,7 @@ test.describe('In-call feature controls', () => {
 
   test('element PiP can be re-entered when the floating video disappears without leave event', async ({ page }) => {
     await installElementPipStub(page, { dropElementOnBlurWithoutLeave: true })
-    await joinRoom(page, randomRoom(), 'Alice')
+    await joinRoom(page, await createRoom(), 'Alice')
     await ensureVideoElement(page)
 
     await page.getByRole('button', { name: /picture-in-picture/i }).click()
@@ -401,7 +401,7 @@ test.describe('In-call feature controls', () => {
     // Once the pagehide listener resets state, the user must be able to click
     // the button again to open a new pip window.
     await installDocumentPipStub(page)
-    await joinRoom(page, randomRoom(), 'Alice')
+    await joinRoom(page, await createRoom(), 'Alice')
 
     await page.getByRole('button', { name: /picture-in-picture/i }).click()
     await page.waitForFunction(() => {
@@ -429,7 +429,7 @@ test.describe('In-call feature controls', () => {
 
   test('explicit exit PiP button still works', async ({ page }) => {
     await installDocumentPipStub(page)
-    await joinRoom(page, randomRoom(), 'Alice')
+    await joinRoom(page, await createRoom(), 'Alice')
 
     await page.getByRole('button', { name: /picture-in-picture/i }).click()
     await page.waitForFunction(() => {
@@ -447,7 +447,7 @@ test.describe('In-call feature controls', () => {
 
   test('screen sharing shows presenting state and can be stopped', async ({ page }) => {
     await installScreenShareStub(page)
-    await joinRoom(page, randomRoom(), 'Alice')
+    await joinRoom(page, await createRoom(), 'Alice')
 
     await page.getByRole('button', { name: /share screen/i }).click()
 
@@ -478,7 +478,7 @@ test.describe('In-call feature controls', () => {
 
   test('screen-share cancellation leaves the call in normal state', async ({ page }) => {
     await installScreenShareStub(page, { reject: true })
-    await joinRoom(page, randomRoom(), 'Alice')
+    await joinRoom(page, await createRoom(), 'Alice')
 
     await page.getByRole('button', { name: /share screen/i }).click()
 
@@ -491,9 +491,8 @@ test.describe('In-call feature controls', () => {
   })
 
   test('remote participant sees when a peer starts screen sharing', async ({ browser }) => {
-    const roomCode = randomRoom()
-    const aliceContext = await browser.newContext(CALL_CONTEXT_OPTIONS)
-    const bobContext = await browser.newContext(CALL_CONTEXT_OPTIONS)
+    const roomCode = await createRoom()
+    const { ctx1: aliceContext, ctx2: bobContext } = await createCallContexts(browser)
     await installScreenShareStub(aliceContext)
 
     const alice = await aliceContext.newPage()

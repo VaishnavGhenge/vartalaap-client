@@ -20,9 +20,13 @@ describe('fetchIceServers', () => {
             json: () => Promise.resolve({ iceServers: servers }),
         }))
 
-        const result = await fetchIceServers()
+        const result = await fetchIceServers('abc-defg-hij')
 
         expect(result).toEqual(servers)
+        expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/ice-servers'), expect.objectContaining({
+            method: 'POST',
+            body: JSON.stringify({ roomId: 'abc-defg-hij' }),
+        }))
     })
 
     it('throws when the server returns a non-ok status', async () => {
@@ -31,12 +35,12 @@ describe('fetchIceServers', () => {
             status: 503,
         }))
 
-        await expect(fetchIceServers()).rejects.toThrow('ice-servers 503')
+        await expect(fetchIceServers('abc-defg-hij')).rejects.toThrow('ice-servers 503')
     })
 
     it('throws when fetch itself rejects (network error)', async () => {
         vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network error')))
 
-        await expect(fetchIceServers()).rejects.toThrow('network error')
+        await expect(fetchIceServers('abc-defg-hij')).rejects.toThrow('network error')
     })
 })

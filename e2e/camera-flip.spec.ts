@@ -1,9 +1,9 @@
 import { test, expect, type Page, type BrowserContext } from '@playwright/test'
 
-const ROOM = 'test-camera-flip'
+const ROOM = 'cam-defg-hij'
 
 async function joinCall(page: Page, name = 'Alice') {
-  await page.goto(`/${ROOM}`)
+  await page.goto(`/room/${ROOM}`)
   await page.getByPlaceholder(/your name/i).fill(name)
   await page.getByRole('button', { name: /join now/i }).click()
   await expect(page.getByRole('button', { name: /leave call/i })).toBeVisible({ timeout: 10_000 })
@@ -42,7 +42,7 @@ test.describe('Flip camera button — join screen', () => {
     const ctx = await contextWithCameras(browser, 1)
     const page = await ctx.newPage()
 
-    await page.goto(`/${ROOM}`)
+    await page.goto(`/room/${ROOM}`)
 
     // Turn camera on in the preview
     const camBtn = page.getByRole('button', { name: /turn camera on/i })
@@ -56,7 +56,7 @@ test.describe('Flip camera button — join screen', () => {
     const ctx = await contextWithCameras(browser, 2)
     const page = await ctx.newPage()
 
-    await page.goto(`/${ROOM}`)
+    await page.goto(`/room/${ROOM}`)
 
     const camBtn = page.getByRole('button', { name: /turn camera on/i })
     if (await camBtn.isVisible()) await camBtn.click()
@@ -69,7 +69,7 @@ test.describe('Flip camera button — join screen', () => {
     const ctx = await contextWithCameras(browser, 2)
     const page = await ctx.newPage()
 
-    await page.goto(`/${ROOM}`)
+    await page.goto(`/room/${ROOM}`)
 
     // Ensure camera is off (default state)
     await expect(page.getByRole('button', { name: /switch camera/i })).not.toBeVisible()
@@ -96,7 +96,7 @@ test.describe('Flip camera button — in call', () => {
     const page = await ctx.newPage()
 
     // Navigate directly so initScript is active from the start
-    await page.goto(`/${ROOM}`)
+    await page.goto(`/room/${ROOM}`)
     await page.getByPlaceholder(/your name/i).fill('Alice')
     await page.getByRole('button', { name: /join now/i }).click()
     await expect(page.getByRole('button', { name: /leave call/i })).toBeVisible({ timeout: 10_000 })
@@ -112,7 +112,7 @@ test.describe('Flip camera button — in call', () => {
     const ctx = await contextWithCameras(browser, 2)
     const page = await ctx.newPage()
 
-    await page.goto(`/${ROOM}`)
+    await page.goto(`/room/${ROOM}`)
     await page.getByPlaceholder(/your name/i).fill('Alice')
     await page.getByRole('button', { name: /join now/i }).click()
     await expect(page.getByRole('button', { name: /leave call/i })).toBeVisible({ timeout: 10_000 })
@@ -147,7 +147,7 @@ test.describe('Flip camera button — in call', () => {
       })
     })
 
-    await page.goto(`/${ROOM}`)
+    await page.goto(`/room/${ROOM}`)
     await page.getByPlaceholder(/your name/i).fill('Alice')
     await page.getByRole('button', { name: /join now/i }).click()
     await expect(page.getByRole('button', { name: /leave call/i })).toBeVisible({ timeout: 10_000 })

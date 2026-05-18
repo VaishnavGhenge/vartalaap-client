@@ -10,34 +10,19 @@ const origCreateElement = document.createElement.bind(document)
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
-// Track sessions created in each test so we can simulate connection state changes.
-let createdSessions: { onConnectionStateChange?: (state: RTCPeerConnectionState) => void }[] = []
-
-vi.mock('@/src/services/webrtc/session', () => {
-  class WebRTCSession {
-    private _opts: { onConnectionStateChange?: (state: RTCPeerConnectionState) => void }
-    signal = vi.fn().mockResolvedValue(undefined)
-    close = vi.fn()
-    replaceTrack = vi.fn().mockResolvedValue(undefined)
-    applyEncodingLevel = vi.fn().mockResolvedValue(undefined)
-    getStats = vi.fn().mockResolvedValue(new Map())
-    connectionState: RTCPeerConnectionState = 'connected'
-    destroyed = false
-
-    constructor(opts: { onConnectionStateChange?: (state: RTCPeerConnectionState) => void }) {
-      this._opts = opts
-      createdSessions.push(opts)
-    }
-
-    simulateConnectionState(state: RTCPeerConnectionState) {
-      this._opts.onConnectionStateChange?.(state)
-    }
-  }
-  return { WebRTCSession, ENCODING_LEVELS: [] }
-})
-
 vi.mock('@/src/services/api/ice', () => ({
   fetchIceServers: vi.fn().mockResolvedValue([]),
+}))
+
+vi.mock('@/src/services/webrtc/sfu-session', () => ({
+  SfuSession: {
+    create: vi.fn().mockResolvedValue({
+      sessionId: 'test-sfu-session',
+      publish: vi.fn().mockResolvedValue([]),
+      subscribe: vi.fn().mockResolvedValue(undefined),
+      close: vi.fn(),
+    }),
+  },
 }))
 
 // ─── Fake SignalingClient ─────────────────────────────────────────────────────
@@ -78,7 +63,6 @@ function makeClient() {
 // ─── Store reset ─────────────────────────────────────────────────────────────
 
 beforeEach(() => {
-  createdSessions = []
   vi.stubGlobal('MediaStream', class {
     private _tracks: MediaStreamTrack[] = []
     getTracks() { return [...this._tracks] }
@@ -392,76 +376,6 @@ describe('useCall — reconnect', () => {
   })
 })
 
-describe('useCall — connection state change', () => {
-  it('wires up onConnectionStateChange for each created session', async () => {
-    const client = makeClient()
-
-    await act(async () => {
-      renderHook(() => useCall({
-        client, roomId: 'room-1', enabled: true,
-        userName: 'Alice', initialAudio: true, initialVideo: true,
-      }))
-    })
-
-    await act(async () => {
-      client.emit('joined', {
-        data: { peers: [{ id: 'peer-bob', name: 'Bob', audio: true, video: true }] },
-      })
-    })
-
-    // A session should have been created with an onConnectionStateChange callback
-    expect(createdSessions.length).toBeGreaterThan(0)
-    expect(typeof createdSessions[0]?.onConnectionStateChange).toBe('function')
-  })
-
-  it('logs a warning when connection state is "failed"', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const client = makeClient()
-
-    await act(async () => {
-      renderHook(() => useCall({
-        client, roomId: 'room-1', enabled: true,
-        userName: 'Alice', initialAudio: true, initialVideo: true,
-      }))
-    })
-
-    await act(async () => {
-      client.emit('joined', {
-        data: { peers: [{ id: 'peer-bob', name: 'Bob', audio: true, video: true }] },
-      })
-    })
-
-    await act(async () => {
-      createdSessions[0]?.onConnectionStateChange?.('failed')
-    })
-
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[use-call]'), expect.anything())
-    warnSpy.mockRestore()
-  })
-
-  it('updates peer connectionState in the store on every state change', async () => {
-    const client = makeClient()
-
-    await act(async () => {
-      renderHook(() => useCall({
-        client, roomId: 'room-1', enabled: true,
-        userName: 'Alice', initialAudio: true, initialVideo: true,
-      }))
-    })
-
-    await act(async () => {
-      client.emit('joined', {
-        data: { peers: [{ id: 'peer-bob', name: 'Bob', audio: true, video: true }] },
-      })
-    })
-
-    for (const state of ['connecting', 'connected', 'disconnected', 'failed'] as RTCPeerConnectionState[]) {
-      await act(async () => { createdSessions[0]?.onConnectionStateChange?.(state) })
-      const bob = usePeerStore.getState().peerConnections.get('peer-bob')
-      expect(bob?.connectionState).toBe(state)
-    }
-  })
-})
 
 describe('useCall — cleanup', () => {
   it('deregisters all handlers and clears onReconnected on unmount', async () => {
@@ -480,7 +394,7 @@ describe('useCall — cleanup', () => {
     expect(client.off).toHaveBeenCalledWith('peer-joined', expect.any(Function))
     expect(client.off).toHaveBeenCalledWith('peer-left', expect.any(Function))
     expect(client.off).toHaveBeenCalledWith('peer-state', expect.any(Function))
-    expect(client.off).toHaveBeenCalledWith('signal', expect.any(Function))
+    expect(client.off).toHaveBeenCalledWith('sfu-tracks', expect.any(Function))
     expect((client as unknown as SignalingClient).onReconnected).toBeUndefined()
   })
 })

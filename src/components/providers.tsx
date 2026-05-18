@@ -3,22 +3,31 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { Toaster } from 'sonner'
-import { useState } from 'react'
-import { ThemeProvider, useTheme } from '@/src/components/theme-provider'
+import { useState, useEffect } from 'react'
+import { ThemeProvider } from '@/src/components/theme-provider'
+import { restoreSession } from '@/src/hooks/use-auth'
 
 function ThemedToaster() {
-  const { resolvedTheme } = useTheme()
-
   return (
     <Toaster
-      theme={resolvedTheme}
-      closeButton
+      position="bottom-right"
+      gap={8}
       toastOptions={{
         classNames: {
-          toast: 'bg-[hsl(var(--card))] text-[hsl(var(--card-foreground))] border border-[hsl(var(--border))] shadow-sm text-sm rounded-lg',
-          description: 'text-[hsl(var(--muted-foreground))]',
-          closeButton: 'bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] border-[hsl(var(--border))]',
-          icon: 'text-[hsl(var(--muted-foreground))]',
+          toast: [
+            'group !bg-[hsl(var(--card))] !text-[hsl(var(--card-foreground))]',
+            '!border !border-[hsl(var(--border))]',
+            '!shadow-[0_4px_24px_-4px_hsl(var(--foreground)/0.12)]',
+            '!rounded-xl !text-sm !font-medium',
+          ].join(' '),
+          title: '!text-[hsl(var(--foreground))] !font-semibold',
+          description: '!text-[hsl(var(--muted-foreground))] !font-normal',
+          closeButton: [
+            '!bg-[hsl(var(--muted))] !text-[hsl(var(--muted-foreground))]',
+            '!border-[hsl(var(--border))] hover:!bg-[hsl(var(--surface-3))]',
+          ].join(' '),
+          error: '!text-[hsl(var(--foreground))]',
+          success: '!text-[hsl(var(--foreground))]',
         },
       }}
     />
@@ -26,6 +35,8 @@ function ThemedToaster() {
 }
 
 export function Providers({ children }: { children: React.ReactNode }) {
+  useEffect(() => { restoreSession() }, [])
+
   const [queryClient] = useState(
     () =>
       new QueryClient({

@@ -1,10 +1,10 @@
 import { test, expect } from '@playwright/test'
 
 test.describe('Join-meet screen', () => {
-  const ROOM = 'test-room-abc'
+  const ROOM = 'abc-defg-hij'
 
   test.beforeEach(async ({ page }) => {
-    await page.goto(`/${ROOM}`)
+    await page.goto(`/room/${ROOM}`)
   })
 
   test('"Join now" is disabled until a non-whitespace name is entered', async ({ page }) => {

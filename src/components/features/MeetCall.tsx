@@ -19,7 +19,6 @@ import { usePip } from "@/src/hooks/use-pip";
 import { useMeetStore } from "@/src/stores/meet";
 import { usePeerStore } from "@/src/stores/peer";
 import { useJoinMeetStore } from "@/src/stores/joinMeet";
-import { usePeerStats } from "@/src/hooks/use-peer-stats";
 import type { SignalingClient, ConnState } from "@/src/services/signaling/client";
 
 const LOCAL_TILE_ID = 'local'
@@ -37,8 +36,6 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
     const { localStream, screenTrack, enableMic, disableMic, enableCamera, disableCamera, switchCamera, startScreenShare, stopScreenShare, peerConnections, peerStats } = usePeerStore();
     const hasMultipleCameras = useHasMultipleCameras();
     const { userName, meetCode, clearJoinMeet } = useJoinMeetStore();
-
-    usePeerStats(client);
 
     const [copied, setCopied] = useState(false);
     const [canShare, setCanShare] = useState(false);
@@ -183,7 +180,7 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
     const handleShare = async () => {
         try {
             if (canShare) {
-                await navigator.share({ title: 'Join my Vartalaap call', url: window.location.href });
+                await navigator.share({ title: 'Join my Sessionly call', url: window.location.href });
             } else {
                 await navigator.clipboard.writeText(window.location.href);
                 setCopied(true);
@@ -509,9 +506,10 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                         type="button"
                         onClick={handleEndCall}
                         aria-label="Leave call"
-                        className="ctrl-btn ctrl-btn-off h-9 w-9 sm:h-11 sm:w-11"
+                        className="ctrl-btn ctrl-btn-off h-9 sm:h-11 px-4 sm:px-5 gap-1.5 rounded-full font-semibold text-sm"
                     >
-                        <PhoneOff className="w-4 h-4 sm:w-5 sm:h-5" />
+                        <PhoneOff className="w-4 h-4 shrink-0" />
+                        <span className="hidden sm:inline">Leave</span>
                     </button>
                 </div>
             </footer>

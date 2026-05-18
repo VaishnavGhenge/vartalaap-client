@@ -11,6 +11,8 @@ export type MsgType =
   | 'ping'
   | 'pong'
   | 'stats-report'
+  | 'sfu-tracks'
+  | 'client-metric'
 
 export interface Envelope<T = unknown> {
   type: MsgType
@@ -40,7 +42,7 @@ export interface JoinedData { peers: PeerInfo[] }
 export interface PeerJoinedData { peerId: string; name: string; audio: boolean; video: boolean; screenSharing?: boolean; videoHeld?: boolean }
 export interface PeerLeftData { peerId: string }
 export interface PeerStateData { audio: boolean; video: boolean; speaking?: boolean; screenSharing?: boolean; videoHeld?: boolean }
-export interface ErrorData { message: string }
+export interface ErrorData { message: string; code?: string }
 
 export interface StatsReportPeer {
   peerId: string
@@ -61,4 +63,30 @@ export interface StatsReportPeer {
 
 export interface StatsReportData {
   peers: StatsReportPeer[]
+}
+
+// One observation emitted from the browser into a server-side Prometheus
+// histogram. The server is the sole owner of the histogram registry — the
+// browser only sends values. See vartalaap-server/internal/signaling/client.go
+// for the supported (name, phase, result) combinations.
+export type ClientMetricName = 'time_to_first_media' | 'call_setup_phase' | 'call_attempt'
+export type CallSetupPhase    = 'ice_gather' | 'pub_connected' | 'sub_connected' | 'first_media'
+export type CallAttemptResult = 'success' | 'timeout' | 'error' | 'abandoned'
+
+export interface ClientMetricData {
+  name: ClientMetricName
+  // Seconds. For 'call_attempt' this is unused but must be a finite number.
+  value: number
+  phase?: CallSetupPhase
+  result?: CallAttemptResult
+}
+
+export interface SfuTrackInfo {
+  trackName: string
+  mid?: string
+}
+
+export interface SfuTracksData {
+  sessionId: string
+  tracks: SfuTrackInfo[]
 }
