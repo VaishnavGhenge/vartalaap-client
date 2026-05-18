@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useState, useTransition } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import {
-    ArrowRight,
     CalendarCheck,
+    Check,
     CheckCircle2,
     Copy,
     CreditCard,
@@ -23,31 +23,32 @@ import { EventTypesPanel } from "@/src/components/dashboard/EventTypesPanel";
 import { SetupChecklist, type SetupState } from "@/src/components/dashboard/SetupChecklist";
 import { UpcomingBookings } from "@/src/components/dashboard/UpcomingBookings";
 import { Button } from "@/src/components/ui/button";
-import { Input } from "@/src/components/ui/input";
-import { JoinMeetButton } from "@/src/components/ui/JoinMeetButton";
 import { NewMeetingButton } from "@/src/components/ui/NewMeetButton";
 import { SessionlyBrand } from "@/src/components/ui/SessionlyBrand";
 import { ThemeMode, useTheme } from "@/src/components/theme-provider";
 import { useAuth } from "@/src/hooks/use-auth";
-import { normalizeMeetCodeInput, roomPath } from "@/src/lib/room-routes";
+import { roomPath } from "@/src/lib/room-routes";
+import { initialsOf } from "@/src/lib/avatar";
 import { cn } from "@/src/lib/utils";
 import { getAvailability } from "@/src/services/api/availability";
 import { listEventTypes } from "@/src/services/api/event-types";
+import { listMyBookings, type HostBooking } from "@/src/services/api/bookings";
 
-const meetCodePattern = /^[a-z2-9]{3}-[a-z2-9]{4}-[a-z2-9]{3}$/;
-
-type PanelKey = "overview" | "availability" | "booking-types" | "rooms" | "payments" | "settings";
+type PanelKey = "overview" | "availability" | "booking-types" | "payments" | "settings";
 
 const SIDEBAR_ITEMS: ReadonlyArray<{
     key: PanelKey;
     icon: typeof CheckCircle2;
     label: string;
+    // shortLabel is shown only on the mobile bottom-bar where each cell is
+    // ~64px wide; the desktop sidebar always uses `label`. Multi-word labels
+    // would ellipsize at the mobile size — shorter is clearer than truncated.
+    shortLabel?: string;
 }> = [
-    { key: "overview", icon: CheckCircle2, label: "Overview" },
-    { key: "availability", icon: CalendarCheck, label: "Availability" },
-    { key: "booking-types", icon: Link2, label: "Event types" },
-    { key: "rooms", icon: Video, label: "Instant rooms" },
-    { key: "payments", icon: CreditCard, label: "Payments" },
+    { key: "overview", icon: CheckCircle2, label: "Overview", shortLabel: "Home" },
+    { key: "availability", icon: CalendarCheck, label: "Availability", shortLabel: "Hours" },
+    { key: "booking-types", icon: Link2, label: "Event types", shortLabel: "Events" },
+    { key: "payments", icon: CreditCard, label: "Payments", shortLabel: "Pay" },
     { key: "settings", icon: Settings, label: "Settings" },
 ];
 
@@ -72,11 +73,6 @@ const PANEL_COPY: Record<PanelKey, { eyebrow: string; title: string; body: strin
         title: "Paid sessions are coming",
         body: "Stripe Connect arrives in the next phase. Until then, everything stays free.",
     },
-    rooms: {
-        eyebrow: "Vartalaap",
-        title: "Instant video rooms",
-        body: "Spin up a room without a booking — useful for ad-hoc calls and testing the SFU.",
-    },
     settings: {
         eyebrow: "Settings",
         title: "Appearance and account",
@@ -96,7 +92,7 @@ const THEME_OPTIONS: ReadonlyArray<{
 ];
 
 const VALID_PANELS = new Set<PanelKey>([
-    "overview", "availability", "booking-types", "rooms", "payments", "settings",
+    "overview", "availability", "booking-types", "payments", "settings",
 ]);
 
 export default function DashboardPage() {
@@ -119,9 +115,6 @@ function DashboardInner() {
     const [activePanel, setActivePanel] = useState<PanelKey>(
         initialPanel && VALID_PANELS.has(initialPanel) ? initialPanel : "overview",
     );
-    const [meetingCode, setMeetingCode] = useState("");
-    const [isJoining, startJoinTransition] = useTransition();
-
     // Setup state derived from the actual server data. Mirrors the
     // SetupChecklist contract: profile is "complete" once the user has a slug
     // (always true post-onboarding step 1); availability is complete with at
@@ -163,14 +156,7 @@ function DashboardInner() {
     const bookingHost = process.env.NEXT_PUBLIC_BOOKING_HOST ?? "getsessionly.com";
     const bookingPath = user.slug ? `${bookingHost}/u/${user.slug}` : `${bookingHost}/u/your-slug`;
     const publicHref = user.slug ? `/u/${user.slug}` : null;
-    const code = normalizeMeetCodeInput(meetingCode);
-    const canJoin = meetCodePattern.test(code);
     const panelCopy = PANEL_COPY[activePanel];
-
-    const handleJoin = () => {
-        if (!canJoin || isJoining) return;
-        startJoinTransition(() => router.push(roomPath(code)));
-    };
 
     const handleSelectPanel = (key: PanelKey) => {
         setActivePanel(key);
@@ -180,7 +166,16 @@ function DashboardInner() {
 
     return (
         <div className="min-h-dvh bg-[hsl(var(--background))] lg:grid lg:grid-cols-[260px_minmax(0,1fr)]">
-            <aside className="border-b border-[hsl(var(--border))]/60 lg:sticky lg:top-0 lg:h-dvh lg:border-b-0 lg:border-r">
+            {/*
+              Mobile and desktop run completely different nav patterns. On lg+
+              the left sidebar lives in the grid column. Below lg the sidebar
+              is hidden; nav moves to a fixed bottom tab bar (the native-app
+              pattern) and a slim top bar carries just brand + sign-out. The
+              two surfaces don't share markup because the active-state, layout,
+              and tap-target sizes diverge enough that one shared component
+              would have to fork on every prop.
+            */}
+            <aside className="hidden border-[hsl(var(--border))]/60 bg-[hsl(var(--background))] lg:sticky lg:top-0 lg:block lg:h-dvh lg:border-r">
                 <div className="flex h-full flex-col px-3 py-4">
                     <Link href="/dashboard" className="mb-1 flex items-center rounded-xl px-3 py-2 hover:bg-[hsl(var(--surface-2))]">
                         <span className="min-w-0">
@@ -190,12 +185,19 @@ function DashboardInner() {
                     </Link>
 
                     <div className="mb-3 mt-2 border-t border-[hsl(var(--border))]/50 px-3 pt-4">
-                        <p className="truncate text-sm font-medium text-[hsl(var(--foreground))]">
-                            {user.name || user.email}
-                        </p>
-                        <p className="mt-1 truncate text-xs text-[hsl(var(--muted-foreground))]">
-                            {bookingPath}
-                        </p>
+                        <div className="flex items-center gap-2.5">
+                            <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[hsl(var(--primary))] to-violet-500 text-[11px] font-semibold text-white">
+                                {initialsOf(user.name || user.email)}
+                            </div>
+                            <div className="min-w-0">
+                                <p className="truncate text-sm font-medium text-[hsl(var(--foreground))]">
+                                    {user.name || user.email}
+                                </p>
+                                <p className="truncate text-xs text-[hsl(var(--muted-foreground))]">
+                                    {bookingPath}
+                                </p>
+                            </div>
+                        </div>
                     </div>
 
                     <nav className="flex flex-col gap-0.5" aria-label="Dashboard sections">
@@ -237,12 +239,27 @@ function DashboardInner() {
                 </div>
             </aside>
 
-            <main className="px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-7">
+            {/* Mobile top bar — minimal, just brand + sign-out. */}
+            <header className="sticky top-0 z-30 flex items-center justify-between border-b border-[hsl(var(--border))]/60 bg-[hsl(var(--background))]/95 px-4 py-3 backdrop-blur lg:hidden">
+                <Link href="/dashboard" className="flex min-w-0 items-center">
+                    <SessionlyBrand size="sm" />
+                </Link>
+                <button
+                    type="button"
+                    onClick={logout}
+                    aria-label="Sign out"
+                    className="press flex shrink-0 cursor-pointer items-center justify-center rounded-lg p-2 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--surface-2))] hover:text-[hsl(var(--foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]/50"
+                >
+                    <LogOut className="size-4" />
+                </button>
+            </header>
+
+            <main className="px-4 py-5 pb-24 sm:px-6 sm:py-6 sm:pb-24 lg:px-8 lg:py-7 lg:pb-7">
                 <section className="flex min-w-0 flex-col gap-5">
-                    <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                         <div>
-                            <p className="label-caps mb-3 text-[hsl(var(--primary))]">{panelCopy.eyebrow}</p>
-                            <h1 className="text-2xl font-semibold tracking-tight text-[hsl(var(--foreground))] sm:text-3xl">
+                            <p className="label-caps mb-2 text-[hsl(var(--primary))] lg:mb-3">{panelCopy.eyebrow}</p>
+                            <h1 className="text-2xl font-bold tracking-tight text-[hsl(var(--foreground))] sm:text-3xl">
                                 {panelCopy.title}
                             </h1>
                             <p className="mt-2 max-w-2xl text-sm leading-6 text-[hsl(var(--muted-foreground))]">
@@ -259,11 +276,6 @@ function DashboardInner() {
                             setup={setup}
                             setupLoaded={setupLoaded}
                             refreshKey={refreshKey}
-                            meetingCode={meetingCode}
-                            setMeetingCode={setMeetingCode}
-                            canJoin={canJoin}
-                            isJoining={isJoining}
-                            onJoin={handleJoin}
                         />
                     )}
 
@@ -285,18 +297,6 @@ function DashboardInner() {
                         </PanelShell>
                     )}
 
-                    {activePanel === "rooms" && (
-                        <PanelShell>
-                            <RoomsBody
-                                meetingCode={meetingCode}
-                                setMeetingCode={setMeetingCode}
-                                canJoin={canJoin}
-                                isJoining={isJoining}
-                                onJoin={handleJoin}
-                            />
-                        </PanelShell>
-                    )}
-
                     {activePanel === "payments" && (
                         <PanelShell>
                             <p className="text-sm text-[hsl(var(--muted-foreground))]">
@@ -309,48 +309,171 @@ function DashboardInner() {
                     {activePanel === "settings" && <SettingsPanel />}
                 </section>
             </main>
+
+            {/*
+              Mobile bottom tab bar. Fixed to the viewport so it's always
+              thumb-reachable. `env(safe-area-inset-bottom)` keeps the labels
+              above the iOS home indicator. `grid-cols-5` matches the number
+              of nav items — if we add a sixth, switch to overflow-x-auto.
+            */}
+            <nav
+                aria-label="Dashboard sections"
+                className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-[hsl(var(--border))]/60 bg-[hsl(var(--background))]/95 backdrop-blur lg:hidden"
+                style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+            >
+                {SIDEBAR_ITEMS.map(({ key, icon: Icon, label, shortLabel }) => {
+                    const active = activePanel === key;
+                    return (
+                        <button
+                            key={key}
+                            type="button"
+                            onClick={() => handleSelectPanel(key)}
+                            aria-current={active ? "page" : undefined}
+                            aria-label={label}
+                            className={cn(
+                                "relative flex cursor-pointer flex-col items-center justify-center gap-0.5 px-1 py-2 text-[10px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[hsl(var(--ring))]/50",
+                                active
+                                    ? "text-[hsl(var(--primary))]"
+                                    : "text-[hsl(var(--muted-foreground))]",
+                            )}
+                        >
+                            {active && (
+                                <span className="absolute inset-x-3 top-0 h-[2px] rounded-b-full bg-[hsl(var(--primary))]" />
+                            )}
+                            <Icon className="size-5" />
+                            <span className="truncate">{shortLabel ?? label}</span>
+                        </button>
+                    );
+                })}
+            </nav>
         </div>
     );
 }
 
 // ─── Overview ────────────────────────────────────────────────────────────────
 
-function OverviewPanel({
-    setup, setupLoaded, refreshKey,
-    meetingCode, setMeetingCode, canJoin, isJoining, onJoin,
-}: {
+function OverviewPanel({ setup, setupLoaded, refreshKey }: {
     setup: SetupState;
     setupLoaded: boolean;
     refreshKey: number;
-    meetingCode: string;
-    setMeetingCode: (v: string) => void;
-    canJoin: boolean;
-    isJoining: boolean;
-    onJoin: () => void;
 }) {
+    const allDone = setup.profile && setup.availability && setup.eventType;
+    const prevAllDone = useRef<boolean | null>(null);
+    const [justCompleted, setJustCompleted] = useState(false);
+
+    useEffect(() => {
+        if (!setupLoaded) return;
+        if (prevAllDone.current === false && allDone) {
+            setJustCompleted(true);
+        }
+        prevAllDone.current = allDone;
+    }, [setupLoaded, allDone]);
+
+    const showSetup = !setupLoaded || !allDone || justCompleted;
+
     return (
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
             <div className="flex flex-col gap-6">
-                <PanelShell title="Get bookable">
-                    {setupLoaded ? (
-                        <SetupChecklist state={setup} />
-                    ) : (
-                        <p className="text-sm text-[hsl(var(--muted-foreground))]">Loading status…</p>
-                    )}
-                </PanelShell>
+                {showSetup && (
+                    <PanelShell title="Get bookable">
+                        {setupLoaded ? (
+                            <SetupChecklist state={setup} />
+                        ) : (
+                            <p className="text-sm text-[hsl(var(--muted-foreground))]">Loading status…</p>
+                        )}
+                    </PanelShell>
+                )}
                 <PanelShell title="Upcoming bookings">
                     <UpcomingBookings refreshKey={refreshKey} />
                 </PanelShell>
             </div>
-            <PanelShell title="Instant room">
-                <RoomsBody
-                    meetingCode={meetingCode}
-                    setMeetingCode={setMeetingCode}
-                    canJoin={canJoin}
-                    isJoining={isJoining}
-                    onJoin={onJoin}
-                />
+            <PanelShell title="Active sessions">
+                <ActiveSessionsPanel refreshKey={refreshKey} />
             </PanelShell>
+        </div>
+    );
+}
+
+function ActiveSessionsPanel({ refreshKey }: { refreshKey: number }) {
+    const [bookings, setBookings] = useState<HostBooking[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        let cancelled = false;
+        setLoading(true);
+        listMyBookings()
+            .then((list) => {
+                if (cancelled) return;
+                const now = Date.now();
+                setBookings(
+                    list.filter((b) => {
+                        const start = new Date(b.startsAt).getTime();
+                        const end = new Date(b.endsAt).getTime();
+                        // Active now or starting within 30 minutes
+                        return start <= now + 30 * 60 * 1000 && end > now;
+                    }),
+                );
+            })
+            .catch(() => { /* silently degrade — upcoming panel already shows errors */ })
+            .finally(() => { if (!cancelled) setLoading(false); });
+        return () => { cancelled = true; };
+    }, [refreshKey]);
+
+    if (loading) {
+        return (
+            <div className="flex flex-col gap-3">
+                <NewMeetingButton className="w-full" />
+                <p className="text-sm text-[hsl(var(--muted-foreground))]">Loading…</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex flex-col gap-3">
+            <NewMeetingButton className="w-full" />
+            {bookings.length === 0 ? (
+                <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                    No active or upcoming sessions right now.
+                </p>
+            ) : (
+                <div className="flex flex-col gap-2">
+                    {bookings.map((b) => {
+                        const now = Date.now();
+                        const start = new Date(b.startsAt).getTime();
+                        const isLive = start <= now;
+                        const minsUntil = Math.ceil((start - now) / 60_000);
+                        return (
+                            <div key={b.id} className="relative overflow-hidden rounded-xl border border-[hsl(var(--border))]/70 bg-[hsl(var(--surface-2))] px-3 py-2.5">
+                                <span className={cn(
+                                    "absolute inset-y-0 left-0 w-[3px]",
+                                    isLive ? "bg-emerald-500" : "bg-[hsl(var(--primary))]/50",
+                                )} />
+                                <div className="flex items-center justify-between gap-2">
+                                    <div className="min-w-0">
+                                        <p className="truncate text-sm font-medium text-[hsl(var(--foreground))]">
+                                            {b.eventTitle ?? "Session"}
+                                        </p>
+                                        <p className="mt-0.5 truncate text-xs text-[hsl(var(--muted-foreground))]">
+                                            {isLive ? (
+                                                <span className="font-medium text-emerald-500">Live now</span>
+                                            ) : (
+                                                `In ${minsUntil} min`
+                                            )}
+                                            {" · "}{b.guestName}
+                                        </p>
+                                    </div>
+                                    <Button asChild size="sm" variant={isLive ? "primary" : "secondary"} className="shrink-0">
+                                        <Link href={roomPath(b.meetCode)}>
+                                            <Video className="size-3.5" />
+                                            {isLive ? "Join" : "Open"}
+                                        </Link>
+                                    </Button>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
         </div>
     );
 }
@@ -359,9 +482,9 @@ function OverviewPanel({
 
 function PanelShell({ title, children }: { title?: string; children: React.ReactNode }) {
     return (
-        <section className="app-panel rounded-2xl p-5 sm:p-6">
+        <section className="app-panel no-lift rounded-2xl p-5 sm:p-6">
             {title && (
-                <p className="label-caps mb-4">{title}</p>
+                <p className="mb-4 text-sm font-semibold text-[hsl(var(--foreground))]">{title}</p>
             )}
             {children}
         </section>
@@ -390,68 +513,25 @@ function ShareLinkBlock({ url, href }: { url: string; href: string }) {
                 <button
                     type="button"
                     onClick={copy}
-                    aria-label="Copy booking link"
+                    aria-label={copied ? "Booking link copied" : "Copy booking link"}
                     className="press cursor-pointer rounded-md p-1 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--surface-3))] hover:text-[hsl(var(--foreground))]"
                 >
-                    <Copy className="size-3.5" />
+                    {copied
+                        ? <Check className="size-3.5 text-[hsl(var(--primary))]" />
+                        : <Copy className="size-3.5" />}
                 </button>
-            </div>
-            {copied && (
-                <p className="text-right text-[10px] text-[hsl(var(--primary))]">Copied</p>
-            )}
-        </div>
-    );
-}
-
-function RoomsBody({
-    meetingCode, setMeetingCode, canJoin, isJoining, onJoin,
-}: {
-    meetingCode: string;
-    setMeetingCode: (v: string) => void;
-    canJoin: boolean;
-    isJoining: boolean;
-    onJoin: () => void;
-}) {
-    return (
-        <div className="flex max-w-md flex-col gap-3">
-            <NewMeetingButton className="w-full" />
-            <div className="relative flex items-center gap-2">
-                <div className="h-px flex-1 bg-[hsl(var(--border))]" />
-                <span className="label-caps">or join</span>
-                <div className="h-px flex-1 bg-[hsl(var(--border))]" />
-            </div>
-            <div className="flex gap-2">
-                <Input
-                    type="text"
-                    name="meet-code"
-                    value={meetingCode}
-                    onChange={(e) => setMeetingCode(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && onJoin()}
-                    placeholder="Code or link"
-                    className="meet-code flex-1"
-                    autoComplete="off"
-                    autoCorrect="off"
-                    spellCheck={false}
-                    disabled={isJoining}
-                />
-                <JoinMeetButton
-                    disabled={!canJoin || isJoining}
-                    loading={isJoining}
-                    onJoin={onJoin}
-                    className="shrink-0"
-                />
             </div>
         </div>
     );
 }
 
 function SettingsPanel() {
-    const { theme, resolvedTheme, setTheme } = useTheme();
+    const { theme, setTheme } = useTheme();
     return (
-        <section className="app-panel rounded-2xl p-5 sm:p-6">
-            <p className="label-caps mb-2">Appearance</p>
+        <section className="app-panel no-lift rounded-2xl p-5 sm:p-6">
+            <p className="mb-1 text-sm font-semibold text-[hsl(var(--foreground))]">Appearance</p>
             <p className="mb-5 text-sm text-[hsl(var(--muted-foreground))]">
-                Current theme: {resolvedTheme}.
+                Choose how Sessionly looks on this device.
             </p>
             <div className="grid gap-3 sm:grid-cols-3">
                 {THEME_OPTIONS.map(({ label, value, icon: Icon, body }) => {
@@ -465,20 +545,27 @@ function SettingsPanel() {
                             className={cn(
                                 "press cursor-pointer rounded-xl border p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]/50",
                                 active
-                                    ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))]/10"
-                                    : "border-[hsl(var(--border))]/80 bg-[hsl(var(--surface-2))] hover:border-[hsl(var(--primary))]/50",
+                                    ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))]/10 shadow-[0_0_0_3px_hsl(var(--primary)/0.12)]"
+                                    : "border-[hsl(var(--border))]/80 bg-[hsl(var(--surface-2))] hover:border-[hsl(var(--primary))]/50 hover:bg-[hsl(var(--surface-2))]",
                             )}
                         >
-                            <span
-                                className={cn(
-                                    "mb-4 flex size-9 items-center justify-center rounded-lg",
-                                    active
-                                        ? "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]"
-                                        : "bg-[hsl(var(--surface-3))] text-[hsl(var(--muted-foreground))]",
+                            <div className="mb-4 flex items-start justify-between">
+                                <span
+                                    className={cn(
+                                        "flex size-9 items-center justify-center rounded-lg",
+                                        active
+                                            ? "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]"
+                                            : "bg-[hsl(var(--surface-3))] text-[hsl(var(--muted-foreground))]",
+                                    )}
+                                >
+                                    <Icon className="size-4" />
+                                </span>
+                                {active && (
+                                    <span className="flex size-4 items-center justify-center rounded-full bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]">
+                                        <Check className="size-2.5" />
+                                    </span>
                                 )}
-                            >
-                                <Icon className="size-4" />
-                            </span>
+                            </div>
                             <span className="block font-medium text-[hsl(var(--foreground))]">{label}</span>
                             <span className="mt-1 block text-sm leading-5 text-[hsl(var(--muted-foreground))]">{body}</span>
                         </button>
