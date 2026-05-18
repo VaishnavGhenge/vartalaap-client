@@ -21,7 +21,7 @@
         --secondary-foreground: 243 50% 30%;
 
         --muted: 240 8% 96%;
-        --muted-foreground: 240 6% 46%;
+        --muted-foreground: 240 8% 36%;
 
         --accent: 39 100% 93%;
         --accent-foreground: 29 66% 22%;
@@ -66,7 +66,7 @@
         --secondary-foreground: 239 82% 82%;
 
         --muted: 240 12% 14%;
-        --muted-foreground: 240 8% 58%;
+        --muted-foreground: 240 10% 70%;
 
         --accent: 31 68% 23%;
         --accent-foreground: 42 100% 88%;
@@ -346,4 +346,58 @@
 
 .press:active {
     transform: scale(0.94);
+}
+
+/* ─── Site-wide motion ───────────────────────────────────────────────────────
+ * Default smoothness for color/background/border/shadow on interactive surfaces.
+ * Layout-affecting properties (width, height, transform) are intentionally
+ * excluded from the global default — we opt those in per-component to avoid
+ * surprise reflow during state changes.
+ */
+
+html {
+    scroll-behavior: smooth;
+}
+
+@layer base {
+    a,
+    button,
+    [role="button"],
+    summary,
+    input,
+    textarea,
+    select,
+    label {
+        transition:
+            color 160ms ease,
+            background-color 180ms ease,
+            border-color 180ms ease,
+            box-shadow 180ms ease,
+            opacity 160ms ease,
+            filter 160ms ease;
+    }
+}
+
+
+/* Underlined links get a softer color slide on hover */
+.link {
+    transition:
+        color 160ms ease,
+        text-decoration-color 160ms ease;
+}
+
+/* Honor user preference — disable site-wide motion when requested */
+@media (prefers-reduced-motion: reduce) {
+    html {
+        scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+        scroll-behavior: auto !important;
+    }
 }

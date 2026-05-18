@@ -44,7 +44,7 @@ export function SessionlyBrand({
     markClassName,
     wordmarkClassName,
     size = "md",
-    variant = "full",
+    variant = "wordmark",
 }: SessionlyBrandProps) {
     if (variant === "mark") {
         return <SessionlyBrandMark className={cn("text-[hsl(var(--primary-foreground))]", className)} size={size} decorative={false} />;
@@ -121,12 +121,12 @@ export function SessionlyWordmark({ className }: { className?: string }) {
     return (
         <span
             className={cn(
-                "inline-flex items-baseline font-[var(--font-sessionly)] font-semibold leading-none tracking-normal",
+                "inline-flex items-baseline font-[var(--font-brand)] font-bold leading-none tracking-[-0.02em] text-[hsl(var(--primary))]",
                 className,
             )}
         >
             <span>Session</span>
-            <span className="text-[hsl(var(--primary))]">ly</span>
+            <span className="opacity-50">ly</span>
         </span>
     );
 }
