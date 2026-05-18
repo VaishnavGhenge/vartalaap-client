@@ -75,10 +75,10 @@ export function SetupChecklist({ state }: Props) {
                                     "flex size-7 shrink-0 items-center justify-center rounded-full",
                                     done
                                         ? "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]"
-                                        : "border border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))]",
+                                        : "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]",
                                 )}
                             >
-                                {done ? <Check className="size-3.5" /> : <span className="text-[10px] font-semibold">{items.indexOf(it) + 1}</span>}
+                                {done ? <Check className="size-3.5" /> : <span className="text-[10px] font-bold">{items.indexOf(it) + 1}</span>}
                             </span>
                             <div className="min-w-0">
                                 <p className={cn(

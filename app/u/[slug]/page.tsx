@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Button } from "@/src/components/ui/button";
+import { PoweredBy } from "@/src/components/ui/PoweredBy";
 import { SessionlyBrand } from "@/src/components/ui/SessionlyBrand";
 import { httpServerUri } from "@/src/services/api/config";
 import type { HostProfile } from "@/src/services/api/public";
@@ -46,8 +47,8 @@ export default async function HostProfilePage({ params }: PageProps) {
 
     return (
         <div className="relative flex min-h-dvh flex-col">
-            <main className="flex flex-1 flex-col items-center px-4 py-12 sm:px-6">
-                <Link href="/" className="mb-8">
+            <main className="flex flex-1 flex-col items-center px-4 py-6 sm:px-6 sm:py-12">
+                <Link href="/" className="mb-6 sm:mb-8">
                     <SessionlyBrand size="md" wordmarkClassName="text-2xl" markClassName="size-8" />
                 </Link>
 
@@ -91,6 +92,7 @@ export default async function HostProfilePage({ params }: PageProps) {
                         )}
                     </section>
                 </div>
+                <PoweredBy />
             </main>
         </div>
     );
