@@ -6,7 +6,7 @@ import { fetchIceServers } from '@/src/services/api/ice'
 import type {
   CallAttemptResult,
   ClientMetricData,
-  Envelope, JoinedData, PeerJoinedData, PeerLeftData, PeerStateData, SfuTracksData,
+  Envelope, ErrorData, JoinedData, PeerJoinedData, PeerLeftData, PeerStateData, SfuTracksData,
 } from '@/src/services/signaling/protocol'
 import { SfuSession } from '@/src/services/webrtc/sfu-session'
 import { playPeerJoined, playPeerLeft, playScreenShareStart, playScreenShareStop } from '@/src/lib/sounds'
@@ -158,6 +158,16 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       })
     }
 
+    const handleError = (env: Envelope<ErrorData>) => {
+      const code = env.data?.code
+      if (code?.startsWith('ROOM_')) {
+        recordCallAttempt('error')
+        import('sonner').then(({ toast }) => {
+          toast.error(env.data?.message || 'This meeting is not available right now.')
+        })
+      }
+    }
+
     client.setReconnectedHandler(() => {
       if (disposed) return
       remoteSessionToPeer.clear()
@@ -191,21 +201,10 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
     client.on('peer-left', handlePeerLeft as (env: Envelope) => void)
     client.on('peer-state', handlePeerState as (env: Envelope) => void)
     client.on('sfu-tracks', handleSfuTracks as (env: Envelope) => void)
+    client.on('error', handleError as (env: Envelope) => void)
 
     ;(async () => {
       try {
-        // Fetch ICE servers once.
-        if (store.getState().iceServers.length === 0) {
-          try {
-            const iceServers = await fetchIceServers()
-            if (disposed) return
-            store.getState().setIceServers(iceServers)
-          } catch (e) {
-            console.warn('ICE server fetch failed, proceeding without TURN', e)
-          }
-        }
-        if (disposed) return
-
         // Join the signaling room and WAIT for the server's ack before any SFU
         // work. Publishing before the server's hub.join has run would race with
         // hub.BroadcastSfuTracks, which silently drops the storeSfuTracks call
@@ -237,6 +236,19 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
 
         await joinedAck
         if (disposed) return
+
+        // Fetch ICE/TURN credentials only after the server accepts the room
+        // join. The backend gates Cloudflare TURN to rooms that are active
+        // now, so pre-join fetching would be denied for instant meetings.
+        if (store.getState().iceServers.length === 0) {
+          try {
+            const iceServers = await fetchIceServers(roomId)
+            if (disposed) return
+            store.getState().setIceServers(iceServers)
+          } catch (e) {
+            console.warn('ICE server fetch failed, proceeding without TURN', e)
+          }
+        }
 
         const iceServers = store.getState().iceServers as RTCIceServer[]
         const peerId = client.getPeerId()
@@ -383,6 +395,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       client.off('peer-left', handlePeerLeft as (env: Envelope) => void)
       client.off('peer-state', handlePeerState as (env: Envelope) => void)
       client.off('sfu-tracks', handleSfuTracks as (env: Envelope) => void)
+      client.off('error', handleError as (env: Envelope) => void)
       store.getState().clearAll()
     }
     // Intentionally excluding userName/initialAudio/initialVideo: they're

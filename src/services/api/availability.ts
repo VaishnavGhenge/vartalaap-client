@@ -1,5 +1,5 @@
 import { httpServerUri } from '@/src/services/api/config'
-import { getAccessToken } from '@/src/services/api/token'
+import { apiFetch } from '@/src/services/api/fetch'
 
 // Mirrors the shape on vartalaap-server/internal/httpx/me_handler.go. Keep this
 // type collocated with the API rather than spread into multiple stores so the
@@ -21,41 +21,14 @@ export interface AvailabilityResponse {
     rules: AvailabilityRule[]
 }
 
-function authHeaders(): HeadersInit {
-    const token = getAccessToken()
-    return token ? { Authorization: `Bearer ${token}` } : {}
-}
-
 export async function getAvailability(): Promise<AvailabilityRule[]> {
-    const res = await fetch(`${httpServerUri}/me/availability`, {
-        credentials: 'include',
-        headers: authHeaders(),
-    })
-    if (!res.ok) {
-        const text = await res.text()
-        throw new Error(text.trim() || `availability fetch ${res.status}`)
-    }
-    const body = (await res.json()) as AvailabilityResponse
+    const body = await apiFetch<AvailabilityResponse>('GET', `${httpServerUri}/me/availability`)
     return body.rules ?? []
 }
 
 export async function putAvailability(rules: AvailabilityRule[]): Promise<AvailabilityRule[]> {
-    const res = await fetch(`${httpServerUri}/me/availability`, {
-        method: 'PUT',
-        credentials: 'include',
-        headers: {
-            'Content-Type': 'application/json',
-            ...authHeaders(),
-        },
-        body: JSON.stringify({ rules } satisfies AvailabilityResponse),
+    const body = await apiFetch<AvailabilityResponse>('PUT', `${httpServerUri}/me/availability`, {
+        body: { rules } satisfies AvailabilityResponse,
     })
-    if (!res.ok) {
-        const text = await res.text()
-        // Server returns precise per-rule messages like "rule 2: endTime must
-        // be after startTime" — surface them verbatim so the UI can render the
-        // exact problem without inventing its own copy.
-        throw new Error(text.trim() || `availability save ${res.status}`)
-    }
-    const body = (await res.json()) as AvailabilityResponse
     return body.rules ?? []
 }

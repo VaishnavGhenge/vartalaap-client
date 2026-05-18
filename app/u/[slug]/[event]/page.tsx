@@ -238,9 +238,17 @@ export default function PublicEventPage({ params }: PageProps) {
                 */}
                 <header className="app-panel rounded-2xl px-5 py-5">
                     <div className="flex items-center gap-3">
-                        <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[hsl(var(--primary))] to-violet-500 text-sm font-semibold text-white">
-                            {initialsOf(meta.host.name)}
-                        </div>
+                        {meta.host.avatarUrl ? (
+                            <img
+                                src={meta.host.avatarUrl}
+                                alt={meta.host.name}
+                                className="size-10 shrink-0 rounded-full object-cover"
+                            />
+                        ) : (
+                            <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[hsl(var(--primary))] to-violet-500 text-sm font-semibold text-white">
+                                {initialsOf(meta.host.name)}
+                            </div>
+                        )}
                         <div className="min-w-0">
                             <Link
                                 href={`/u/${meta.host.slug}`}
@@ -415,7 +423,7 @@ export default function PublicEventPage({ params }: PageProps) {
                                                         : "border border-[hsl(var(--border))] bg-transparent text-[hsl(var(--foreground))] hover:border-[hsl(var(--primary))]/50 hover:bg-[hsl(var(--primary)/0.06)] hover:text-[hsl(var(--primary))]",
                                                 )}
                                             >
-                                                {new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                                                {new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true })}
                                             </button>
                                         ))}
                                     </div>
@@ -433,7 +441,7 @@ export default function PublicEventPage({ params }: PageProps) {
                                 <span className="font-medium text-[hsl(var(--foreground))]">
                                     {new Date(selectedSlot).toLocaleString([], {
                                         weekday: "short", month: "short", day: "numeric",
-                                        hour: "numeric", minute: "2-digit",
+                                        hour: "numeric", minute: "2-digit", hour12: true,
                                     })}
                                 </span>
                                 <span> · {meta.event.durationMin} min</span>

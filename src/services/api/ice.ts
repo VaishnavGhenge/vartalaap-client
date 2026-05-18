@@ -9,7 +9,7 @@ export interface IceServer {
 const FETCH_TIMEOUT_MS = 5_000
 const MAX_ATTEMPTS = 3
 
-export async function fetchIceServers(): Promise<IceServer[]> {
+export async function fetchIceServers(roomId: string): Promise<IceServer[]> {
   let lastError: unknown
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     if (attempt > 0) {
@@ -20,7 +20,12 @@ export async function fetchIceServers(): Promise<IceServer[]> {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
     try {
-      const res = await fetch(`${httpServerUri}/ice-servers`, { method: 'POST', signal: controller.signal })
+      const res = await fetch(`${httpServerUri}/ice-servers`, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomId }),
+      })
       if (!res.ok) throw new Error(`ice-servers ${res.status}`)
       const body = (await res.json()) as { iceServers: IceServer[] }
       return body.iceServers

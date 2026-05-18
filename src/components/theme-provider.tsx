@@ -65,8 +65,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         setResolvedTheme(nextResolved);
         applyTheme(initialTheme);
 
-        // Backfill the cookie so the next SSR can set the right class without
-        // a flash, even for users who only had localStorage set.
+        // Backfill persisted theme state so the next SSR can set the right
+        // class without a flash, and legacy/local client reads stay aligned.
+        window.localStorage.setItem(STORAGE_KEY, initialTheme);
         if (!cookieTheme) writeThemeCookie(initialTheme);
     }, []);
 

@@ -22,7 +22,9 @@ import { AvailabilityEditor } from "@/src/components/dashboard/AvailabilityEdito
 import { EventTypesPanel } from "@/src/components/dashboard/EventTypesPanel";
 import { SetupChecklist, type SetupState } from "@/src/components/dashboard/SetupChecklist";
 import { UpcomingBookings } from "@/src/components/dashboard/UpcomingBookings";
+import { BufferingButtonLabel } from "@/src/components/ui/BufferingButtonLabel";
 import { Button } from "@/src/components/ui/button";
+import { Input } from "@/src/components/ui/input";
 import { NewMeetingButton } from "@/src/components/ui/NewMeetButton";
 import { SessionlyBrand } from "@/src/components/ui/SessionlyBrand";
 import { ThemeMode, useTheme } from "@/src/components/theme-provider";
@@ -33,6 +35,7 @@ import { cn } from "@/src/lib/utils";
 import { getAvailability } from "@/src/services/api/availability";
 import { listEventTypes } from "@/src/services/api/event-types";
 import { listMyBookings, type HostBooking } from "@/src/services/api/bookings";
+import { updateProfile } from "@/src/services/api/auth";
 
 type PanelKey = "overview" | "availability" | "booking-types" | "payments" | "settings";
 
@@ -186,9 +189,17 @@ function DashboardInner() {
 
                     <div className="mb-3 mt-2 border-t border-[hsl(var(--border))]/50 px-3 pt-4">
                         <div className="flex items-center gap-2.5">
-                            <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[hsl(var(--primary))] to-violet-500 text-[11px] font-semibold text-white">
-                                {initialsOf(user.name || user.email)}
-                            </div>
+                            {user.avatarUrl ? (
+                                <img
+                                    src={user.avatarUrl}
+                                    alt={user.name}
+                                    className="size-7 shrink-0 rounded-full object-cover"
+                                />
+                            ) : (
+                                <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[hsl(var(--primary))] to-violet-500 text-[11px] font-semibold text-white">
+                                    {initialsOf(user.name || user.email)}
+                                </div>
+                            )}
                             <div className="min-w-0">
                                 <p className="truncate text-sm font-medium text-[hsl(var(--foreground))]">
                                     {user.name || user.email}
@@ -397,6 +408,7 @@ function OverviewPanel({ setup, setupLoaded, refreshKey }: {
 function ActiveSessionsPanel({ refreshKey }: { refreshKey: number }) {
     const [bookings, setBookings] = useState<HostBooking[]>([]);
     const [loading, setLoading] = useState(true);
+    const [nowMs, setNowMs] = useState<number | null>(null);
 
     useEffect(() => {
         let cancelled = false;
@@ -405,6 +417,7 @@ function ActiveSessionsPanel({ refreshKey }: { refreshKey: number }) {
             .then((list) => {
                 if (cancelled) return;
                 const now = Date.now();
+                setNowMs(now);
                 setBookings(
                     list.filter((b) => {
                         const start = new Date(b.startsAt).getTime();
@@ -419,7 +432,7 @@ function ActiveSessionsPanel({ refreshKey }: { refreshKey: number }) {
         return () => { cancelled = true; };
     }, [refreshKey]);
 
-    if (loading) {
+    if (loading || nowMs === null) {
         return (
             <div className="flex flex-col gap-3">
                 <NewMeetingButton className="w-full" />
@@ -438,10 +451,9 @@ function ActiveSessionsPanel({ refreshKey }: { refreshKey: number }) {
             ) : (
                 <div className="flex flex-col gap-2">
                     {bookings.map((b) => {
-                        const now = Date.now();
                         const start = new Date(b.startsAt).getTime();
-                        const isLive = start <= now;
-                        const minsUntil = Math.ceil((start - now) / 60_000);
+                        const isLive = start <= nowMs;
+                        const minsUntil = Math.ceil((start - nowMs) / 60_000);
                         return (
                             <div key={b.id} className="relative overflow-hidden rounded-xl border border-[hsl(var(--border))]/70 bg-[hsl(var(--surface-2))] px-3 py-2.5">
                                 <span className={cn(
@@ -509,7 +521,7 @@ function ShareLinkBlock({ url, href }: { url: string; href: string }) {
         <div className="flex flex-col items-stretch gap-2 sm:items-end">
             <p className="label-caps text-[hsl(var(--muted-foreground))]">Your booking link</p>
             <div className="flex items-center gap-2 rounded-xl border border-[hsl(var(--border))]/70 bg-[hsl(var(--surface-2))] px-3 py-2">
-                <Link href={href} target="_blank" className="link truncate text-sm">{url}</Link>
+                <Link href={href} target="_blank" rel="noopener noreferrer" className="link truncate text-sm">{url}</Link>
                 <button
                     type="button"
                     onClick={copy}
@@ -527,51 +539,121 @@ function ShareLinkBlock({ url, href }: { url: string; href: string }) {
 
 function SettingsPanel() {
     const { theme, setTheme } = useTheme();
+    const { user, refreshUser } = useAuth();
+    const [avatarInput, setAvatarInput] = useState(user?.avatarUrl ?? "");
+    const [avatarSaving, setAvatarSaving] = useState(false);
+    const [avatarError, setAvatarError] = useState<string | null>(null);
+    const [avatarSaved, setAvatarSaved] = useState(false);
+
+    async function saveAvatar(e: React.FormEvent) {
+        e.preventDefault();
+        if (!user) return;
+        setAvatarSaving(true);
+        setAvatarError(null);
+        try {
+            await updateProfile({
+                name: user.name,
+                slug: user.slug,
+                timezone: user.timezone,
+                onboardingStep: user.onboardingStep,
+                avatarUrl: avatarInput.trim() || null,
+            });
+            await refreshUser?.();
+            setAvatarSaved(true);
+            setTimeout(() => setAvatarSaved(false), 2000);
+        } catch (err) {
+            setAvatarError(err instanceof Error ? err.message : "Could not save");
+        } finally {
+            setAvatarSaving(false);
+        }
+    }
+
     return (
-        <section className="app-panel no-lift rounded-2xl p-5 sm:p-6">
-            <p className="mb-1 text-sm font-semibold text-[hsl(var(--foreground))]">Appearance</p>
-            <p className="mb-5 text-sm text-[hsl(var(--muted-foreground))]">
-                Choose how Sessionly looks on this device.
-            </p>
-            <div className="grid gap-3 sm:grid-cols-3">
-                {THEME_OPTIONS.map(({ label, value, icon: Icon, body }) => {
-                    const active = theme === value;
-                    return (
-                        <button
-                            key={value}
-                            type="button"
-                            onClick={() => setTheme(value)}
-                            aria-pressed={active}
-                            className={cn(
-                                "press cursor-pointer rounded-xl border p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]/50",
-                                active
-                                    ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))]/10 shadow-[0_0_0_3px_hsl(var(--primary)/0.12)]"
-                                    : "border-[hsl(var(--border))]/80 bg-[hsl(var(--surface-2))] hover:border-[hsl(var(--primary))]/50 hover:bg-[hsl(var(--surface-2))]",
-                            )}
-                        >
-                            <div className="mb-4 flex items-start justify-between">
-                                <span
-                                    className={cn(
-                                        "flex size-9 items-center justify-center rounded-lg",
-                                        active
-                                            ? "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]"
-                                            : "bg-[hsl(var(--surface-3))] text-[hsl(var(--muted-foreground))]",
-                                    )}
-                                >
-                                    <Icon className="size-4" />
-                                </span>
-                                {active && (
-                                    <span className="flex size-4 items-center justify-center rounded-full bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]">
-                                        <Check className="size-2.5" />
-                                    </span>
-                                )}
+        <div className="flex flex-col gap-5">
+            {/* Profile photo */}
+            <section className="app-panel no-lift rounded-2xl p-5 sm:p-6">
+                <p className="mb-1 text-sm font-semibold text-[hsl(var(--foreground))]">Profile photo</p>
+                <p className="mb-4 text-sm text-[hsl(var(--muted-foreground))]">
+                    Shown on your public booking page. Paste a URL to any publicly accessible image.
+                </p>
+                <form onSubmit={saveAvatar} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                    <div className="flex items-center gap-3">
+                        {avatarInput ? (
+                            <img
+                                src={avatarInput}
+                                alt="Preview"
+                                className="size-12 shrink-0 rounded-full object-cover ring-2 ring-[hsl(var(--border))]"
+                                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                            />
+                        ) : (
+                            <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[hsl(var(--primary))] to-violet-500 text-sm font-semibold text-white ring-2 ring-[hsl(var(--border))]">
+                                {initialsOf(user?.name || user?.email || "")}
                             </div>
-                            <span className="block font-medium text-[hsl(var(--foreground))]">{label}</span>
-                            <span className="mt-1 block text-sm leading-5 text-[hsl(var(--muted-foreground))]">{body}</span>
-                        </button>
-                    );
-                })}
-            </div>
-        </section>
+                        )}
+                    </div>
+                    <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                        <label htmlFor="avatar-url" className="label-caps">Photo URL</label>
+                        <Input
+                            id="avatar-url"
+                            type="url"
+                            value={avatarInput}
+                            onChange={(e) => { setAvatarInput(e.target.value); setAvatarSaved(false); }}
+                            placeholder="https://example.com/your-photo.jpg"
+                        />
+                    </div>
+                    <Button type="submit" size="sm" disabled={avatarSaving} className="shrink-0">
+                        {avatarSaving ? <BufferingButtonLabel label="Saving…" /> : avatarSaved ? <><Check className="size-3.5" />Saved</> : "Save photo"}
+                    </Button>
+                </form>
+                {avatarError && <p className="mt-2 text-xs text-[hsl(var(--destructive))]">{avatarError}</p>}
+            </section>
+
+            {/* Appearance */}
+            <section className="app-panel no-lift rounded-2xl p-5 sm:p-6">
+                <p className="mb-1 text-sm font-semibold text-[hsl(var(--foreground))]">Appearance</p>
+                <p className="mb-5 text-sm text-[hsl(var(--muted-foreground))]">
+                    Choose how Sessionly looks on this device.
+                </p>
+                <div className="grid gap-3 sm:grid-cols-3">
+                    {THEME_OPTIONS.map(({ label, value, icon: Icon, body }) => {
+                        const active = theme === value;
+                        return (
+                            <button
+                                key={value}
+                                type="button"
+                                onClick={() => setTheme(value)}
+                                aria-pressed={active}
+                                className={cn(
+                                    "press cursor-pointer rounded-xl border p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]/50",
+                                    active
+                                        ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))]/10 shadow-[0_0_0_3px_hsl(var(--primary)/0.12)]"
+                                        : "border-[hsl(var(--border))]/80 bg-[hsl(var(--surface-2))] hover:border-[hsl(var(--primary))]/50 hover:bg-[hsl(var(--surface-2))]",
+                                )}
+                            >
+                                <div className="mb-4 flex items-start justify-between">
+                                    <span
+                                        className={cn(
+                                            "flex size-9 items-center justify-center rounded-lg",
+                                            active
+                                                ? "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]"
+                                                : "bg-[hsl(var(--surface-3))] text-[hsl(var(--muted-foreground))]",
+                                        )}
+                                    >
+                                        <Icon className="size-4" />
+                                    </span>
+                                    {active && (
+                                        <span className="flex size-4 items-center justify-center rounded-full bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]">
+                                            <Check className="size-2.5" />
+                                        </span>
+                                    )}
+                                </div>
+                                <span className="block font-medium text-[hsl(var(--foreground))]">{label}</span>
+                                <span className="mt-1 block text-sm leading-5 text-[hsl(var(--muted-foreground))]">{body}</span>
+                            </button>
+                        );
+                    })}
+                </div>
+            </section>
+        </div>
     );
 }

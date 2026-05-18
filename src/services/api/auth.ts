@@ -1,6 +1,14 @@
 import { httpServerUri } from '@/src/services/api/config'
+import { apiFetch, parseApiError } from '@/src/services/api/fetch'
 import { getAccessToken, setAccessToken } from '@/src/services/api/token'
 import type { AuthResponse, RegisterCredentials, User, UserCredentials } from '@/src/types/auth'
+
+const authSessionCookieName = 'sessionly_session'
+
+function clearSessionMarker() {
+    if (typeof document === 'undefined') return
+    document.cookie = `${authSessionCookieName}=; Path=/; Max-Age=0; SameSite=Strict`
+}
 
 async function authPost<T>(path: string, body?: unknown, requiresAuth = false): Promise<T> {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -15,8 +23,7 @@ async function authPost<T>(path: string, body?: unknown, requiresAuth = false): 
         body: body !== undefined ? JSON.stringify(body) : undefined,
     })
     if (!res.ok) {
-        const text = await res.text()
-        throw new Error(text.trim() || `${res.status}`)
+        throw await parseApiError(res)
     }
     if (res.status === 204) return undefined as T
     return res.json()
@@ -41,23 +48,32 @@ export async function refreshSession(): Promise<AuthResponse | null> {
         return resp
     } catch {
         setAccessToken(null)
+        clearSessionMarker()
         return null
     }
+}
+
+export async function restoreAuthSession(): Promise<AuthResponse | null> {
+    const existingToken = getAccessToken()
+    if (existingToken) {
+        try {
+            const user = await getMe()
+            return { accessToken: getAccessToken() ?? existingToken, user }
+        } catch {
+            setAccessToken(null)
+        }
+    }
+    return refreshSession()
 }
 
 export async function logout(): Promise<void> {
     await authPost('/auth/logout', undefined, true).catch(() => {})
     setAccessToken(null)
+    clearSessionMarker()
 }
 
 export async function getMe(): Promise<User> {
-    const token = getAccessToken()
-    const res = await fetch(`${httpServerUri}/auth/me`, {
-        credentials: 'include',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
-    if (!res.ok) throw new Error('unauthorized')
-    return res.json()
+    return apiFetch<User>('GET', `${httpServerUri}/auth/me`)
 }
 
 export async function updateProfile(payload: {
@@ -65,20 +81,7 @@ export async function updateProfile(payload: {
     slug: string
     timezone: string
     onboardingStep: number
+    avatarUrl?: string | null
 }): Promise<User> {
-    const token = getAccessToken()
-    const res = await fetch(`${httpServerUri}/auth/me`, {
-        method: 'PATCH',
-        credentials: 'include',
-        headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(payload),
-    })
-    if (!res.ok) {
-        const text = await res.text()
-        throw new Error(text.trim() || `${res.status}`)
-    }
-    return res.json()
+    return apiFetch<User>('PATCH', `${httpServerUri}/auth/me`, { body: payload })
 }

@@ -9,22 +9,66 @@
 import { httpServerUri } from '@/src/services/api/config'
 import { getAccessToken, setAccessToken } from '@/src/services/api/token'
 
+let refreshInFlight: Promise<boolean> | null = null
+
+export class ApiError extends Error {
+    constructor(
+        public status: number,
+        public code: string,
+        message: string,
+        public field?: string,
+    ) {
+        super(message)
+    }
+}
+
+export async function parseApiError(res: Response): Promise<ApiError> {
+    const contentType = res.headers?.get('Content-Type') ?? ''
+    if (contentType.includes('application/json')) {
+        try {
+            const body = (await res.json()) as { error?: string; code?: string; field?: string }
+            return new ApiError(
+                res.status,
+                body.code || 'ERROR',
+                body.error || res.statusText || `${res.status}`,
+                body.field,
+            )
+        } catch {
+            // Fall through to text parsing.
+        }
+    }
+    const text = await res.text().catch(() => '')
+    return new ApiError(res.status, 'ERROR', text.trim() || res.statusText || `${res.status}`)
+}
+
 export function apiBearerHeaders(): Record<string, string> {
     const token = getAccessToken()
     return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
 async function attemptRefresh(): Promise<boolean> {
+    if (refreshInFlight) return refreshInFlight
+    refreshInFlight = doRefresh().finally(() => {
+        refreshInFlight = null
+    })
+    return refreshInFlight
+}
+
+async function doRefresh(): Promise<boolean> {
     try {
         const res = await fetch(`${httpServerUri}/auth/refresh`, {
             method: 'POST',
             credentials: 'include',
         })
-        if (!res.ok) return false
+        if (!res.ok) {
+            setAccessToken(null)
+            return false
+        }
         const data = await res.json() as { accessToken: string }
         setAccessToken(data.accessToken)
         return true
     } catch {
+        setAccessToken(null)
         return false
     }
 }
@@ -55,7 +99,6 @@ export async function apiFetch<T>(
     if (res.status === 401 && !options.skipRefresh) {
         const ok = await attemptRefresh()
         if (!ok) {
-            setAccessToken(null)
             throw new Error('Session expired. Please sign in again.')
         }
         // Retry with the new token
@@ -72,8 +115,7 @@ export async function apiFetch<T>(
     }
 
     if (!res.ok) {
-        const text = await res.text()
-        throw new Error(text.trim() || `${method} ${url}: ${res.status}`)
+        throw await parseApiError(res)
     }
     if (res.status === 204) return undefined as T
     return res.json() as Promise<T>

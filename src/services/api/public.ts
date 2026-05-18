@@ -22,11 +22,12 @@ export interface HostProfile {
     name: string
     slug: string
     timezone: string
+    avatarUrl?: string
     eventTypes: PublicEvent[]
 }
 
 export interface PublicEventResponse {
-    host: { name: string; slug: string; timezone: string }
+    host: { name: string; slug: string; timezone: string; avatarUrl?: string }
     event: PublicEvent
 }
 
@@ -52,6 +53,13 @@ export interface BookingResponse {
     endsAt: string
     meetCode: string
     status: string
+    cancellationReason?: string
+    cancelledBy?: 'host' | 'guest'
+    roomStatus?: 'open' | 'too_early' | 'ended' | 'cancelled'
+    roomMessage?: string
+    roomOpensAt?: string
+    roomClosesAt?: string
+    serverNow?: string
 }
 
 // Single throw shape so the page-level error UI doesn't have to second-guess
@@ -203,11 +211,13 @@ export async function getBookingByMeetCode(code: string): Promise<BookingRespons
 // on mismatch — so a missing/wrong token is indistinguishable from a stale
 // meet code. The server returns 204 on success (and on a re-cancel — the
 // endpoint is idempotent), so there's no body to parse.
-export async function cancelBookingByMeetCode(code: string, token: string): Promise<void> {
+export async function cancelBookingByMeetCode(code: string, token: string, reason: string): Promise<void> {
     const url = `${httpServerUri}/m/${encodeURIComponent(code)}?t=${encodeURIComponent(token)}`
     const res = await fetch(url, {
         method: 'DELETE',
         credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
     })
     if (!res.ok) {
         throw await asPublicError(res)

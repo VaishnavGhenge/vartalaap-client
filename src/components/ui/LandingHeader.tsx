@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
 import { SessionlyBrand } from "@/src/components/ui/SessionlyBrand";
+import { ThemeToggleButton } from "@/src/components/ui/ThemeToggleButton";
 
 const NAV = [
     { label: "Features",   href: "/#features" },
@@ -54,6 +55,7 @@ export function LandingHeader() {
                 </nav>
 
                 <div className="flex items-center gap-2 justify-end">
+                    <ThemeToggleButton />
                     <Button
                         variant="ghost"
                         size="sm"

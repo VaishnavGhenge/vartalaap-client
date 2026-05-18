@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import Link from "next/link";
 import { useAuth } from "@/src/hooks/use-auth";
+import { avatarColor, initialsOf } from "@/src/lib/avatar";
 import { Check, ArrowRight, Video, CreditCard, CalendarCheck, Link2, Mic, PhoneOff } from "lucide-react";
 import { LandingHeader } from "@/src/components/ui/LandingHeader";
 
@@ -152,22 +153,16 @@ const TESTIMONIALS = [
         quote: "I cancelled Calendly and Zoom the same day. Sessionly handles both for less than half the price.",
         name: "Sarah M.",
         role: "Executive Coach",
-        avatar: "SM",
-        color: "from-rose-500 to-pink-500",
     },
     {
         quote: "My clients love that they can book, pay, and join the call from one link. Zero friction.",
         name: "David K.",
         role: "Business Consultant",
-        avatar: "DK",
-        color: "from-amber-500 to-orange-500",
     },
     {
         quote: "Setup took 5 minutes. I shared my link that afternoon and had my first booking that evening.",
         name: "Priya N.",
         role: "Career Therapist",
-        avatar: "PN",
-        color: "from-teal-500 to-emerald-500",
     },
 ];
 
@@ -239,14 +234,17 @@ function LandingPage() {
             <section className="border-t border-[hsl(var(--border))]/60 px-5 py-12 sm:px-6 sm:py-16">
                 <div className="mx-auto max-w-5xl">
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                        {TESTIMONIALS.map(({ quote, name, role, avatar, color }) => (
+                        {TESTIMONIALS.map(({ quote, name, role }) => (
                             <div key={name} className="app-panel rounded-2xl p-5 sm:p-6 flex flex-col gap-4">
                                 <p className="text-sm leading-relaxed text-[hsl(var(--foreground))] flex-1">
                                     &ldquo;{quote}&rdquo;
                                 </p>
                                 <div className="flex items-center gap-2.5">
-                                    <div className={`h-8 w-8 rounded-full bg-gradient-to-br ${color} flex items-center justify-center text-white text-xs font-semibold shrink-0`}>
-                                        {avatar}
+                                    <div
+                                        aria-label={name}
+                                        className={`h-9 w-9 rounded-full shrink-0 flex items-center justify-center text-xs font-semibold text-white ${avatarColor(name)}`}
+                                    >
+                                        {initialsOf(name)}
                                     </div>
                                     <div>
                                         <p className="text-sm font-semibold text-[hsl(var(--foreground))] leading-tight">{name}</p>

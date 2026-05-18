@@ -46,6 +46,12 @@ export default async function ConfirmationPage({ params, searchParams }: PagePro
 
     const start = new Date(booking.startsAt);
     const end = new Date(booking.endsAt);
+    const roomOpen = booking.roomStatus === "open";
+    const cancelledByLabel = booking.cancelledBy === "host"
+        ? "host"
+        : booking.cancelledBy === "guest"
+            ? "guest"
+            : null;
 
     return (
         <div className="relative flex min-h-dvh flex-col">
@@ -86,15 +92,30 @@ export default async function ConfirmationPage({ params, searchParams }: PagePro
                             </div>
                         </dl>
 
+                        {booking.status === "cancelled" && booking.cancellationReason && (
+                            <div className="mt-6 rounded-xl border border-[hsl(var(--destructive))]/20 bg-[hsl(var(--destructive))]/10 px-4 py-3">
+                                <p className="label-caps text-[hsl(var(--destructive))]">
+                                    {cancelledByLabel ? `Cancelled by ${cancelledByLabel}` : "Cancellation reason"}
+                                </p>
+                                <p className="mt-1 text-sm text-[hsl(var(--foreground))]">{booking.cancellationReason}</p>
+                            </div>
+                        )}
+
                         {booking.status !== "cancelled" && (
                             <div className="mt-6 flex flex-col gap-2">
-                                <Button asChild size="lg" className="w-full">
-                                    <Link href={`/room/${booking.meetCode}`} prefetch>
-                                        Open meeting room
-                                    </Link>
-                                </Button>
+                                {roomOpen ? (
+                                    <Button asChild size="lg" className="w-full">
+                                        <Link href={`/room/${booking.meetCode}`} prefetch>
+                                            Open meeting room
+                                        </Link>
+                                    </Button>
+                                ) : (
+                                    <Button size="lg" className="w-full" disabled>
+                                        {booking.roomStatus === "too_early" ? "Room opens soon" : "Room unavailable"}
+                                    </Button>
+                                )}
                                 <p className="text-center text-xs text-[hsl(var(--muted-foreground))]">
-                                    The room opens at the booked time. Bookmark this page.
+                                    {roomOpen ? "The room is open for this booking." : booking.roomMessage || "The room is not open yet."}
                                 </p>
                                 {cancelToken && (
                                     <div className="mt-3 border-t border-[hsl(var(--border))]/60 pt-3">

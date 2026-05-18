@@ -17,7 +17,6 @@ import { useHasMultipleCameras } from "@/src/hooks/use-has-multiple-cameras";
 import { useMeetStore } from "@/src/stores/meet";
 import { useJoinMeetStore } from "@/src/stores/joinMeet";
 import { avatarColor, initialsOf } from "@/src/lib/avatar";
-import { fetchIceServers } from "@/src/services/api/ice";
 import { useAudioLevel } from "@/src/hooks/use-audio-level";
 import { useMediaDevices } from "@/src/hooks/use-media-devices";
 import { supportsAudioOutputSelection } from "@/src/lib/audio-context";
@@ -38,7 +37,7 @@ export default function JoinMeet() {
     const [isJoining, setIsJoining] = useState(false);
     useEffect(() => { setCanShare('share' in navigator); }, []);
 
-    const { localStream, enableMic, disableMic, enableCamera, disableCamera, switchCamera, setIceServers,
+    const { localStream, enableMic, disableMic, enableCamera, disableCamera, switchCamera,
             setAudioInput, setVideoInput, setAudioOutput,
             preferredAudioInputId, preferredVideoInputId, preferredAudioOutputId } = usePeerStore();
     const hasMultipleCameras = useHasMultipleCameras();
@@ -50,13 +49,6 @@ export default function JoinMeet() {
     const canJoinMeet = meetCodePattern.test(params.meetCode);
 
     useEffect(() => { setMeetCode(params.meetCode); }, [params]);
-
-    useEffect(() => {
-        fetchIceServers()
-            .then(setIceServers)
-            .catch(() => { /* will retry inside use-call on join */ });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
 
     useEffect(() => {
         if (videoRef.current) videoRef.current.srcObject = localStream;

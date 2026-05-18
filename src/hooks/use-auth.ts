@@ -1,7 +1,7 @@
 import { useMutation } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { login, logout, register, refreshSession } from '@/src/services/api/auth'
+import { login, logout, register, restoreAuthSession, getMe } from '@/src/services/api/auth'
 import { useAuthStore } from '@/src/stores/auth'
 import type { RegisterCredentials, UserCredentials } from '@/src/types/auth'
 
@@ -51,16 +51,23 @@ export const useLogout = () => {
 }
 
 export const useAuth = () => {
-    const { user, isAuthenticated, isLoading } = useAuthStore()
+    const { user, isAuthenticated, isLoading, setUser } = useAuthStore()
     const handleLogout = useLogout()
-    return { user, isAuthenticated, isLoading, logout: handleLogout }
+    async function refreshUser() {
+        try {
+            const fresh = await getMe()
+            setUser(fresh)
+        } catch { /* silently ignore — user stays as-is */ }
+    }
+    return { user, isAuthenticated, isLoading, logout: handleLogout, refreshUser }
 }
 
-// Call once on app boot to restore session from the HttpOnly refresh cookie.
+// Call once on app boot to restore from local access-token storage first, then
+// fall back to the HttpOnly refresh cookie if that token is missing or expired.
 export async function restoreSession() {
     const { login: storeLogin, logout: storeLogout, setLoading } = useAuthStore.getState()
     setLoading(true)
-    const resp = await refreshSession()
+    const resp = await restoreAuthSession()
     if (resp) {
         storeLogin(resp.user)
     } else {

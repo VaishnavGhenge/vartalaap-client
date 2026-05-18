@@ -3,8 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { BufferingButtonLabel } from "@/src/components/ui/BufferingButtonLabel";
 import { Button } from "@/src/components/ui/button";
+import { ConfirmDialog } from "@/src/components/ui/ConfirmDialog";
 import { cancelBookingByMeetCode } from "@/src/services/api/public";
 
 interface Props {
@@ -24,12 +24,14 @@ export function CancelBookingButton({ meetCode, cancelToken }: Props) {
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [confirming, setConfirming] = useState(false);
+    const [reason, setReason] = useState("");
 
     async function handleCancel() {
         setSubmitting(true);
         setError(null);
         try {
-            await cancelBookingByMeetCode(meetCode, cancelToken);
+            await cancelBookingByMeetCode(meetCode, cancelToken, reason);
+            setConfirming(false);
             router.refresh();
         } catch (e) {
             setError(e instanceof Error ? e.message : "Could not cancel");
@@ -37,39 +39,45 @@ export function CancelBookingButton({ meetCode, cancelToken }: Props) {
         }
     }
 
-    if (!confirming) {
-        return (
+    return (
+        <>
             <Button
                 variant="ghost"
                 size="sm"
                 className="w-full text-[hsl(var(--muted-foreground))]"
-                onClick={() => setConfirming(true)}
+                onClick={() => {
+                    setError(null);
+                    setReason("");
+                    setConfirming(true);
+                }}
             >
                 Cancel booking
             </Button>
-        );
-    }
-
-    return (
-        <div className="flex flex-col gap-2">
-            <p className="text-center text-xs text-[hsl(var(--muted-foreground))]">
-                Cancel this booking? Both you and the host will be notified.
-            </p>
-            <div className="flex gap-2">
-                <Button
-                    variant="ghost" size="sm" className="flex-1"
-                    onClick={() => setConfirming(false)} disabled={submitting}
-                >
-                    Keep it
-                </Button>
-                <Button
-                    variant="destructive" size="sm" className="flex-1"
-                    onClick={handleCancel} disabled={submitting}
-                >
-                    {submitting ? <BufferingButtonLabel label="Cancelling…" /> : "Cancel booking"}
-                </Button>
-            </div>
-            {error && <p className="text-center text-xs text-[hsl(var(--destructive))]">{error}</p>}
-        </div>
+            <ConfirmDialog
+                open={confirming}
+                title="Cancel booking?"
+                description="Both you and the host will be notified."
+                reasonLabel="Reason"
+                reasonPlaceholder="Share why this booking needs to be cancelled."
+                reasonValue={reason}
+                reasonRequired
+                onReasonChange={setReason}
+                confirmLabel="Cancel booking"
+                cancelLabel="Keep booking"
+                loadingLabel="Cancelling..."
+                destructive
+                pending={submitting}
+                error={error}
+                onConfirm={handleCancel}
+                onOpenChange={(open) => {
+                    if (submitting) return;
+                    setConfirming(open);
+                    if (!open) {
+                        setError(null);
+                        setReason("");
+                    }
+                }}
+            />
+        </>
     );
 }

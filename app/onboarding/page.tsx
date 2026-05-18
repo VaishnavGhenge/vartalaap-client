@@ -4,9 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Copy, ExternalLink, Lock } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
+import { FieldError, FormError } from "@/src/components/ui/FormError";
 import { Input } from "@/src/components/ui/input";
 import { Select } from "@/src/components/ui/select";
 import { useAuth } from "@/src/hooks/use-auth";
+import { ApiError } from "@/src/services/api/fetch";
 import { updateProfile } from "@/src/services/api/auth";
 import { getAvailability, putAvailability, type AvailabilityRule } from "@/src/services/api/availability";
 import { createEventType, listEventTypes } from "@/src/services/api/event-types";
@@ -156,32 +158,41 @@ function Step1({
     const [tz, setTz] = useState(user.timezone || "America/New_York");
     const [slugTouched, setSlugTouched] = useState(false);
     const [saving, setSaving] = useState(false);
-    const [error, setError] = useState("");
+    const [formError, setFormError] = useState("");
+    const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
     const { login: storeLogin } = useAuthStore();
 
     const slugValid = slugPattern.test(slug);
+    const slugError = fieldErrors.slug || (slug && !slugValid ? "Use 3-30 lowercase letters, numbers, or hyphens." : "");
 
     const handleNameChange = (v: string) => {
         setName(v);
+        setFieldErrors((prev) => ({ ...prev, name: "" }));
         if (!slugTouched) setSlug(slugify(v));
     };
 
     const handleSlugChange = (v: string) => {
         setSlugTouched(true);
+        setFieldErrors((prev) => ({ ...prev, slug: "" }));
         setSlug(v.toLowerCase().replace(/[^a-z0-9-]/g, ""));
     };
 
     const handleContinue = async () => {
         if (!name.trim() || !slugValid) return;
         setSaving(true);
-        setError("");
+        setFormError("");
+        setFieldErrors({});
         try {
             const updated = await updateProfile({ name: name.trim(), slug, timezone: tz, onboardingStep: 1 });
             storeLogin(updated);
             onNext({ name: updated.name, slug: updated.slug, timezone: updated.timezone });
         } catch (e: unknown) {
-            setError(e instanceof Error ? e.message : "Something went wrong");
+            if (e instanceof ApiError && e.field) {
+                setFieldErrors({ [e.field]: e.message });
+            } else {
+                setFormError(e instanceof Error ? e.message : "Something went wrong");
+            }
         } finally {
             setSaving(false);
         }
@@ -206,11 +217,19 @@ function Step1({
                         onChange={e => handleNameChange(e.target.value)}
                         placeholder="Jane Smith"
                         autoComplete="name"
+                        aria-invalid={!!fieldErrors.name}
+                        aria-describedby={fieldErrors.name ? "onboarding-name-error" : undefined}
+                        className={fieldErrors.name ? "border-[hsl(var(--destructive))] focus-visible:border-[hsl(var(--destructive))] focus-visible:ring-[hsl(var(--destructive))]/15" : undefined}
                     />
+                    <FieldError id="onboarding-name-error">{fieldErrors.name}</FieldError>
                 </div>
                 <div>
                     <label htmlFor="onboarding-slug" className="label-caps block mb-1.5">Your booking URL</label>
-                    <div className="flex items-center rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))] overflow-hidden focus-within:ring-2 focus-within:ring-[hsl(var(--primary))]/30">
+                    <div className={`flex items-center rounded-lg border bg-[hsl(var(--background))] overflow-hidden focus-within:ring-2 ${
+                        slugError
+                            ? "border-[hsl(var(--destructive))] focus-within:ring-[hsl(var(--destructive))]/15"
+                            : "border-[hsl(var(--border))] focus-within:ring-[hsl(var(--primary))]/30"
+                    }`}>
                         <span className="pl-3 pr-1 text-sm text-[hsl(var(--muted-foreground))] whitespace-nowrap select-none">
                             getsessionly.com/
                         </span>
@@ -223,14 +242,12 @@ function Step1({
                             autoComplete="off"
                             autoCorrect="off"
                             spellCheck={false}
+                            aria-invalid={!!slugError}
+                            aria-describedby={slugError ? "onboarding-slug-error" : undefined}
                         />
                     </div>
-                    {slug && !slugValid && (
-                        <p className="mt-1 text-xs text-red-500">
-                            3–30 characters, lowercase letters, numbers, and hyphens only.
-                        </p>
-                    )}
-                    {slug && slugValid && (
+                    <FieldError id="onboarding-slug-error">{slugError}</FieldError>
+                    {slug && slugValid && !slugError && (
                         <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">
                             getsessionly.com/{slug}
                         </p>
@@ -248,7 +265,7 @@ function Step1({
                         ))}
                     </Select>
                 </div>
-                {error && <p className="text-xs text-red-500">{error}</p>}
+                <FormError>{formError}</FormError>
             </div>
         </StepShell>
     );
@@ -530,6 +547,9 @@ function Step3({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
                 title: trimmed,
                 durationMin: duration,
                 bufferMin: 0,
+                bufferBeforeMin: 0,
+                minNoticeHours: 0,
+                maxDaysAhead: 0,
                 isPaid: false,
                 isActive: true,
             });

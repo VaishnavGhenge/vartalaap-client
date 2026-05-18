@@ -31,6 +31,6 @@ describe('createMeet', () => {
             text: () => Promise.resolve(''),
         }))
 
-        await expect(createMeet()).rejects.toThrow('POST http://localhost:8080/meets/new: 429')
+        await expect(createMeet()).rejects.toThrow('429')
     })
 })
