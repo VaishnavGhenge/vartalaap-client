@@ -9,13 +9,17 @@ import { cancelBookingByMeetCode } from "@/src/services/api/public";
 
 interface Props {
     meetCode: string;
+    // Magic-link credential from the confirmation email's `?t=` param.
+    // The server rejects DELETE without a matching token, so the button is
+    // only rendered when the page was opened via the tokened link.
+    cancelToken: string;
 }
 
 // Small client island slotted into the otherwise server-rendered /m/[code]
 // page. The cancel call is one round-trip; on success we router.refresh()
 // so the page re-fetches the booking and re-renders the "Cancelled" state
 // without needing client state for the booking itself.
-export function CancelBookingButton({ meetCode }: Props) {
+export function CancelBookingButton({ meetCode, cancelToken }: Props) {
     const router = useRouter();
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -25,7 +29,7 @@ export function CancelBookingButton({ meetCode }: Props) {
         setSubmitting(true);
         setError(null);
         try {
-            await cancelBookingByMeetCode(meetCode);
+            await cancelBookingByMeetCode(meetCode, cancelToken);
             router.refresh();
         } catch (e) {
             setError(e instanceof Error ? e.message : "Could not cancel");

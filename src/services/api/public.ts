@@ -197,11 +197,15 @@ export async function getBookingByMeetCode(code: string): Promise<BookingRespons
     return get<BookingResponse>(`/m/${encodeURIComponent(code)}`)
 }
 
-// cancelBookingByMeetCode is the guest-facing cancel. The server returns 204
-// on success (and on a re-cancel — the endpoint is idempotent), so there's
-// no body to parse.
-export async function cancelBookingByMeetCode(code: string): Promise<void> {
-    const res = await fetch(`${httpServerUri}/m/${encodeURIComponent(code)}`, {
+// cancelBookingByMeetCode is the guest-facing cancel. `token` is the magic
+// link credential delivered in the confirmation email; the server compares
+// it against the stored cancel_token with constant-time equality and 404s
+// on mismatch — so a missing/wrong token is indistinguishable from a stale
+// meet code. The server returns 204 on success (and on a re-cancel — the
+// endpoint is idempotent), so there's no body to parse.
+export async function cancelBookingByMeetCode(code: string, token: string): Promise<void> {
+    const url = `${httpServerUri}/m/${encodeURIComponent(code)}?t=${encodeURIComponent(token)}`
+    const res = await fetch(url, {
         method: 'DELETE',
         credentials: 'include',
     })
