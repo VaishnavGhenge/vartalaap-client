@@ -231,7 +231,7 @@ function Step1({
                             : "border-[hsl(var(--border))] focus-within:ring-[hsl(var(--primary))]/30"
                     }`}>
                         <span className="pl-3 pr-1 text-sm text-[hsl(var(--muted-foreground))] whitespace-nowrap select-none">
-                            getsessionly.com/
+                            getsessionly.com/u/
                         </span>
                         <input
                             id="onboarding-slug"
@@ -249,7 +249,7 @@ function Step1({
                     <FieldError id="onboarding-slug-error">{slugError}</FieldError>
                     {slug && slugValid && !slugError && (
                         <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">
-                            getsessionly.com/{slug}
+                            getsessionly.com/u/{slug}
                         </p>
                     )}
                 </div>
@@ -695,7 +695,7 @@ function Step4({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
 
 function Step5({ slug, onFinish }: { slug: string; onFinish: () => void }) {
     const [copied, setCopied] = useState(false);
-    const bookingUrl = `getsessionly.com/${slug}`;
+    const bookingUrl = `getsessionly.com/u/${slug}`;
 
     const handleCopy = () => {
         navigator.clipboard.writeText(`https://${bookingUrl}`);

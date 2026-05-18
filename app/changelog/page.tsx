@@ -10,7 +10,7 @@ const ENTRIES = [
         headline: "Booking pages, video rooms, and pricing",
         description: "The core loop is complete. Create a booking page, share your link, and meet clients in a built-in video room — all without leaving Sessionly.",
         changes: [
-            "Booking pages with custom URL (e.g. getsessionly.com/jane-smith)",
+            "Booking pages with custom URL (e.g. getsessionly.com/u/jane-smith)",
             "Private video room generated for every confirmed booking",
             "5-step onboarding wizard to get set up in under two minutes",
             "Free, Solo ($12/mo), and Teams ($29/mo) pricing tiers",
