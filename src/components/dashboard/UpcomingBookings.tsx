@@ -24,6 +24,7 @@ export function UpcomingBookings({ refreshKey }: Props) {
     const [cancelError, setCancelError] = useState<string | null>(null);
     const [cancelReason, setCancelReason] = useState("");
     const [, setTick] = useState(0);
+    const [showAll, setShowAll] = useState(false);
 
     useEffect(() => {
         const id = setInterval(() => setTick((t) => t + 1), 30_000);
@@ -59,7 +60,7 @@ export function UpcomingBookings({ refreshKey }: Props) {
         );
     }
 
-    const visible = bookings.slice(0, MAX_VISIBLE);
+    const visible = showAll ? bookings : bookings.slice(0, MAX_VISIBLE);
 
     async function handleCancel() {
         if (!cancelTarget) return;
@@ -194,9 +195,14 @@ export function UpcomingBookings({ refreshKey }: Props) {
                 );
             })}
             {bookings.length > MAX_VISIBLE && (
-                <p className="px-1 pt-1 text-xs text-[hsl(var(--muted-foreground))]">
-                    + {bookings.length - MAX_VISIBLE} more upcoming
-                </p>
+                <button
+                    onClick={() => setShowAll((v) => !v)}
+                    className="px-1 pt-1 text-xs text-[hsl(var(--primary))] hover:underline text-left"
+                >
+                    {showAll
+                        ? "Show less"
+                        : `+ ${bookings.length - MAX_VISIBLE} more — load more`}
+                </button>
             )}
             <ConfirmDialog
                 open={cancelTarget !== null}
