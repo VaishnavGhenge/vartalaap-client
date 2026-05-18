@@ -1,16 +1,26 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { BufferingButtonLabel } from "@/src/components/ui/BufferingButtonLabel";
 import { Input } from "@/src/components/ui/input";
 import { Button } from "@/src/components/ui/button";
 import { SessionlyBrand } from "@/src/components/ui/SessionlyBrand";
 import { useLogin } from "@/src/hooks/use-auth";
+import { useAuthStore } from "@/src/stores/auth";
 
 export default function Login() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const { isAuthenticated, isLoading, user } = useAuthStore();
+    const router = useRouter();
+
+    useEffect(() => {
+        if (!isLoading && isAuthenticated && user) {
+            router.replace(user.onboardingStep < 5 ? "/onboarding" : "/dashboard");
+        }
+    }, [isLoading, isAuthenticated, user, router]);
     const { mutate: login, isPending } = useLogin();
 
     function handleSubmit(e: React.FormEvent) {
@@ -20,12 +30,12 @@ export default function Login() {
 
     return (
         <div className="relative flex min-h-dvh flex-col">
-            <main className="flex flex-1 flex-col items-center justify-center px-4 py-12 sm:px-6">
-                <Link href="/" className="mb-8">
+            <main className="flex flex-1 flex-col items-center justify-center px-4 pt-12 pb-24 sm:px-6 sm:pt-16 sm:pb-40">
+                <Link href="/" className="mb-12">
                     <SessionlyBrand size="lg" />
                 </Link>
 
-                <div className="app-panel w-full max-w-sm rounded-2xl p-6 sm:p-8">
+                <div className="w-full max-w-sm">
 
                     <h1 className="text-xl font-semibold tracking-tight text-[hsl(var(--foreground))]">
                         Sign in
