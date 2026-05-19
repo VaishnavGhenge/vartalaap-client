@@ -29,8 +29,8 @@ export function SetupChecklist({ state }: Props) {
         },
         {
             key: "availability",
-            title: "Set bookable hours",
-            body: "Hours decide which slots guests can pick.",
+            title: "Set weekly availability",
+            body: "Recurring hours decide which slots guests can pick.",
             href: "/dashboard?panel=availability",
         },
         {

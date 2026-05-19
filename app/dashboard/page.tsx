@@ -18,7 +18,7 @@ import {
     MoonStar,
     Settings,
     SunMedium,
-    UserRound,
+    Pencil,
     Video,
 } from "lucide-react";
 
@@ -215,9 +215,9 @@ function DashboardInner() {
                             onClick={() => handleSelectPanel("profile")}
                             aria-current={activePanel === "profile" ? "page" : undefined}
                             className={cn(
-                                "flex w-full cursor-pointer items-center gap-2.5 rounded-xl px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]/50",
+                                "group flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]/50",
                                 activePanel === "profile"
-                                    ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]"
+                                    ? "bg-[hsl(var(--primary))]/10"
                                     : "hover:bg-[hsl(var(--surface-2))]",
                             )}
                         >
@@ -225,22 +225,42 @@ function DashboardInner() {
                                 <img
                                     src={user.avatarUrl}
                                     alt={user.name || user.email}
-                                    className="size-8 shrink-0 rounded-full object-cover"
+                                    className={cn(
+                                        "size-9 shrink-0 rounded-full object-cover ring-2 ring-offset-1",
+                                        activePanel === "profile"
+                                            ? "ring-[hsl(var(--primary))]"
+                                            : "ring-transparent group-hover:ring-[hsl(var(--border))]",
+                                    )}
                                 />
                             ) : (
-                                <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[hsl(var(--primary))] to-violet-500 text-[11px] font-semibold text-white">
+                                <div className={cn(
+                                    "flex size-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[hsl(var(--primary))] to-violet-500 text-[11px] font-semibold text-white ring-2 ring-offset-1",
+                                    activePanel === "profile"
+                                        ? "ring-[hsl(var(--primary))]"
+                                        : "ring-transparent group-hover:ring-[hsl(var(--border))]",
+                                )}>
                                     {initialsOf(user.name || user.email)}
                                 </div>
                             )}
                             <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm font-medium text-[hsl(var(--foreground))]">
+                                <p className={cn(
+                                    "truncate text-sm font-semibold",
+                                    activePanel === "profile"
+                                        ? "text-[hsl(var(--primary))]"
+                                        : "text-[hsl(var(--foreground))]",
+                                )}>
                                     {user.name || user.email}
                                 </p>
                                 <p className="truncate text-xs text-[hsl(var(--muted-foreground))]">
-                                    {bookingPath}
+                                    {user.slug ? `@${user.slug}` : "Set your link"}
                                 </p>
                             </div>
-                            <UserRound className="size-4 shrink-0 text-[hsl(var(--muted-foreground))]" />
+                            <Pencil className={cn(
+                                "size-3.5 shrink-0 text-[hsl(var(--muted-foreground))] transition-opacity",
+                                activePanel === "profile"
+                                    ? "opacity-50"
+                                    : "opacity-0 group-hover:opacity-40",
+                            )} />
                         </button>
                     </div>
 

@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, Copy, LayoutGrid, List, Plus, X } from "lucide-react";
+import { Check, Copy, LayoutGrid, List, MousePointerClick, Plus, X } from "lucide-react";
 
 import { Button } from "@/src/components/ui/button";
 import { ConfirmDialog } from "@/src/components/ui/ConfirmDialog";
 import { EditActionBar, EditTrigger } from "@/src/components/ui/EditActionBar";
+import { InlineNotice } from "@/src/components/ui/InlineNotice";
 import { SearchableSelect } from "@/src/components/ui/SearchableSelect";
 import { Switch } from "@/src/components/ui/Switch";
 import { cn } from "@/src/lib/utils";
@@ -225,8 +226,7 @@ export function AvailabilityEditor({ timezone, onSaved }: Props) {
             {/* Header row: timezone note + mode toggle */}
             <div className="mb-5 flex items-center justify-between gap-3">
                 <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                    All times in {timezone.replace(/_/g, " ")}.
-                    {editing && mode === "chart" && " Drag to paint bookable hours."}
+                    Recurring weekly template. All times in {timezone.replace(/_/g, " ")}.
                 </p>
                 <div className="flex items-center rounded-lg border border-[hsl(var(--border))]/60 bg-[hsl(var(--surface-2))] p-0.5">
                     {(["chart", "manual"] as EditorMode[]).map((m) => (
@@ -247,6 +247,12 @@ export function AvailabilityEditor({ timezone, onSaved }: Props) {
                     ))}
                 </div>
             </div>
+
+            {editing && mode === "chart" && (
+                <InlineNotice icon={MousePointerClick} className="mb-5 text-xs">
+                    Click a slot to toggle available/unavailable. Drag across slots to paint the same change.
+                </InlineNotice>
+            )}
 
             {/* ── Chart mode ── */}
             {mode === "chart" && (
