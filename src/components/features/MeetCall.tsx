@@ -1,6 +1,6 @@
 "use client";
 
-import { PhoneOff, Copy, Check, Share2, Monitor } from "lucide-react";
+import { PhoneOff, Copy, Check, Share2, Monitor, UserCheck, Clock, Timer } from "lucide-react";
 import { toast } from "sonner";
 import { resumeSharedAudioContext } from "@/src/lib/audio-context";
 import { playLeaveCall, playScreenShareStart, playScreenShareStop } from "@/src/lib/sounds";
@@ -17,6 +17,7 @@ import { useMeetStore } from "@/src/stores/meet";
 import { usePeerStore } from "@/src/stores/peer";
 import { useJoinMeetStore } from "@/src/stores/joinMeet";
 import type { SignalingClient, ConnState } from "@/src/services/signaling/client";
+import type { Envelope, KnockRequestData } from "@/src/services/signaling/protocol";
 
 const LOCAL_TILE_ID = 'local'
 
@@ -29,7 +30,7 @@ interface MeetCallProps {
 }
 
 export default function MeetCall({ client, connState, reconnectAttempt, routeMeetCode, onLeave }: MeetCallProps) {
-    const { isMuted, isVideoOff, isScreenSharing, toggleMute, toggleVideo, toggleScreenShare, clearMeet } = useMeetStore();
+    const { isMuted, isVideoOff, isScreenSharing, isKnocking, roomClosesAt, toggleMute, toggleVideo, toggleScreenShare, clearMeet } = useMeetStore();
     const { localStream, screenTrack, enableMic, disableMic, enableCamera, disableCamera, switchCamera, startScreenShare, stopScreenShare, peerConnections, peerStats } = usePeerStore();
     const hasMultipleCameras = useHasMultipleCameras();
     const { userName, meetCode, clearJoinMeet } = useJoinMeetStore();
@@ -39,6 +40,54 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
     const [canScreenShare, setCanScreenShare] = useState(false);
     const [pinnedId, setPinnedId] = useState<string | null>(null);
     const [isPicking, setIsPicking] = useState(false);
+    const [knockRequests, setKnockRequests] = useState<Array<{ peerId: string; name: string }>>([]);
+
+    // Session expiry — minsLeft is null when no closesAt is set (instant rooms).
+    // At T−5min we fire a toast; at T−2min we show a persistent banner;
+    // at T+0 we display a countdown overlay and auto-leave after 10 seconds.
+    const [minsLeft, setMinsLeft] = useState<number | null>(null);
+    const [autoLeaveCountdown, setAutoLeaveCountdown] = useState<number | null>(null);
+
+    useEffect(() => {
+        if (!roomClosesAt) return;
+        const closesMs = new Date(roomClosesAt).getTime();
+
+        const tick = () => {
+            const remaining = closesMs - Date.now();
+            const mins = Math.ceil(remaining / 60_000);
+            setMinsLeft(mins);
+
+            if (remaining <= 0 && autoLeaveCountdown === null) {
+                setAutoLeaveCountdown(10);
+            }
+        };
+
+        tick();
+        const id = setInterval(tick, 10_000);
+        return () => clearInterval(id);
+    }, [roomClosesAt]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // One-shot toast at T−5min
+    const fiveMinToastFired = useRef(false);
+    useEffect(() => {
+        if (minsLeft === null || fiveMinToastFired.current) return;
+        if (minsLeft <= 5 && minsLeft > 0) {
+            fiveMinToastFired.current = true;
+            toast(`Session ends in ${minsLeft} minute${minsLeft === 1 ? '' : 's'}.`);
+        }
+    }, [minsLeft]);
+
+    // Auto-leave countdown tick
+    useEffect(() => {
+        if (autoLeaveCountdown === null) return;
+        if (autoLeaveCountdown <= 0) {
+            handleEndCall();
+            return;
+        }
+        const id = setTimeout(() => setAutoLeaveCountdown((c) => (c ?? 1) - 1), 1_000);
+        return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [autoLeaveCountdown]);
     const screenTrackRef = useRef<MediaStreamTrack | null>(null);
     const cameraWasOnBeforeShare = useRef(false);
     useEffect(() => {
@@ -91,6 +140,25 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
         document.addEventListener('visibilitychange', handleVisibilityChange)
         return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
     }, [client])
+
+    // Host: listen for knock-request and queue incoming guests.
+    useEffect(() => {
+        if (!client) return;
+        const handleKnockRequest = (env: Envelope<KnockRequestData>) => {
+            if (!env.data?.peerId) return;
+            setKnockRequests(prev => {
+                if (prev.some(r => r.peerId === env.data!.peerId)) return prev;
+                return [...prev, { peerId: env.data!.peerId, name: env.data!.name }];
+            });
+        };
+        client.on('knock-request', handleKnockRequest as (env: Envelope) => void);
+        return () => client.off('knock-request', handleKnockRequest as (env: Envelope) => void);
+    }, [client]);
+
+    // Remove guests from the knock queue once they appear as real peers.
+    useEffect(() => {
+        setKnockRequests(prev => prev.filter(r => !peerConnections.has(r.peerId)));
+    }, [peerConnections]);
 
     const remotePeers = useMemo(() => Array.from(peerConnections.values()), [peerConnections]);
 
@@ -270,6 +338,11 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
         }
     };
 
+    const handleAdmit = (peerId: string) => {
+        client?.send('knock-admit', { peerId });
+        setKnockRequests(prev => prev.filter(r => r.peerId !== peerId));
+    };
+
     const togglePin = (id: string) => setPinnedId(prev => prev === id ? null : id);
 
     const alone = remotePeers.length === 0;
@@ -341,6 +414,68 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                 reconnectAttempt={reconnectAttempt}
                 onLeave={handleEndCall}
             />
+
+            {/* Guest: waiting to be admitted overlay */}
+            {isKnocking && (
+                <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-[hsl(var(--background))]/90 backdrop-blur-sm">
+                    <div className="glass-pill flex flex-col items-center gap-3 px-8 py-6 text-center">
+                        <Clock className="w-8 h-8 text-[hsl(var(--muted-foreground))] animate-pulse" />
+                        <p className="text-sm font-medium text-[hsl(var(--foreground))]">Waiting to be let in…</p>
+                        <p className="text-xs text-[hsl(var(--muted-foreground))]">The host will admit you shortly.</p>
+                    </div>
+                </div>
+            )}
+
+            {/* Session expired overlay — auto-leave countdown */}
+            {autoLeaveCountdown !== null && (
+                <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-[hsl(var(--background))]/90 backdrop-blur-sm">
+                    <div className="glass-pill flex flex-col items-center gap-3 px-8 py-6 text-center">
+                        <Timer className="w-8 h-8 text-[hsl(var(--destructive))]" />
+                        <p className="text-sm font-semibold text-[hsl(var(--foreground))]">Session time is up</p>
+                        <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                            Leaving automatically in {autoLeaveCountdown}s
+                        </p>
+                        <button
+                            type="button"
+                            onClick={handleEndCall}
+                            className="cursor-pointer rounded-full bg-[hsl(var(--destructive))] px-4 py-1.5 text-xs font-semibold text-[hsl(var(--destructive-foreground))] hover:opacity-90 transition-opacity"
+                        >
+                            Leave now
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Persistent warning banner at T−2 min */}
+            {autoLeaveCountdown === null && minsLeft !== null && minsLeft <= 2 && minsLeft > 0 && (
+                <div className="fixed top-4 left-1/2 -translate-x-1/2 z-40">
+                    <div className="glass-pill flex items-center gap-2 px-4 py-2 text-xs font-medium text-[hsl(var(--foreground))] shadow-lg border border-[hsl(var(--destructive))]/30">
+                        <Timer className="size-3.5 shrink-0 text-[hsl(var(--destructive))]" />
+                        Session ends in {minsLeft} minute{minsLeft === 1 ? '' : 's'}
+                    </div>
+                </div>
+            )}
+
+            {/* Host: knock-request banners */}
+            {knockRequests.length > 0 && (
+                <div className="fixed top-4 right-4 z-50 flex flex-col gap-2">
+                    {knockRequests.map(({ peerId, name }) => (
+                        <div key={peerId} className="glass-pill flex items-center gap-3 px-4 py-3 shadow-lg">
+                            <UserCheck className="w-4 h-4 shrink-0 text-[hsl(var(--muted-foreground))]" />
+                            <span className="text-sm font-medium text-[hsl(var(--foreground))]">
+                                {name || 'Someone'} wants to join
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => handleAdmit(peerId)}
+                                className="ml-1 rounded-full bg-[hsl(var(--primary))] px-3 py-1 text-xs font-semibold text-[hsl(var(--primary-foreground))] hover:opacity-90 transition-opacity"
+                            >
+                                Admit
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            )}
 
             {/* ── Top bar — outside the video layout ───────────────────── */}
             <header className="shrink-0 flex items-center justify-between gap-3 px-4 pt-4 pb-2 z-20">

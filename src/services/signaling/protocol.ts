@@ -13,6 +13,10 @@ export type MsgType =
   | 'stats-report'
   | 'sfu-tracks'
   | 'client-metric'
+  | 'knock'
+  | 'knock-request'
+  | 'knock-admit'
+  | 'knock-granted'
 
 export interface Envelope<T = unknown> {
   type: MsgType
@@ -90,3 +94,7 @@ export interface SfuTracksData {
   sessionId: string
   tracks: SfuTrackInfo[]
 }
+
+export interface KnockRequestData { peerId: string; name: string }
+export interface KnockAdmitData { peerId: string }
+export interface KnockGrantedData { sfuToken: string }

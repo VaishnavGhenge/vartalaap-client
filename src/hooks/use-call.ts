@@ -6,10 +6,12 @@ import { fetchIceServers } from '@/src/services/api/ice'
 import type {
   CallAttemptResult,
   ClientMetricData,
-  Envelope, ErrorData, JoinedData, PeerJoinedData, PeerLeftData, PeerStateData, SfuTracksData,
+  Envelope, ErrorData, JoinedData, KnockGrantedData, PeerJoinedData, PeerLeftData, PeerStateData, SfuTracksData,
 } from '@/src/services/signaling/protocol'
 import { SfuSession } from '@/src/services/webrtc/sfu-session'
 import { playPeerJoined, playPeerLeft, playScreenShareStart, playScreenShareStop } from '@/src/lib/sounds'
+import { getAccessToken, setAccessToken } from '@/src/services/api/token'
+import { useMeetStore } from '@/src/stores/meet'
 
 // The CLAUDE.md SLO calls anything over 10s a failed connection attempt rather
 // than a slow success. If we don't see a remote frame within this window we
@@ -85,6 +87,23 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
     let joinedAck = new Promise<void>((resolve) => { resolveJoinedAck = resolve })
     const resetJoinedAck = () => {
       joinedAck = new Promise<void>((resolve) => { resolveJoinedAck = resolve })
+    }
+
+    // ── Knock/admit — guest SFU auth ─────────────────────────────────────
+    // When a guest has no access token (no ?gt= exchange succeeded), they
+    // knock via signaling. The host admits them, the server issues a room-
+    // scoped JWT, and this promise resolves so SFU setup can continue.
+    let resolveKnockGranted: ((token: string) => void) | null = null
+    const knockGrantedPromise = new Promise<string>((resolve) => {
+      resolveKnockGranted = resolve
+    })
+
+    const handleKnockGranted = (env: Envelope<KnockGrantedData>) => {
+      const token = env.data?.sfuToken
+      if (!token) return
+      setAccessToken(token)
+      resolveKnockGranted?.(token)
+      useMeetStore.getState().setIsKnocking(false)
     }
 
     // ── Handlers ────────────────────────────────────────────────────────────
@@ -202,6 +221,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
     client.on('peer-state', handlePeerState as (env: Envelope) => void)
     client.on('sfu-tracks', handleSfuTracks as (env: Envelope) => void)
     client.on('error', handleError as (env: Envelope) => void)
+    client.on('knock-granted', handleKnockGranted as (env: Envelope) => void)
 
     ;(async () => {
       try {
@@ -236,6 +256,16 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
 
         await joinedAck
         if (disposed) return
+
+        // If no access token is present (guest via knock/admit, not email link),
+        // announce knock and wait for the host to admit. The handleKnockGranted
+        // handler sets the token and resolves knockGrantedPromise.
+        if (!getAccessToken()) {
+          useMeetStore.getState().setIsKnocking(true)
+          client.send('knock', undefined)
+          await knockGrantedPromise
+          if (disposed) return
+        }
 
         // Fetch ICE/TURN credentials only after the server accepts the room
         // join. The backend gates Cloudflare TURN to rooms that are active
@@ -396,6 +426,8 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       client.off('peer-state', handlePeerState as (env: Envelope) => void)
       client.off('sfu-tracks', handleSfuTracks as (env: Envelope) => void)
       client.off('error', handleError as (env: Envelope) => void)
+      client.off('knock-granted', handleKnockGranted as (env: Envelope) => void)
+      useMeetStore.getState().setIsKnocking(false)
       store.getState().clearAll()
     }
     // Intentionally excluding userName/initialAudio/initialVideo: they're

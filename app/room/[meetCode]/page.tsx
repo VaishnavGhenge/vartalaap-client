@@ -5,17 +5,29 @@ import MeetCall from "@/src/components/features/MeetCall";
 import { CallErrorBoundary } from "@/src/components/ui/CallErrorBoundary";
 import { useJoinMeetStore } from "@/src/stores/joinMeet";
 import { useMeetStore } from "@/src/stores/meet";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useEffect } from "react";
 import { usePeerStore } from "@/src/stores/peer";
 import { useSignaling } from "@/src/hooks/use-signaling";
 import { useCall } from "@/src/hooks/use-call";
+import { exchangeGuestToken } from "@/src/services/api/guestAuth";
 
 export default function MeetManager() {
     const params = useParams<{ meetCode: string }>();
     const meetCode = params.meetCode;
+    const searchParams = useSearchParams();
     const { hasJoinedMeet, setMeetCode, setHasJoinedMeet, userName } = useJoinMeetStore();
     const { clearMeet, setCurrentMeet, isMuted, isVideoOff } = useMeetStore();
+
+    // If the URL carries ?gt= (guest token from booking email), exchange it for
+    // a room-scoped SFU JWT before the user clicks Join. Succeeds silently;
+    // on failure the knock/admit flow handles SFU auth instead.
+    const guestToken = searchParams.get('gt');
+    useEffect(() => {
+        if (guestToken && meetCode) {
+            exchangeGuestToken(meetCode, guestToken).catch(() => undefined);
+        }
+    }, [guestToken, meetCode]);
     const { clearAll } = usePeerStore();
 
     const { client, connState, reconnectAttempt } = useSignaling(hasJoinedMeet);
