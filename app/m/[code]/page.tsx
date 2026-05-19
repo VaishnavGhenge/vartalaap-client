@@ -1,10 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Clock, Info } from "lucide-react";
-
 import { CancelBookingButton } from "@/src/components/booking/CancelBookingButton";
 import { Button } from "@/src/components/ui/button";
-import { InlineNotice } from "@/src/components/ui/InlineNotice";
 import { PoweredBy } from "@/src/components/ui/PoweredBy";
 import { StandaloneHeader } from "@/src/components/ui/StandaloneHeader";
 import { httpServerUri } from "@/src/services/api/config";
@@ -103,10 +100,8 @@ export default async function ConfirmationPage({ params, searchParams }: PagePro
                         )}
 
                         {booking.status !== "cancelled" && (
-                            <div className="mt-6 flex flex-col gap-2">
-                                <InlineNotice icon={Clock} className="mb-1 text-xs">
-                                    {roomHint}
-                                </InlineNotice>
+                            <div className="mt-6 flex flex-col gap-3">
+                                <p className="text-xs text-[hsl(var(--muted-foreground))]">{roomHint}</p>
                                 {roomOpen ? (
                                     <Button asChild size="lg" className="w-full">
                                         <Link href={`/room/${booking.meetCode}`} prefetch>
@@ -122,14 +117,14 @@ export default async function ConfirmationPage({ params, searchParams }: PagePro
                                     Use the same confirmation link if you need to return later.
                                 </p>
                                 {cancelToken && (
-                                    <div className="mt-3 border-t border-[hsl(var(--border))]/60 pt-3">
+                                    <div className="mt-2 border-t border-[hsl(var(--border))]/60 pt-3">
                                         <CancelBookingButton meetCode={booking.meetCode} cancelToken={cancelToken} />
                                     </div>
                                 )}
                                 {!cancelToken && (
-                                    <InlineNotice icon={Info} className="mt-3 text-xs">
+                                    <p className="text-center text-xs text-[hsl(var(--muted-foreground))]">
                                         To cancel, open the confirmation link from your email or contact the host.
-                                    </InlineNotice>
+                                    </p>
                                 )}
                             </div>
                         )}
