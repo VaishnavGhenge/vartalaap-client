@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Clock, Info } from "lucide-react";
+
 import { CancelBookingButton } from "@/src/components/booking/CancelBookingButton";
 import { Button } from "@/src/components/ui/button";
 import { PoweredBy } from "@/src/components/ui/PoweredBy";
@@ -101,7 +103,10 @@ export default async function ConfirmationPage({ params, searchParams }: PagePro
 
                         {booking.status !== "cancelled" && (
                             <div className="mt-6 flex flex-col gap-3">
-                                <p className="text-xs text-[hsl(var(--muted-foreground))]">{roomHint}</p>
+                                <div className="flex items-center gap-2 rounded-lg bg-[hsl(var(--surface-2))] px-3 py-2 text-xs text-[hsl(var(--muted-foreground))]">
+                                    <Clock className="size-3.5 shrink-0" />
+                                    {roomHint}
+                                </div>
                                 {roomOpen ? (
                                     <Button asChild size="lg" className="w-full">
                                         <Link href={`/room/${booking.meetCode}`} prefetch>
@@ -122,9 +127,10 @@ export default async function ConfirmationPage({ params, searchParams }: PagePro
                                     </div>
                                 )}
                                 {!cancelToken && (
-                                    <p className="text-center text-xs text-[hsl(var(--muted-foreground))]">
+                                    <div className="flex items-center gap-2 rounded-lg bg-[hsl(var(--surface-2))] px-3 py-2 text-xs text-[hsl(var(--muted-foreground))]">
+                                        <Info className="size-3.5 shrink-0" />
                                         To cancel, open the confirmation link from your email or contact the host.
-                                    </p>
+                                    </div>
                                 )}
                             </div>
                         )}
