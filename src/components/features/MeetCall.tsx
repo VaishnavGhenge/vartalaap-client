@@ -96,6 +96,18 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
     }, [autoLeaveCountdown]);
     const screenTrackRef = useRef<MediaStreamTrack | null>(null);
     const cameraWasOnBeforeShare = useRef(false);
+
+    const handleEndCall = () => {
+        screenTrackRef.current?.stop();
+        screenTrackRef.current = null;
+        playLeaveCall();
+        if (onLeave) {
+            onLeave();
+        } else {
+            clearMeet();
+            clearJoinMeet();
+        }
+    };
     useEffect(() => {
         setCanShare('share' in navigator);
         setCanScreenShare(typeof navigator.mediaDevices?.getDisplayMedia === 'function');
@@ -330,18 +342,6 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
         broadcastState(!isMuted, false, undefined, true);
         playScreenShareStart();
         track.addEventListener('ended', () => doStopScreenShare(), { once: true });
-    };
-
-    const handleEndCall = () => {
-        screenTrackRef.current?.stop();
-        screenTrackRef.current = null;
-        playLeaveCall();
-        if (onLeave) {
-            onLeave();
-        } else {
-            clearMeet();
-            clearJoinMeet();
-        }
     };
 
     const handleAdmit = (peerId: string) => {
