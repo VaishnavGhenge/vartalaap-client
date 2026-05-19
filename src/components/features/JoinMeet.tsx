@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Copy, Check, Share2, Settings, Loader2 } from "lucide-react";
+import { Copy, Check, Share2, Settings, Loader2, Clock, CalendarOff } from "lucide-react";
+import { fetchRoomStatus, type RoomStatusResult } from "@/src/services/api/room";
 import { SettingsPanel } from "@/src/components/ui/SettingsPanel";
 import { resumeSharedAudioContext } from "@/src/lib/audio-context";
 import { playJoinCall } from "@/src/lib/sounds";
@@ -12,6 +13,7 @@ import { FlipCameraButton } from "@/src/components/ui/FlipCameraButton";
 import { Input } from "@/src/components/ui/input";
 import { useParams } from "next/navigation";
 import { Button } from "@/src/components/ui/button";
+import { useAuth } from "@/src/hooks/use-auth";
 import { usePeerStore } from "@/src/stores/peer";
 import { useHasMultipleCameras } from "@/src/hooks/use-has-multiple-cameras";
 import { useMeetStore } from "@/src/stores/meet";
@@ -35,6 +37,9 @@ export default function JoinMeet() {
     const [canShare, setCanShare] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
     const [isJoining, setIsJoining] = useState(false);
+    const [roomStatus, setRoomStatus] = useState<RoomStatusResult | null>(null);
+    const [statusChecked, setStatusChecked] = useState(false);
+    const canJoinMeet = meetCodePattern.test(params.meetCode);
     useEffect(() => { setCanShare('share' in navigator); }, []);
 
     const { localStream, enableMic, disableMic, enableCamera, disableCamera, switchCamera,
@@ -46,9 +51,27 @@ export default function JoinMeet() {
     const showSpeaker = supportsAudioOutputSelection() && audioOutputs.length > 0;
     const { speaking, level } = useAudioLevel(localStream, !isMuted);
     const { userName, setUserName, setMeetCode: setStoredMeetCode, setHasJoinedMeet } = useJoinMeetStore();
-    const canJoinMeet = meetCodePattern.test(params.meetCode);
+    const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+    const joinName = isAuthenticated && user ? (user.name || user.email) : userName;
+
+    useEffect(() => {
+        setRoomStatus(null);
+        setStatusChecked(false);
+        if (!canJoinMeet) { setStatusChecked(true); return; }
+        let cancelled = false;
+        fetchRoomStatus(params.meetCode)
+            .then((status) => { if (!cancelled) setRoomStatus(status); })
+            .finally(() => { if (!cancelled) setStatusChecked(true); });
+        return () => { cancelled = true; };
+    }, [canJoinMeet, params.meetCode]);
 
     useEffect(() => { setMeetCode(params.meetCode); }, [params]);
+
+    useEffect(() => {
+        if (isAuthenticated && user) {
+            setUserName(user.name || user.email);
+        }
+    }, [isAuthenticated, user, setUserName]);
 
     useEffect(() => {
         if (videoRef.current) videoRef.current.srcObject = localStream;
@@ -75,8 +98,10 @@ export default function JoinMeet() {
     };
 
     const handleJoin = () => {
-        if (!userName.trim() || !canJoinMeet || isJoining) return;
+        const name = joinName.trim();
+        if (!name || !canJoinMeet || isJoining) return;
         setIsJoining(true);
+        setUserName(name);
         setStoredMeetCode(params.meetCode);
         resumeSharedAudioContext();
         playJoinCall();
@@ -97,7 +122,7 @@ export default function JoinMeet() {
         }
     };
 
-    const previewName = userName || 'You';
+    const previewName = joinName || 'You';
     const avatarBg = avatarColor(previewName);
     const initials = initialsOf(previewName);
 
@@ -215,7 +240,7 @@ export default function JoinMeet() {
                     <div className="lg:col-span-2 flex flex-col justify-center">
                         <div className="app-panel rounded-2xl p-5 sm:p-6">
 
-                            {/* Meeting code row */}
+                            {/* Meeting code row — always visible */}
                             <div className="flex items-center justify-between gap-3
                                             rounded-xl border border-[hsl(var(--border))]
                                             bg-[hsl(var(--surface-2))]/80 px-4 py-3">
@@ -243,29 +268,61 @@ export default function JoinMeet() {
                                 </button>
                             </div>
 
-                            <div className="mt-4 flex flex-col gap-3">
-                                <label htmlFor="join-name" className="sr-only">Your name</label>
-                                <Input
-                                    id="join-name"
-                                    placeholder="Your name"
-                                    value={userName}
-                                    onChange={(e) => setUserName(e.target.value)}
-                                    onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
-                                    autoComplete="name"
-                                    maxLength={40}
-                                    disabled={isJoining}
-                                />
-                                <Button
-                                    onClick={handleJoin}
-                                    disabled={!userName.trim() || !canJoinMeet || isJoining}
-                                    aria-busy={isJoining}
-                                    size="lg"
-                                    className="w-full"
-                                >
-                                    {isJoining && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
-                                    {isJoining ? "Joining..." : "Join now"}
-                                </Button>
-                            </div>
+                            {!statusChecked ? (
+                                /* Status check in flight */
+                                <div className="mt-6 flex items-center justify-center py-6">
+                                    <Loader2 className="size-5 animate-spin text-[hsl(var(--muted-foreground))]" aria-label="Checking room status" />
+                                </div>
+                            ) : roomStatus && roomStatus.status !== 'open' && roomStatus.status !== 'unavailable' ? (
+                                /* Room is not accessible — show a clear reason */
+                                <RoomStatusCard status={roomStatus} />
+                            ) : (
+                                <div className="mt-4 flex flex-col gap-3">
+                                    {authLoading ? (
+                                        <p className="rounded-xl border border-[hsl(var(--border))]/70 bg-[hsl(var(--surface-2))] px-3 py-2.5 text-sm text-[hsl(var(--muted-foreground))]">
+                                            Preparing your session…
+                                        </p>
+                                    ) : isAuthenticated && user ? (
+                                        <div className="flex items-center gap-3 rounded-xl border border-[hsl(var(--border))]/70 bg-[hsl(var(--surface-2))] px-3 py-2.5">
+                                            {user.avatarUrl ? (
+                                                <img src={user.avatarUrl} alt={joinName} className="size-8 rounded-full object-cover" />
+                                            ) : (
+                                                <span className={`flex size-8 items-center justify-center rounded-full ${avatarColor(joinName)} text-xs font-semibold text-white`}>
+                                                    {initialsOf(joinName)}
+                                                </span>
+                                            )}
+                                            <div className="min-w-0">
+                                                <p className="truncate text-sm font-medium text-[hsl(var(--foreground))]">{joinName}</p>
+                                                <p className="text-xs text-[hsl(var(--muted-foreground))]">Joining with your Sessionly profile</p>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <label htmlFor="join-name" className="sr-only">Your name</label>
+                                            <Input
+                                                id="join-name"
+                                                placeholder="Your name"
+                                                value={userName}
+                                                onChange={(e) => setUserName(e.target.value)}
+                                                onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
+                                                autoComplete="name"
+                                                maxLength={40}
+                                                disabled={isJoining}
+                                            />
+                                        </>
+                                    )}
+                                    <Button
+                                        onClick={handleJoin}
+                                        disabled={authLoading || !joinName.trim() || !canJoinMeet || isJoining}
+                                        aria-busy={isJoining}
+                                        size="lg"
+                                        className="w-full"
+                                    >
+                                        {isJoining && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
+                                        {isJoining ? "Joining..." : "Join now"}
+                                    </Button>
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -274,5 +331,34 @@ export default function JoinMeet() {
 
         {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} isVideoOff={isVideoOff} />}
         </main>
+    );
+}
+
+function RoomStatusCard({ status }: { status: RoomStatusResult }) {
+    const tooEarly = status.status === "too_early";
+    const Icon = tooEarly ? Clock : CalendarOff;
+    const opensAt = status.opensAt
+        ? new Intl.DateTimeFormat(undefined, {
+            dateStyle: "medium",
+            timeStyle: "short",
+        }).format(new Date(status.opensAt))
+        : null;
+    const title = tooEarly ? "This room is not open yet" : "This room is not available";
+    const body = status.message || (tooEarly && opensAt
+        ? `You can join from ${opensAt}.`
+        : "Check the meeting link or ask the host for a new one.");
+
+    return (
+        <div className="mt-4 rounded-xl border border-[hsl(var(--border))]/70 bg-[hsl(var(--surface-2))] p-4">
+            <div className="flex items-start gap-3">
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--surface-3))] text-[hsl(var(--muted-foreground))]">
+                    <Icon className="size-4" />
+                </span>
+                <div className="min-w-0">
+                    <p className="text-sm font-semibold text-[hsl(var(--foreground))]">{title}</p>
+                    <p className="mt-1 text-sm leading-5 text-[hsl(var(--muted-foreground))]">{body}</p>
+                </div>
+            </div>
+        </div>
     );
 }
