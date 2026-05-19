@@ -86,14 +86,6 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
         }
     }, [secsLeft]);
 
-    // Auto-leave countdown
-    useEffect(() => {
-        if (autoLeaveCountdown === null) return;
-        if (autoLeaveCountdown <= 0) { handleEndCall(); return; }
-        const id = setTimeout(() => setAutoLeaveCountdown((c) => (c ?? 1) - 1), 1_000);
-        return () => clearTimeout(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [autoLeaveCountdown]);
     const screenTrackRef = useRef<MediaStreamTrack | null>(null);
     const cameraWasOnBeforeShare = useRef(false);
 
@@ -108,6 +100,16 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
             clearJoinMeet();
         }
     };
+
+    // Auto-leave countdown
+    useEffect(() => {
+        if (autoLeaveCountdown === null) return;
+        if (autoLeaveCountdown <= 0) { handleEndCall(); return; }
+        const id = setTimeout(() => setAutoLeaveCountdown((c) => (c ?? 1) - 1), 1_000);
+        return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [autoLeaveCountdown]);
+
     useEffect(() => {
         setCanShare('share' in navigator);
         setCanScreenShare(typeof navigator.mediaDevices?.getDisplayMedia === 'function');
