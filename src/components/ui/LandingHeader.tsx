@@ -7,6 +7,7 @@ import { Menu, X } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
 import { SessionlyBrand } from "@/src/components/ui/SessionlyBrand";
 import { ThemeToggleButton } from "@/src/components/ui/ThemeToggleButton";
+import { useAuth } from "@/src/hooks/use-auth";
 
 const NAV = [
     { label: "Features",   href: "/#features" },
@@ -17,6 +18,7 @@ const NAV = [
 export function LandingHeader() {
     const [open, setOpen] = useState(false);
     const pathname = usePathname();
+    const { isAuthenticated } = useAuth();
 
     // Close the sheet whenever the route changes (covers hash links too).
     useEffect(() => { setOpen(false); }, [pathname]);
@@ -56,17 +58,25 @@ export function LandingHeader() {
 
                 <div className="flex items-center gap-2 justify-end">
                     <ThemeToggleButton />
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        className="hidden text-sm font-medium md:inline-flex"
-                        asChild
-                    >
-                        <Link href="/login">Sign in</Link>
-                    </Button>
-                    <Button size="sm" className="hidden px-4 text-sm font-semibold md:inline-flex" asChild>
-                        <Link href="/register">Get started free</Link>
-                    </Button>
+                    {isAuthenticated ? (
+                        <Button size="sm" className="hidden px-4 text-sm font-semibold md:inline-flex" asChild>
+                            <Link href="/dashboard">Dashboard</Link>
+                        </Button>
+                    ) : (
+                        <>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="hidden text-sm font-medium md:inline-flex"
+                                asChild
+                            >
+                                <Link href="/login">Sign in</Link>
+                            </Button>
+                            <Button size="sm" className="hidden px-4 text-sm font-semibold md:inline-flex" asChild>
+                                <Link href="/register">Get started free</Link>
+                            </Button>
+                        </>
+                    )}
 
                     <button
                         type="button"
@@ -122,12 +132,20 @@ export function LandingHeader() {
                         ))}
                     </nav>
                     <div className="border-t border-[hsl(var(--border))]/60 p-3 flex flex-col gap-2">
-                        <Button variant="outline" size="lg" className="w-full text-base" asChild>
-                            <Link href="/login" onClick={() => setOpen(false)}>Sign in</Link>
-                        </Button>
-                        <Button size="lg" className="w-full text-base font-semibold" asChild>
-                            <Link href="/register" onClick={() => setOpen(false)}>Get started free</Link>
-                        </Button>
+                        {isAuthenticated ? (
+                            <Button size="lg" className="w-full text-base font-semibold" asChild>
+                                <Link href="/dashboard" onClick={() => setOpen(false)}>Dashboard</Link>
+                            </Button>
+                        ) : (
+                            <>
+                                <Button variant="outline" size="lg" className="w-full text-base" asChild>
+                                    <Link href="/login" onClick={() => setOpen(false)}>Sign in</Link>
+                                </Button>
+                                <Button size="lg" className="w-full text-base font-semibold" asChild>
+                                    <Link href="/register" onClick={() => setOpen(false)}>Get started free</Link>
+                                </Button>
+                            </>
+                        )}
                     </div>
                 </div>
             </div>

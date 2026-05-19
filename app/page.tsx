@@ -1,10 +1,7 @@
 "use client";
 
 import { Button } from "@/src/components/ui/button";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
 import Link from "next/link";
-import { useAuth } from "@/src/hooks/use-auth";
 import { avatarColor, initialsOf } from "@/src/lib/avatar";
 import { Check, ArrowRight, Video, CreditCard, CalendarCheck, Link2, Mic, PhoneOff } from "lucide-react";
 import { LandingHeader } from "@/src/components/ui/LandingHeader";
@@ -455,15 +452,5 @@ function LandingPage() {
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
 export default function Home() {
-    const { isAuthenticated, isLoading } = useAuth();
-    const router = useRouter();
-
-    useEffect(() => {
-        if (!isLoading && isAuthenticated) router.replace("/dashboard");
-    }, [isAuthenticated, isLoading, router]);
-
-    if (isLoading) return <div className="flex min-h-dvh flex-col" />;
-    if (isAuthenticated) return <div className="flex min-h-dvh flex-col" />;
-
     return <LandingPage />;
 }
