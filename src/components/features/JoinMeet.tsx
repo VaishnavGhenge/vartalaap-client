@@ -25,6 +25,7 @@ import { supportsAudioOutputSelection } from "@/src/lib/audio-context";
 import { MicLevelMeter } from "@/src/components/ui/MicLevelMeter";
 import { DeviceSelect } from "@/src/components/ui/DeviceSelect";
 import { Collapsible } from "@/src/components/ui/Collapsible";
+import { callDefaults } from "@/src/lib/call-defaults";
 
 const meetCodePattern = /^[a-z2-9]{3}-[a-z2-9]{4}-[a-z2-9]{3}$/;
 
@@ -71,6 +72,16 @@ export default function JoinMeet() {
     }, [canJoinMeet, params.meetCode]);
 
     useEffect(() => { setMeetCode(params.meetCode); }, [params]);
+
+    // Apply the user's saved call defaults once on mount. The store resets to
+    // isMuted=true / isVideoOff=true on every load; we correct to their saved
+    // preference here before they interact with the toggles.
+    useEffect(() => {
+        const { isMuted, isVideoOff, toggleMute, toggleVideo } = useMeetStore.getState();
+        if (callDefaults.getMicOn() && isMuted) toggleMute();
+        if (callDefaults.getCameraOn() && isVideoOff) toggleVideo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     useEffect(() => {
         if (isAuthenticated && user) {

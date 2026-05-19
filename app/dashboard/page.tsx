@@ -14,6 +14,7 @@ import {
     Link2,
     LogOut,
     LaptopMinimal,
+    Mic,
     MoonStar,
     Settings,
     SunMedium,
@@ -32,7 +33,9 @@ import { InlineNotice } from "@/src/components/ui/InlineNotice";
 import { Input } from "@/src/components/ui/input";
 import { NewMeetingButton } from "@/src/components/ui/NewMeetButton";
 import { SessionlyBrand } from "@/src/components/ui/SessionlyBrand";
+import { Switch } from "@/src/components/ui/Switch";
 import { ThemeMode, useTheme } from "@/src/components/theme-provider";
+import { callDefaults } from "@/src/lib/call-defaults";
 import { useAuth } from "@/src/hooks/use-auth";
 import { roomPath } from "@/src/lib/room-routes";
 import { initialsOf } from "@/src/lib/avatar";
@@ -82,8 +85,8 @@ const PANEL_COPY: Record<PanelKey, { eyebrow: string; title: string; body: strin
     },
     availability: {
         eyebrow: "Availability",
-        title: "Set bookable hours",
-        body: "Guests only see times inside these windows. Add split shifts when a day has a break.",
+        title: "Weekly availability",
+        body: "Set the recurring weekly windows guests can book. Existing bookings are shown under Bookings.",
     },
     "booking-types": {
         eyebrow: "Event types",
@@ -785,53 +788,70 @@ function ProfilePanel({
 
 function SettingsPanel() {
     const { theme, setTheme } = useTheme();
+    const [micOn, setMicOn] = useState(() => callDefaults.getMicOn());
+    const [cameraOn, setCameraOn] = useState(() => callDefaults.getCameraOn());
+
+    const handleMicToggle = (v: boolean) => { setMicOn(v); callDefaults.setMicOn(v); };
+    const handleCameraToggle = (v: boolean) => { setCameraOn(v); callDefaults.setCameraOn(v); };
 
     return (
         <div className="flex flex-col gap-5">
             {/* Appearance */}
             <section className="app-panel no-lift rounded-2xl p-5 sm:p-6">
                 <p className="mb-1 text-sm font-semibold text-[hsl(var(--foreground))]">Appearance</p>
-                <p className="mb-5 text-sm text-[hsl(var(--muted-foreground))]">
+                <p className="mb-4 text-sm text-[hsl(var(--muted-foreground))]">
                     Choose how Sessionly looks on this device.
                 </p>
-                <div className="grid gap-3 sm:grid-cols-3">
-                    {THEME_OPTIONS.map(({ label, value, icon: Icon, body }) => {
+                <div
+                    role="radiogroup"
+                    aria-label="Theme"
+                    className="inline-flex rounded-xl border border-[hsl(var(--border))]/70 bg-[hsl(var(--surface-2))] p-1 gap-1"
+                >
+                    {THEME_OPTIONS.map(({ label, value, icon: Icon }) => {
                         const active = theme === value;
                         return (
                             <button
                                 key={value}
                                 type="button"
+                                role="radio"
+                                aria-checked={active}
                                 onClick={() => setTheme(value)}
-                                aria-pressed={active}
                                 className={cn(
-                                    "press cursor-pointer rounded-xl border p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]/50",
+                                    "press flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]/50",
                                     active
-                                        ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))]/10 shadow-[0_0_0_3px_hsl(var(--primary)/0.12)]"
-                                        : "border-[hsl(var(--border))]/80 bg-[hsl(var(--surface-2))] hover:border-[hsl(var(--primary))]/50 hover:bg-[hsl(var(--surface-2))]",
+                                        ? "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] font-medium shadow-sm"
+                                        : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--surface-3))]",
                                 )}
                             >
-                                <div className="mb-4 flex items-start justify-between">
-                                    <span
-                                        className={cn(
-                                            "flex size-9 items-center justify-center rounded-lg",
-                                            active
-                                                ? "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]"
-                                                : "bg-[hsl(var(--surface-3))] text-[hsl(var(--muted-foreground))]",
-                                        )}
-                                    >
-                                        <Icon className="size-4" />
-                                    </span>
-                                    {active && (
-                                        <span className="flex size-4 items-center justify-center rounded-full bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]">
-                                            <Check className="size-2.5" />
-                                        </span>
-                                    )}
-                                </div>
-                                <span className="block font-medium text-[hsl(var(--foreground))]">{label}</span>
-                                <span className="mt-1 block text-sm leading-5 text-[hsl(var(--muted-foreground))]">{body}</span>
+                                <Icon className="size-3.5 shrink-0" />
+                                {label}
                             </button>
                         );
                     })}
+                </div>
+            </section>
+
+            {/* Call defaults */}
+            <section className="app-panel no-lift rounded-2xl p-5 sm:p-6">
+                <p className="mb-1 text-sm font-semibold text-[hsl(var(--foreground))]">Call defaults</p>
+                <p className="mb-4 text-sm text-[hsl(var(--muted-foreground))]">
+                    Choose what&apos;s on when you first join a call. You can always change this in the prejoin screen.
+                </p>
+                <div className="flex flex-col divide-y divide-[hsl(var(--border))]/50">
+                    <div className="flex items-center justify-between py-3">
+                        <div className="flex items-center gap-2.5">
+                            <Mic className="size-4 text-[hsl(var(--muted-foreground))]" />
+                            <span className="text-sm text-[hsl(var(--foreground))]">Microphone on by default</span>
+                        </div>
+                        <Switch checked={micOn} onChange={handleMicToggle} size="sm" />
+                    </div>
+                    <div className="flex items-center justify-between py-3">
+                        <div className="flex items-center gap-2.5">
+                            <Video className="size-4 text-[hsl(var(--muted-foreground))]" />
+                            <span className="text-sm text-[hsl(var(--foreground))]">Camera on by default</span>
+                        </div>
+                        <Switch checked={cameraOn} onChange={handleCameraToggle} size="sm" />
+                    </div>
                 </div>
             </section>
         </div>

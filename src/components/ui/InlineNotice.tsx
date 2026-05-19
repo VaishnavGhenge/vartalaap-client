@@ -51,12 +51,12 @@ export function InlineNotice({
         <div
             role={tone === "danger" ? "alert" : undefined}
             className={cn(
-                "flex items-start gap-3 rounded-xl border px-3 py-2.5 text-sm leading-5",
+                "flex items-center gap-3 rounded-xl border px-3 py-2.5 text-sm leading-5",
                 styles.container,
                 className,
             )}
         >
-            <span className={cn("mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg", styles.iconWrap)}>
+            <span className={cn("flex size-7 shrink-0 items-center justify-center rounded-lg", styles.iconWrap)}>
                 <NoticeIcon className={cn("size-3.5", styles.icon)} />
             </span>
             <div className="min-w-0">
