@@ -70,7 +70,7 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
         tick();
         const id = setInterval(tick, 1_000);
         return () => clearInterval(id);
-    }, [roomClosesAt]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [roomClosesAt]);
 
     // One-shot toasts
     useEffect(() => {

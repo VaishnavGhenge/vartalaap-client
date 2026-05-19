@@ -69,7 +69,7 @@ export default function JoinMeet() {
             })
             .finally(() => { if (!cancelled) setStatusChecked(true); });
         return () => { cancelled = true; };
-    }, [canJoinMeet, params.meetCode]);
+    }, [canJoinMeet, params.meetCode, setRoomClosesAt, setRoomStatus, setStatusChecked]);
 
     useEffect(() => { setMeetCode(params.meetCode); }, [params]);
 
@@ -80,7 +80,6 @@ export default function JoinMeet() {
         const { isMuted, isVideoOff, toggleMute, toggleVideo } = useMeetStore.getState();
         if (callDefaults.getMicOn() && isMuted) toggleMute();
         if (callDefaults.getCameraOn() && isVideoOff) toggleVideo();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useEffect(() => {
