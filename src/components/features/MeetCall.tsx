@@ -2,6 +2,7 @@
 
 import { PhoneOff, Copy, Check, Share2, Monitor, UserCheck, Clock, Timer } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/src/lib/utils";
 import { resumeSharedAudioContext } from "@/src/lib/audio-context";
 import { playLeaveCall, playScreenShareStart, playScreenShareStop } from "@/src/lib/sounds";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -42,48 +43,53 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
     const [isPicking, setIsPicking] = useState(false);
     const [knockRequests, setKnockRequests] = useState<Array<{ peerId: string; name: string }>>([]);
 
-    // Session expiry — minsLeft is null when no closesAt is set (instant rooms).
-    // At T−5min we fire a toast; at T−2min we show a persistent banner;
-    // at T+0 we display a countdown overlay and auto-leave after 10 seconds.
-    const [minsLeft, setMinsLeft] = useState<number | null>(null);
+    // Session expiry — secsLeft is null when no closesAt (instant rooms).
+    // Ticks every second when under 10 min so the in-call timer stays accurate.
+    // At T−10min: timer appears in top bar (neutral).
+    // At T−5min: timer turns amber + one-shot toast.
+    // At T+0: auto-leave overlay with 10-second countdown.
+    const [secsLeft, setSecsLeft] = useState<number | null>(null);
     const [autoLeaveCountdown, setAutoLeaveCountdown] = useState<number | null>(null);
+    const tenMinToastFired = useRef(false);
+    const fiveMinToastFired = useRef(false);
 
     useEffect(() => {
         if (!roomClosesAt) return;
         const closesMs = new Date(roomClosesAt).getTime();
 
         const tick = () => {
-            const remaining = closesMs - Date.now();
-            const mins = Math.ceil(remaining / 60_000);
-            setMinsLeft(mins);
+            const remaining = Math.max(0, closesMs - Date.now());
+            const secs = Math.ceil(remaining / 1_000);
+            setSecsLeft(secs);
 
-            if (remaining <= 0 && autoLeaveCountdown === null) {
-                setAutoLeaveCountdown(10);
+            if (remaining <= 0) {
+                setAutoLeaveCountdown((c) => c ?? 10);
             }
         };
 
         tick();
-        const id = setInterval(tick, 10_000);
+        const id = setInterval(tick, 1_000);
         return () => clearInterval(id);
     }, [roomClosesAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // One-shot toast at T−5min
-    const fiveMinToastFired = useRef(false);
+    // One-shot toasts
     useEffect(() => {
-        if (minsLeft === null || fiveMinToastFired.current) return;
-        if (minsLeft <= 5 && minsLeft > 0) {
-            fiveMinToastFired.current = true;
-            toast(`Session ends in ${minsLeft} minute${minsLeft === 1 ? '' : 's'}.`);
+        if (secsLeft === null) return;
+        const mins = Math.ceil(secsLeft / 60);
+        if (!tenMinToastFired.current && mins <= 10 && mins > 5) {
+            tenMinToastFired.current = true;
+            toast('10 minutes remaining in this session.');
         }
-    }, [minsLeft]);
+        if (!fiveMinToastFired.current && mins <= 5 && secsLeft > 0) {
+            fiveMinToastFired.current = true;
+            toast.warning('5 minutes remaining in this session.');
+        }
+    }, [secsLeft]);
 
-    // Auto-leave countdown tick
+    // Auto-leave countdown
     useEffect(() => {
         if (autoLeaveCountdown === null) return;
-        if (autoLeaveCountdown <= 0) {
-            handleEndCall();
-            return;
-        }
+        if (autoLeaveCountdown <= 0) { handleEndCall(); return; }
         const id = setTimeout(() => setAutoLeaveCountdown((c) => (c ?? 1) - 1), 1_000);
         return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -446,12 +452,17 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                 </div>
             )}
 
-            {/* Persistent warning banner at T−2 min */}
-            {autoLeaveCountdown === null && minsLeft !== null && minsLeft <= 2 && minsLeft > 0 && (
-                <div className="fixed top-4 left-1/2 -translate-x-1/2 z-40">
-                    <div className="glass-pill flex items-center gap-2 px-4 py-2 text-xs font-medium text-[hsl(var(--foreground))] shadow-lg border border-[hsl(var(--destructive))]/30">
-                        <Timer className="size-3.5 shrink-0 text-[hsl(var(--destructive))]" />
-                        Session ends in {minsLeft} minute{minsLeft === 1 ? '' : 's'}
+            {/* Persistent session timer — shown from T−10min */}
+            {autoLeaveCountdown === null && secsLeft !== null && secsLeft > 0 && secsLeft <= 10 * 60 && (
+                <div className="fixed top-4 left-1/2 -translate-x-1/2 z-40 pointer-events-none">
+                    <div className={cn(
+                        "glass-pill flex items-center gap-2 px-4 py-2 text-xs font-semibold tabular-nums shadow-lg",
+                        secsLeft <= 5 * 60
+                            ? "border border-amber-500/40 text-amber-500"
+                            : "text-[hsl(var(--muted-foreground))]",
+                    )}>
+                        <Timer className="size-3.5 shrink-0" />
+                        {formatSecsLeft(secsLeft)}
                     </div>
                 </div>
             )}
@@ -592,4 +603,10 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
 
         </div>
     );
+}
+
+function formatSecsLeft(secs: number): string {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m}:${String(s).padStart(2, '0')} left`;
 }

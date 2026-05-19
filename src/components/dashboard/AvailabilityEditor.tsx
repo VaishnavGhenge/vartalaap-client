@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, Copy, LayoutGrid, List, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Check, Copy, LayoutGrid, List, Plus, X } from "lucide-react";
 
 import { Button } from "@/src/components/ui/button";
-import { BufferingButtonLabel } from "@/src/components/ui/BufferingButtonLabel";
 import { ConfirmDialog } from "@/src/components/ui/ConfirmDialog";
-import { Select } from "@/src/components/ui/select";
+import { EditActionBar, EditTrigger } from "@/src/components/ui/EditActionBar";
+import { SearchableSelect } from "@/src/components/ui/SearchableSelect";
 import { Switch } from "@/src/components/ui/Switch";
 import { cn } from "@/src/lib/utils";
 import {
@@ -435,35 +435,29 @@ export function AvailabilityEditor({ timezone, onSaved }: Props) {
                                         <>
                                             {cfg.shifts.map((shift, idx) => (
                                                 <div key={idx} className="flex items-center gap-2">
-                                                    <Select
+                                                    <SearchableSelect
                                                         selectSize="sm"
                                                         value={shift.start}
                                                         disabled={!editing}
                                                         wrapperClassName="w-32"
-                                                        onChange={(e) => updateShift(day, idx, "start", e.target.value)}
-                                                    >
-                                                        {TIME_OPTIONS.map((t) => (
-                                                            <option key={t} value={t}>{formatTime12h(t)}</option>
-                                                        ))}
-                                                    </Select>
+                                                        onValueChange={(v) => updateShift(day, idx, "start", v)}
+                                                        options={TIME_OPTIONS.map((t) => ({ value: t, label: formatTime12h(t) }))}
+                                                    />
                                                     <span className="shrink-0 text-xs text-[hsl(var(--muted-foreground))]">–</span>
-                                                    <Select
+                                                    <SearchableSelect
                                                         selectSize="sm"
                                                         value={shift.end}
                                                         disabled={!editing}
                                                         wrapperClassName="w-32"
-                                                        onChange={(e) => updateShift(day, idx, "end", e.target.value)}
-                                                    >
-                                                        {TIME_OPTIONS.map((t) => (
-                                                            <option key={t} value={t}>{formatTime12h(t)}</option>
-                                                        ))}
-                                                    </Select>
+                                                        onValueChange={(v) => updateShift(day, idx, "end", v)}
+                                                        options={TIME_OPTIONS.map((t) => ({ value: t, label: formatTime12h(t) }))}
+                                                    />
                                                     {editing && (
                                                         <button
                                                             type="button"
                                                             aria-label="Remove shift"
                                                             onClick={() => removeShift(day, idx)}
-                                                            className="flex size-6 shrink-0 items-center justify-center rounded-md text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--destructive))]/10 hover:text-[hsl(var(--destructive))]"
+                                                            className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--destructive))]/10 hover:text-[hsl(var(--destructive))]"
                                                         >
                                                             <X className="size-3.5" />
                                                         </button>
@@ -544,29 +538,17 @@ export function AvailabilityEditor({ timezone, onSaved }: Props) {
                 </div>
 
                 {editing ? (
-                    <div className="flex items-center gap-2">
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={enabledCount === 0 || saving}
-                            onClick={() => setClearWeekOpen(true)}
-                        >
-                            <Trash2 className="size-3.5" />
-                            Clear
-                        </Button>
-                        <Button variant="ghost" size="sm" disabled={saving} onClick={cancelEdit}>
-                            <X className="size-3.5" />
-                            Cancel
-                        </Button>
-                        <Button size="sm" disabled={saving || !loaded || !!localError} onClick={handleSave}>
-                            {saving ? <BufferingButtonLabel label="Saving…" /> : <><Check className="size-3.5" />Save</>}
-                        </Button>
-                    </div>
+                    <EditActionBar
+                        onClear={() => setClearWeekOpen(true)}
+                        clearLabel="Reset"
+                        clearDisabled={enabledCount === 0}
+                        onCancel={cancelEdit}
+                        onSave={handleSave}
+                        saving={saving}
+                        saveDisabled={!loaded || !!localError}
+                    />
                 ) : (
-                    <Button variant="secondary" size="sm" disabled={!loaded} onClick={enterEdit}>
-                        <Pencil className="size-3.5" />
-                        Edit
-                    </Button>
+                    <EditTrigger disabled={!loaded} onClick={enterEdit} />
                 )}
             </div>
             <ConfirmDialog

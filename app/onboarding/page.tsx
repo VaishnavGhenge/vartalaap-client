@@ -7,29 +7,17 @@ import { Button } from "@/src/components/ui/button";
 import { FieldError, FormError } from "@/src/components/ui/FormError";
 import { Input } from "@/src/components/ui/input";
 import { Select } from "@/src/components/ui/select";
+import { SearchableSelect } from "@/src/components/ui/SearchableSelect";
+import { ThemeToggleButton } from "@/src/components/ui/ThemeToggleButton";
 import { useAuth } from "@/src/hooks/use-auth";
 import { ApiError } from "@/src/services/api/fetch";
 import { updateProfile } from "@/src/services/api/auth";
 import { getAvailability, putAvailability, type AvailabilityRule } from "@/src/services/api/availability";
 import { createEventType, listEventTypes } from "@/src/services/api/event-types";
 import { useAuthStore } from "@/src/stores/auth";
+import { TIMEZONES } from "@/src/lib/timezones";
 
 const TOTAL_STEPS = 5;
-
-const TIMEZONES = [
-    "America/New_York",
-    "America/Chicago",
-    "America/Denver",
-    "America/Los_Angeles",
-    "America/Toronto",
-    "Europe/London",
-    "Europe/Paris",
-    "Europe/Berlin",
-    "Asia/Kolkata",
-    "Asia/Tokyo",
-    "Asia/Singapore",
-    "Australia/Sydney",
-];
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -255,15 +243,12 @@ function Step1({
                 </div>
                 <div>
                     <label htmlFor="onboarding-timezone" className="label-caps block mb-1.5">Your timezone</label>
-                    <Select
+                    <SearchableSelect
                         id="onboarding-timezone"
                         value={tz}
-                        onChange={e => setTz(e.target.value)}
-                    >
-                        {TIMEZONES.map(t => (
-                            <option key={t} value={t}>{t.replace("_", " ")}</option>
-                        ))}
-                    </Select>
+                        onValueChange={setTz}
+                        options={TIMEZONES.map((t) => ({ value: t, label: t.replace(/_/g, " ") }))}
+                    />
                 </div>
                 <FormError>{formError}</FormError>
             </div>
@@ -784,6 +769,9 @@ export default function OnboardingPage() {
 
     return (
         <div className="flex min-h-dvh flex-col items-center justify-center px-4 py-16">
+            <div className="absolute right-4 top-4 sm:right-6 sm:top-6">
+                <ThemeToggleButton />
+            </div>
             <div className="w-full max-w-md">
                 {step === 1 && (
                     <Step1

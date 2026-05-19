@@ -5,7 +5,8 @@ export type RoomStatus = 'open' | 'too_early' | 'ended' | 'cancelled' | 'not_fou
 export interface RoomStatusResult {
     status: RoomStatus | 'unavailable'
     message?: string
-    opensAt?: string // ISO 8601 UTC, present when status === 'too_early'
+    opensAt?: string  // ISO 8601 UTC, present when status === 'too_early'
+    closesAt?: string // ISO 8601 UTC, present when status === 'open'
 }
 
 export async function fetchRoomStatus(code: string): Promise<RoomStatusResult> {

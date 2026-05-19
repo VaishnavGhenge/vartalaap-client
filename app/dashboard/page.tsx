@@ -4,7 +4,9 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import {
+    AlertTriangle,
     CalendarCheck,
+    CalendarDays,
     Check,
     CheckCircle2,
     Copy,
@@ -15,15 +17,18 @@ import {
     MoonStar,
     Settings,
     SunMedium,
+    UserRound,
     Video,
 } from "lucide-react";
 
 import { AvailabilityEditor } from "@/src/components/dashboard/AvailabilityEditor";
+import { BookingsPanel } from "@/src/components/dashboard/BookingsPanel";
 import { EventTypesPanel } from "@/src/components/dashboard/EventTypesPanel";
 import { SetupChecklist, type SetupState } from "@/src/components/dashboard/SetupChecklist";
 import { UpcomingBookings } from "@/src/components/dashboard/UpcomingBookings";
 import { BufferingButtonLabel } from "@/src/components/ui/BufferingButtonLabel";
 import { Button } from "@/src/components/ui/button";
+import { InlineNotice } from "@/src/components/ui/InlineNotice";
 import { Input } from "@/src/components/ui/input";
 import { NewMeetingButton } from "@/src/components/ui/NewMeetButton";
 import { SessionlyBrand } from "@/src/components/ui/SessionlyBrand";
@@ -36,11 +41,14 @@ import { getAvailability } from "@/src/services/api/availability";
 import { listEventTypes } from "@/src/services/api/event-types";
 import { listMyBookings, type HostBooking } from "@/src/services/api/bookings";
 import { updateProfile } from "@/src/services/api/auth";
+import { SearchableSelect } from "@/src/components/ui/SearchableSelect";
+import { TIMEZONES } from "@/src/lib/timezones";
 
-type PanelKey = "overview" | "availability" | "booking-types" | "payments" | "settings";
+type PanelKey = "overview" | "profile" | "availability" | "booking-types" | "bookings" | "payments" | "settings";
+type SidebarPanelKey = Exclude<PanelKey, "profile">;
 
 const SIDEBAR_ITEMS: ReadonlyArray<{
-    key: PanelKey;
+    key: SidebarPanelKey;
     icon: typeof CheckCircle2;
     label: string;
     // shortLabel is shown only on the mobile bottom-bar where each cell is
@@ -49,6 +57,7 @@ const SIDEBAR_ITEMS: ReadonlyArray<{
     shortLabel?: string;
 }> = [
     { key: "overview", icon: CheckCircle2, label: "Overview", shortLabel: "Home" },
+    { key: "bookings", icon: CalendarDays, label: "Bookings", shortLabel: "Bookings" },
     { key: "availability", icon: CalendarCheck, label: "Availability", shortLabel: "Hours" },
     { key: "booking-types", icon: Link2, label: "Event types", shortLabel: "Events" },
     { key: "payments", icon: CreditCard, label: "Payments", shortLabel: "Pay" },
@@ -60,6 +69,16 @@ const PANEL_COPY: Record<PanelKey, { eyebrow: string; title: string; body: strin
         eyebrow: "Overview",
         title: "Your scheduling hub",
         body: "Share your booking link, watch upcoming sessions, and pick up where you left off in setup.",
+    },
+    bookings: {
+        eyebrow: "Bookings",
+        title: "All bookings",
+        body: "Browse upcoming, active, past, and cancelled bookings in one place.",
+    },
+    profile: {
+        eyebrow: "Profile",
+        title: "Your public profile",
+        body: "Control the name, booking link, timezone, and photo guests see before they meet you.",
     },
     availability: {
         eyebrow: "Availability",
@@ -78,8 +97,8 @@ const PANEL_COPY: Record<PanelKey, { eyebrow: string; title: string; body: strin
     },
     settings: {
         eyebrow: "Settings",
-        title: "Appearance and account",
-        body: "Theme and workspace preferences live here, separate from the product surface.",
+        title: "Workspace settings",
+        body: "Theme and workspace preferences live here, separate from your public profile.",
     },
 };
 
@@ -95,7 +114,7 @@ const THEME_OPTIONS: ReadonlyArray<{
 ];
 
 const VALID_PANELS = new Set<PanelKey>([
-    "overview", "availability", "booking-types", "payments", "settings",
+    "overview", "profile", "availability", "booking-types", "bookings", "payments", "settings",
 ]);
 
 export default function DashboardPage() {
@@ -173,7 +192,7 @@ function DashboardInner() {
               Mobile and desktop run completely different nav patterns. On lg+
               the left sidebar lives in the grid column. Below lg the sidebar
               is hidden; nav moves to a fixed bottom tab bar (the native-app
-              pattern) and a slim top bar carries just brand + sign-out. The
+              pattern) and a slim top bar carries brand + account actions. The
               two surfaces don't share markup because the active-state, layout,
               and tap-target sizes diverge enough that one shared component
               would have to fork on every prop.
@@ -187,20 +206,30 @@ function DashboardInner() {
                         </span>
                     </Link>
 
-                    <div className="mb-3 mt-2 border-t border-[hsl(var(--border))]/50 px-3 pt-4">
-                        <div className="flex items-center gap-2.5">
+                    <div className="mb-3 mt-2 border-t border-[hsl(var(--border))]/50 pt-3">
+                        <button
+                            type="button"
+                            onClick={() => handleSelectPanel("profile")}
+                            aria-current={activePanel === "profile" ? "page" : undefined}
+                            className={cn(
+                                "flex w-full cursor-pointer items-center gap-2.5 rounded-xl px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]/50",
+                                activePanel === "profile"
+                                    ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]"
+                                    : "hover:bg-[hsl(var(--surface-2))]",
+                            )}
+                        >
                             {user.avatarUrl ? (
                                 <img
                                     src={user.avatarUrl}
-                                    alt={user.name}
-                                    className="size-7 shrink-0 rounded-full object-cover"
+                                    alt={user.name || user.email}
+                                    className="size-8 shrink-0 rounded-full object-cover"
                                 />
                             ) : (
-                                <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[hsl(var(--primary))] to-violet-500 text-[11px] font-semibold text-white">
+                                <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[hsl(var(--primary))] to-violet-500 text-[11px] font-semibold text-white">
                                     {initialsOf(user.name || user.email)}
                                 </div>
                             )}
-                            <div className="min-w-0">
+                            <div className="min-w-0 flex-1">
                                 <p className="truncate text-sm font-medium text-[hsl(var(--foreground))]">
                                     {user.name || user.email}
                                 </p>
@@ -208,7 +237,8 @@ function DashboardInner() {
                                     {bookingPath}
                                 </p>
                             </div>
-                        </div>
+                            <UserRound className="size-4 shrink-0 text-[hsl(var(--muted-foreground))]" />
+                        </button>
                     </div>
 
                     <nav className="flex flex-col gap-0.5" aria-label="Dashboard sections">
@@ -250,19 +280,43 @@ function DashboardInner() {
                 </div>
             </aside>
 
-            {/* Mobile top bar — minimal, just brand + sign-out. */}
+            {/* Mobile top bar — minimal, just brand + account actions. */}
             <header className="sticky top-0 z-30 flex items-center justify-between border-b border-[hsl(var(--border))]/60 bg-[hsl(var(--background))]/95 px-4 py-3 backdrop-blur lg:hidden">
                 <Link href="/dashboard" className="flex min-w-0 items-center">
                     <SessionlyBrand size="sm" />
                 </Link>
-                <button
-                    type="button"
-                    onClick={logout}
-                    aria-label="Sign out"
-                    className="press flex shrink-0 cursor-pointer items-center justify-center rounded-lg p-2 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--surface-2))] hover:text-[hsl(var(--foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]/50"
-                >
-                    <LogOut className="size-4" />
-                </button>
+                <div className="flex items-center gap-1">
+                    <button
+                        type="button"
+                        onClick={() => handleSelectPanel("profile")}
+                        aria-label="View profile"
+                        aria-current={activePanel === "profile" ? "page" : undefined}
+                        className={cn(
+                            "press flex shrink-0 cursor-pointer items-center justify-center rounded-lg p-1.5 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--surface-2))] hover:text-[hsl(var(--foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]/50",
+                            activePanel === "profile" && "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]",
+                        )}
+                    >
+                        {user.avatarUrl ? (
+                            <img
+                                src={user.avatarUrl}
+                                alt={user.name || user.email}
+                                className="size-7 rounded-full object-cover"
+                            />
+                        ) : (
+                            <span className="flex size-7 items-center justify-center rounded-full bg-gradient-to-br from-[hsl(var(--primary))] to-violet-500 text-[11px] font-semibold text-white">
+                                {initialsOf(user.name || user.email)}
+                            </span>
+                        )}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={logout}
+                        aria-label="Sign out"
+                        className="press flex shrink-0 cursor-pointer items-center justify-center rounded-lg p-2 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--surface-2))] hover:text-[hsl(var(--foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]/50"
+                    >
+                        <LogOut className="size-4" />
+                    </button>
+                </div>
             </header>
 
             <main className="px-4 py-5 pb-24 sm:px-6 sm:py-6 sm:pb-24 lg:px-8 lg:py-7 lg:pb-7">
@@ -290,6 +344,14 @@ function DashboardInner() {
                         />
                     )}
 
+                    {activePanel === "profile" && (
+                        <ProfilePanel
+                            bookingPath={bookingPath}
+                            publicHref={publicHref}
+                            onReviewAvailability={() => handleSelectPanel("availability")}
+                        />
+                    )}
+
                     {activePanel === "availability" && (
                         <PanelShell>
                             <AvailabilityEditor
@@ -308,6 +370,8 @@ function DashboardInner() {
                         </PanelShell>
                     )}
 
+                    {activePanel === "bookings" && <BookingsPanel />}
+
                     {activePanel === "payments" && (
                         <PanelShell>
                             <p className="text-sm text-[hsl(var(--muted-foreground))]">
@@ -324,12 +388,11 @@ function DashboardInner() {
             {/*
               Mobile bottom tab bar. Fixed to the viewport so it's always
               thumb-reachable. `env(safe-area-inset-bottom)` keeps the labels
-              above the iOS home indicator. `grid-cols-5` matches the number
-              of nav items — if we add a sixth, switch to overflow-x-auto.
+              above the iOS home indicator.
             */}
             <nav
                 aria-label="Dashboard sections"
-                className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-[hsl(var(--border))]/60 bg-[hsl(var(--background))]/95 backdrop-blur lg:hidden"
+                className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-6 border-t border-[hsl(var(--border))]/60 bg-[hsl(var(--background))]/95 backdrop-blur lg:hidden"
                 style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
             >
                 {SIDEBAR_ITEMS.map(({ key, icon: Icon, label, shortLabel }) => {
@@ -537,77 +600,194 @@ function ShareLinkBlock({ url, href }: { url: string; href: string }) {
     );
 }
 
-function SettingsPanel() {
-    const { theme, setTheme } = useTheme();
-    const { user, refreshUser } = useAuth();
-    const [avatarInput, setAvatarInput] = useState(user?.avatarUrl ?? "");
-    const [avatarSaving, setAvatarSaving] = useState(false);
-    const [avatarError, setAvatarError] = useState<string | null>(null);
-    const [avatarSaved, setAvatarSaved] = useState(false);
+function slugifyProfileSlug(value: string): string {
+    return value.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "").slice(0, 30);
+}
 
-    async function saveAvatar(e: React.FormEvent) {
+function ProfilePanel({
+    bookingPath,
+    publicHref,
+    onReviewAvailability,
+}: {
+    bookingPath: string;
+    publicHref: string | null;
+    onReviewAvailability: () => void;
+}) {
+    const { user, refreshUser } = useAuth();
+    const [name, setName] = useState(user?.name ?? "");
+    const [slug, setSlug] = useState(user?.slug ?? "");
+    const [timezone, setTimezone] = useState(user?.timezone ?? "America/New_York");
+    const [avatarInput, setAvatarInput] = useState(user?.avatarUrl ?? "");
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [saved, setSaved] = useState(false);
+    const [timezoneReviewPending, setTimezoneReviewPending] = useState(false);
+    const savedTimezone = user?.timezone ?? "America/New_York";
+    const timezoneChanged = timezone !== savedTimezone;
+
+    useEffect(() => {
+        setName(user?.name ?? "");
+        setSlug(user?.slug ?? "");
+        setTimezone(user?.timezone ?? "America/New_York");
+        setAvatarInput(user?.avatarUrl ?? "");
+    }, [user]);
+
+    async function saveProfile(e: React.FormEvent) {
         e.preventDefault();
         if (!user) return;
-        setAvatarSaving(true);
-        setAvatarError(null);
+        const nextName = name.trim();
+        const nextSlug = slugifyProfileSlug(slug);
+        if (!nextName) {
+            setError("Name is required.");
+            return;
+        }
+        if (nextSlug.length < 3) {
+            setError("Booking link must be at least 3 characters.");
+            return;
+        }
+        const changedTimezone = timezone !== user.timezone;
+        setSaving(true);
+        setError(null);
         try {
             await updateProfile({
-                name: user.name,
-                slug: user.slug,
-                timezone: user.timezone,
+                name: nextName,
+                slug: nextSlug,
+                timezone,
                 onboardingStep: user.onboardingStep,
                 avatarUrl: avatarInput.trim() || null,
             });
             await refreshUser?.();
-            setAvatarSaved(true);
-            setTimeout(() => setAvatarSaved(false), 2000);
+            setTimezoneReviewPending(changedTimezone);
+            setSaved(true);
+            setTimeout(() => setSaved(false), 2000);
         } catch (err) {
-            setAvatarError(err instanceof Error ? err.message : "Could not save");
+            setError(err instanceof Error ? err.message : "Could not save profile");
         } finally {
-            setAvatarSaving(false);
+            setSaving(false);
         }
     }
 
     return (
-        <div className="flex flex-col gap-5">
-            {/* Profile photo */}
-            <section className="app-panel no-lift rounded-2xl p-5 sm:p-6">
-                <p className="mb-1 text-sm font-semibold text-[hsl(var(--foreground))]">Profile photo</p>
-                <p className="mb-4 text-sm text-[hsl(var(--muted-foreground))]">
-                    Shown on your public booking page. Paste a URL to any publicly accessible image.
-                </p>
-                <form onSubmit={saveAvatar} className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                    <div className="flex items-center gap-3">
-                        {avatarInput ? (
-                            <img
-                                src={avatarInput}
-                                alt="Preview"
-                                className="size-12 shrink-0 rounded-full object-cover ring-2 ring-[hsl(var(--border))]"
-                                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                            />
-                        ) : (
-                            <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[hsl(var(--primary))] to-violet-500 text-sm font-semibold text-white ring-2 ring-[hsl(var(--border))]">
-                                {initialsOf(user?.name || user?.email || "")}
-                            </div>
-                        )}
-                    </div>
-                    <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                        <label htmlFor="avatar-url" className="label-caps">Photo URL</label>
+        <PanelShell>
+            <form onSubmit={saveProfile} className="grid gap-6 xl:grid-cols-[220px_minmax(0,1fr)]">
+                <div className="flex flex-col items-center justify-center gap-3">
+                    {avatarInput ? (
+                        <img
+                            src={avatarInput}
+                            alt="Profile preview"
+                            className="size-24 rounded-full object-cover ring-2 ring-[hsl(var(--border))]"
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                        />
+                    ) : (
+                        <div className="flex size-24 items-center justify-center rounded-full bg-gradient-to-br from-[hsl(var(--primary))] to-violet-500 text-2xl font-semibold text-white ring-2 ring-[hsl(var(--border))]">
+                            {initialsOf(name || user?.email || "")}
+                        </div>
+                    )}
+                    {publicHref && (
+                        <Button asChild variant="outline" size="sm">
+                            <Link href={publicHref} target="_blank" rel="noopener noreferrer">
+                                View public page
+                            </Link>
+                        </Button>
+                    )}
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="flex flex-col gap-1.5">
+                        <label htmlFor="profile-name" className="label-caps">Display name</label>
                         <Input
-                            id="avatar-url"
+                            id="profile-name"
+                            value={name}
+                            onChange={(e) => { setName(e.target.value); setSaved(false); }}
+                            autoComplete="name"
+                            maxLength={80}
+                        />
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                        <label htmlFor="profile-timezone" className="label-caps">Timezone</label>
+                        <SearchableSelect
+                            id="profile-timezone"
+                            value={timezone}
+                            onValueChange={(v) => {
+                                setTimezone(v);
+                                setSaved(false);
+                                setTimezoneReviewPending(false);
+                            }}
+                            options={TIMEZONES.map((tz) => ({ value: tz, label: tz.replace(/_/g, " ") }))}
+                        />
+                    </div>
+
+                    {(timezoneChanged || timezoneReviewPending) && (
+                        <InlineNotice
+                            tone="warning"
+                            icon={AlertTriangle}
+                            title="Timezone changes do not move existing bookings."
+                            className="sm:col-span-2"
+                        >
+                            <p>
+                                Meetings already booked keep their scheduled time. Future slots use this timezone only after you save and review your availability.
+                            </p>
+                            {timezoneReviewPending && (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={onReviewAvailability}
+                                    className="mt-3"
+                                >
+                                    <CalendarCheck className="size-3.5" />
+                                    Review availability
+                                </Button>
+                            )}
+                        </InlineNotice>
+                    )}
+
+                    <div className="flex flex-col gap-1.5 sm:col-span-2">
+                        <label htmlFor="profile-slug" className="label-caps">Booking link</label>
+                        <div className="flex rounded-xl border border-[hsl(var(--input))] bg-[hsl(var(--surface-2))] shadow-sm focus-within:border-[hsl(var(--primary))] focus-within:ring-4 focus-within:ring-[hsl(var(--primary))]/15">
+                            <span className="flex items-center border-r border-[hsl(var(--border))]/70 px-3 text-sm text-[hsl(var(--muted-foreground))]">
+                                getsessionly.com/u/
+                            </span>
+                            <input
+                                id="profile-slug"
+                                value={slug}
+                                onChange={(e) => { setSlug(slugifyProfileSlug(e.target.value)); setSaved(false); }}
+                                className="min-w-0 flex-1 rounded-r-xl bg-transparent px-3 py-2.5 text-sm text-[hsl(var(--foreground))] outline-none"
+                                maxLength={30}
+                            />
+                        </div>
+                        <p className="text-xs text-[hsl(var(--muted-foreground))]">{bookingPath}</p>
+                    </div>
+
+                    <div className="flex flex-col gap-1.5 sm:col-span-2">
+                        <label htmlFor="profile-avatar" className="label-caps">Photo URL</label>
+                        <Input
+                            id="profile-avatar"
                             type="url"
                             value={avatarInput}
-                            onChange={(e) => { setAvatarInput(e.target.value); setAvatarSaved(false); }}
+                            onChange={(e) => { setAvatarInput(e.target.value); setSaved(false); }}
                             placeholder="https://example.com/your-photo.jpg"
                         />
                     </div>
-                    <Button type="submit" size="sm" disabled={avatarSaving} className="shrink-0">
-                        {avatarSaving ? <BufferingButtonLabel label="Saving…" /> : avatarSaved ? <><Check className="size-3.5" />Saved</> : "Save photo"}
-                    </Button>
-                </form>
-                {avatarError && <p className="mt-2 text-xs text-[hsl(var(--destructive))]">{avatarError}</p>}
-            </section>
 
+                    <div className="flex items-center gap-3 sm:col-span-2">
+                        <Button type="submit" disabled={saving}>
+                            {saving ? <BufferingButtonLabel label="Saving…" /> : saved ? <><Check className="size-3.5" />Saved</> : "Save profile"}
+                        </Button>
+                        {error && <p className="text-sm text-[hsl(var(--destructive))]">{error}</p>}
+                    </div>
+                </div>
+            </form>
+        </PanelShell>
+    );
+}
+
+function SettingsPanel() {
+    const { theme, setTheme } = useTheme();
+
+    return (
+        <div className="flex flex-col gap-5">
             {/* Appearance */}
             <section className="app-panel no-lift rounded-2xl p-5 sm:p-6">
                 <p className="mb-1 text-sm font-semibold text-[hsl(var(--foreground))]">Appearance</p>

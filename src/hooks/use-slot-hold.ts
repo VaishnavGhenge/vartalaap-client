@@ -42,22 +42,39 @@ export function useSlotHold({ hostSlug, eventTypeSlug }: Params) {
     // Mirror of holdToken in a ref so the pagehide handler always sees the
     // latest value without re-binding listeners on every state change.
     const holdTokenRef = useRef<string | null>(null);
+    const selectedSlotRef = useRef<string | null>(null);
+    const pendingSlotRef = useRef<string | null>(null);
     useEffect(() => {
         holdTokenRef.current = state.holdToken;
-    }, [state.holdToken]);
+        selectedSlotRef.current = state.selectedSlot;
+    }, [state.holdToken, state.selectedSlot]);
 
     const selectSlot = useCallback(async (slotISO: string | null) => {
+        if (
+            slotISO !== null &&
+            (pendingSlotRef.current === slotISO ||
+                (selectedSlotRef.current === slotISO && holdTokenRef.current))
+        ) {
+            return;
+        }
+
         // Release the old hold synchronously-from-the-user's-POV by firing
         // the DELETE before awaiting the new POST. The two requests run in
         // parallel; if release fails (network blip), the TTL is the backstop.
         const prev = holdTokenRef.current;
         if (prev) {
+            holdTokenRef.current = null;
             releaseSlotHold(prev).catch(() => { /* TTL backstop */ });
         }
         if (slotISO === null) {
+            selectedSlotRef.current = null;
+            pendingSlotRef.current = null;
+            holdTokenRef.current = null;
             setState({ selectedSlot: null, holdToken: null, holdError: null });
             return;
         }
+        selectedSlotRef.current = slotISO;
+        pendingSlotRef.current = slotISO;
         setState((s) => ({ ...s, selectedSlot: slotISO, holdError: null }));
         try {
             const hold = await createSlotHold({
@@ -73,17 +90,25 @@ export function useSlotHold({ hostSlug, eventTypeSlug }: Params) {
                     releaseSlotHold(hold.holdToken).catch(() => {});
                     return s;
                 }
+                holdTokenRef.current = hold.holdToken;
                 return { ...s, holdToken: hold.holdToken, holdError: null };
             });
         } catch (err) {
             const msg = err instanceof PublicApiError && err.code === "SLOT_TAKEN"
-                ? "Someone just grabbed this time. Pick another."
+                ? "That time is no longer available. Pick another."
                 : err instanceof Error ? err.message : "Couldn't reserve this slot.";
+            if (selectedSlotRef.current === slotISO) {
+                holdTokenRef.current = null;
+            }
             setState((s) => (
                 s.selectedSlot === slotISO
                     ? { ...s, holdToken: null, holdError: msg }
                     : s
             ));
+        } finally {
+            if (pendingSlotRef.current === slotISO) {
+                pendingSlotRef.current = null;
+            }
         }
     }, [hostSlug, eventTypeSlug]);
 
@@ -92,6 +117,8 @@ export function useSlotHold({ hostSlug, eventTypeSlug }: Params) {
         // Clear local state but don't fire DELETE — the booking handler
         // consumes the hold server-side on success.
         holdTokenRef.current = null;
+        selectedSlotRef.current = null;
+        pendingSlotRef.current = null;
         setState({ selectedSlot: null, holdToken: null, holdError: null });
         return token;
     }, []);

@@ -46,7 +46,7 @@ export default function JoinMeet() {
             setAudioInput, setVideoInput, setAudioOutput,
             preferredAudioInputId, preferredVideoInputId, preferredAudioOutputId } = usePeerStore();
     const hasMultipleCameras = useHasMultipleCameras();
-    const { isMuted, isVideoOff, toggleMute, toggleVideo } = useMeetStore();
+    const { isMuted, isVideoOff, toggleMute, toggleVideo, setRoomClosesAt } = useMeetStore();
     const { audioInputs, videoInputs, audioOutputs } = useMediaDevices();
     const showSpeaker = supportsAudioOutputSelection() && audioOutputs.length > 0;
     const { speaking, level } = useAudioLevel(localStream, !isMuted);
@@ -60,7 +60,12 @@ export default function JoinMeet() {
         if (!canJoinMeet) { setStatusChecked(true); return; }
         let cancelled = false;
         fetchRoomStatus(params.meetCode)
-            .then((status) => { if (!cancelled) setRoomStatus(status); })
+            .then((status) => {
+                if (!cancelled) {
+                    setRoomStatus(status);
+                    setRoomClosesAt(status.closesAt ?? null);
+                }
+            })
             .finally(() => { if (!cancelled) setStatusChecked(true); });
         return () => { cancelled = true; };
     }, [canJoinMeet, params.meetCode]);

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { BufferingButtonLabel } from "@/src/components/ui/BufferingButtonLabel";
 import { Input } from "@/src/components/ui/input";
 import { Button } from "@/src/components/ui/button";
-import { SessionlyBrand } from "@/src/components/ui/SessionlyBrand";
+import { StandaloneHeader } from "@/src/components/ui/StandaloneHeader";
 import { useLogin } from "@/src/hooks/use-auth";
 import { useAuthStore } from "@/src/stores/auth";
 
@@ -30,10 +30,8 @@ export default function Login() {
 
     return (
         <div className="relative flex min-h-dvh flex-col">
-            <main className="flex flex-1 flex-col items-center justify-center px-4 pt-12 pb-24 sm:px-6 sm:pt-16 sm:pb-40">
-                <Link href="/" className="mb-12">
-                    <SessionlyBrand size="lg" />
-                </Link>
+            <main className="flex flex-1 flex-col items-center px-4 pt-6 pb-24 sm:px-6 sm:pt-12 sm:pb-40">
+                <StandaloneHeader className="max-w-sm sm:max-w-md" />
 
                 <div className="w-full max-w-sm">
 

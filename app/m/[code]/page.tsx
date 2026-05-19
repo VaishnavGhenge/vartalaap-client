@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Clock, Info } from "lucide-react";
 
 import { CancelBookingButton } from "@/src/components/booking/CancelBookingButton";
 import { Button } from "@/src/components/ui/button";
+import { InlineNotice } from "@/src/components/ui/InlineNotice";
 import { PoweredBy } from "@/src/components/ui/PoweredBy";
-import { SessionlyBrand } from "@/src/components/ui/SessionlyBrand";
+import { StandaloneHeader } from "@/src/components/ui/StandaloneHeader";
 import { httpServerUri } from "@/src/services/api/config";
 import type { BookingResponse } from "@/src/services/api/public";
 
@@ -47,6 +49,7 @@ export default async function ConfirmationPage({ params, searchParams }: PagePro
     const start = new Date(booking.startsAt);
     const end = new Date(booking.endsAt);
     const roomOpen = booking.roomStatus === "open";
+    const roomHint = roomAccessHint(booking);
     const cancelledByLabel = booking.cancelledBy === "host"
         ? "host"
         : booking.cancelledBy === "guest"
@@ -56,9 +59,7 @@ export default async function ConfirmationPage({ params, searchParams }: PagePro
     return (
         <div className="relative flex min-h-dvh flex-col">
             <main className="flex flex-1 flex-col items-center px-4 py-6 sm:px-6 sm:py-12">
-                <Link href="/" className="mb-6 sm:mb-8">
-                    <SessionlyBrand size="md" wordmarkClassName="text-2xl" markClassName="size-8" />
-                </Link>
+                <StandaloneHeader />
 
                 <div className="w-full max-w-md">
                     <div className="app-panel rounded-2xl px-6 py-8">
@@ -103,6 +104,9 @@ export default async function ConfirmationPage({ params, searchParams }: PagePro
 
                         {booking.status !== "cancelled" && (
                             <div className="mt-6 flex flex-col gap-2">
+                                <InlineNotice icon={Clock} className="mb-1 text-xs">
+                                    {roomHint}
+                                </InlineNotice>
                                 {roomOpen ? (
                                     <Button asChild size="lg" className="w-full">
                                         <Link href={`/room/${booking.meetCode}`} prefetch>
@@ -115,12 +119,17 @@ export default async function ConfirmationPage({ params, searchParams }: PagePro
                                     </Button>
                                 )}
                                 <p className="text-center text-xs text-[hsl(var(--muted-foreground))]">
-                                    {roomOpen ? "The room is open for this booking." : booking.roomMessage || "The room is not open yet."}
+                                    Use the same confirmation link if you need to return later.
                                 </p>
                                 {cancelToken && (
                                     <div className="mt-3 border-t border-[hsl(var(--border))]/60 pt-3">
                                         <CancelBookingButton meetCode={booking.meetCode} cancelToken={cancelToken} />
                                     </div>
+                                )}
+                                {!cancelToken && (
+                                    <InlineNotice icon={Info} className="mt-3 text-xs">
+                                        To cancel, open the confirmation link from your email or contact the host.
+                                    </InlineNotice>
                                 )}
                             </div>
                         )}
@@ -130,4 +139,27 @@ export default async function ConfirmationPage({ params, searchParams }: PagePro
             </main>
         </div>
     );
+}
+
+function roomAccessHint(booking: BookingResponse): string {
+    if (booking.roomStatus === "open") return "The meeting room is open for this booking.";
+    if (booking.roomStatus === "too_early") {
+        if (booking.roomOpensAt) {
+            return `The meeting room opens ${formatDateTime(new Date(booking.roomOpensAt))}.`;
+        }
+        return booking.roomMessage || "The meeting room opens shortly before the scheduled time.";
+    }
+    if (booking.roomStatus === "ended") return "The meeting room window has ended.";
+    if (booking.roomStatus === "cancelled") return "This booking has been cancelled.";
+    return booking.roomMessage || "The meeting room is not available yet.";
+}
+
+function formatDateTime(date: Date): string {
+    return date.toLocaleString([], {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+    });
 }

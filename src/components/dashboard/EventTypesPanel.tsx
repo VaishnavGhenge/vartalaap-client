@@ -4,8 +4,8 @@ import { ExternalLink, Pencil, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
-import { BufferingButtonLabel } from "@/src/components/ui/BufferingButtonLabel";
 import { Button } from "@/src/components/ui/button";
+import { EditActionBar } from "@/src/components/ui/EditActionBar";
 import { ConfirmDialog } from "@/src/components/ui/ConfirmDialog";
 import { FieldError, FormError } from "@/src/components/ui/FormError";
 import { Input } from "@/src/components/ui/input";
@@ -437,14 +437,14 @@ function EventTypeForm({
 
             <FormError>{formError}</FormError>
 
-            <div className="flex justify-end gap-2">
-                <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={saving}>
-                    Cancel
-                </Button>
-                <Button type="submit" size="sm" disabled={saving}>
-                    {saving ? <BufferingButtonLabel label="Saving…" /> : editing ? "Save" : "Create"}
-                </Button>
-            </div>
+            <EditActionBar
+                className="justify-end"
+                onCancel={onCancel}
+                cancelDisabled={saving}
+                saveType="submit"
+                saveLabel={editing ? "Save" : "Create"}
+                saving={saving}
+            />
         </form>
     );
 }

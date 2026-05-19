@@ -1,11 +1,12 @@
 "use client";
 
-import { Calendar, Video } from "lucide-react";
+import { Calendar, Info, Video } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/src/components/ui/button";
 import { ConfirmDialog } from "@/src/components/ui/ConfirmDialog";
+import { InlineNotice } from "@/src/components/ui/InlineNotice";
 import { cancelBooking, listMyBookings, type HostBooking } from "@/src/services/api/bookings";
 import { cn } from "@/src/lib/utils";
 
@@ -23,11 +24,11 @@ export function UpcomingBookings({ refreshKey }: Props) {
     const [cancelPending, setCancelPending] = useState(false);
     const [cancelError, setCancelError] = useState<string | null>(null);
     const [cancelReason, setCancelReason] = useState("");
-    const [, setTick] = useState(0);
+    const [nowMs, setNowMs] = useState(Date.now);
     const [showAll, setShowAll] = useState(false);
 
     useEffect(() => {
-        const id = setInterval(() => setTick((t) => t + 1), 30_000);
+        const id = setInterval(() => setNowMs(Date.now()), 30_000);
         return () => clearInterval(id);
     }, []);
 
@@ -36,7 +37,9 @@ export function UpcomingBookings({ refreshKey }: Props) {
         setLoading(true);
         setError(null);
         listMyBookings()
-            .then((list) => { if (!cancelled) setBookings(list); })
+            .then((list) => {
+                if (!cancelled) setBookings(list);
+            })
             .catch((e: unknown) => {
                 if (cancelled) return;
                 setError(e instanceof Error ? e.message : "Could not load bookings");
@@ -51,7 +54,13 @@ export function UpcomingBookings({ refreshKey }: Props) {
     if (error) {
         return <p className="text-sm text-[hsl(var(--destructive))]">{error}</p>;
     }
-    if (bookings.length === 0) {
+
+    // Only show upcoming (future) non-cancelled bookings, sorted ascending.
+    const upcoming = bookings
+        .filter((b) => b.status !== "cancelled" && new Date(b.startsAt).getTime() > nowMs - 60 * 60 * 1000)
+        .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
+
+    if (upcoming.length === 0) {
         return (
             <div className="rounded-xl border border-dashed border-[hsl(var(--border))]/70 bg-[hsl(var(--surface-2))] px-4 py-6 text-center">
                 <Calendar className="mx-auto mb-2 size-5 text-[hsl(var(--muted-foreground))]" />
@@ -60,7 +69,8 @@ export function UpcomingBookings({ refreshKey }: Props) {
         );
     }
 
-    const visible = showAll ? bookings : bookings.slice(0, MAX_VISIBLE);
+    const visible = showAll ? upcoming : upcoming.slice(0, MAX_VISIBLE);
+    const groups = groupByDay(visible);
 
     async function handleCancel() {
         if (!cancelTarget) return;
@@ -83,96 +93,94 @@ export function UpcomingBookings({ refreshKey }: Props) {
     }
 
     return (
-        <div className="flex flex-col gap-2">
-            {visible.map((b) => {
-                const start = new Date(b.startsAt);
-                const end = new Date(b.endsAt);
-                const durationMin = Math.round((end.getTime() - start.getTime()) / 60000);
-                const isCancelled = b.status === "cancelled";
-                const dayLabel = relativeDayLabel(start);
-                const imminent = isImminent(start);
-                const timeRemaining = isCancelled ? null : timeRemainingLabel(start);
-                const cancelledByLabel = cancellationActorLabel(b.cancelledBy);
-                const roomOpen = b.roomStatus === "open";
+        <div className="flex flex-col gap-5">
+            <InlineNotice icon={Info} className="text-xs">
+                Meeting rooms unlock near the session time. Cancelled bookings notify the guest automatically.
+            </InlineNotice>
+            {groups.map(({ label, items }) => (
+                <div key={label} className="flex flex-col gap-2">
+                    <p className="label-caps text-[hsl(var(--muted-foreground))]">{label}</p>
+                    {items.map((b) => {
+                        const start = new Date(b.startsAt);
+                        const end = new Date(b.endsAt);
+                        const durationMin = Math.round((end.getTime() - start.getTime()) / 60000);
+                        const imminent = isImminent(start, nowMs);
+                        const isLive = start.getTime() <= nowMs && end.getTime() > nowMs;
+                        const timeRemaining = isLive ? null : timeRemainingLabel(start);
+                        const roomOpen = b.roomStatus === "open";
+                        const roomHint = roomAccessHint(b);
 
-                return (
-                    <div
-                        key={b.id}
-                        className={cn(
-                            "relative flex items-center gap-4 overflow-hidden rounded-xl border px-4 py-3 transition-colors",
-                            isCancelled
-                                ? "border-[hsl(var(--border))]/60 bg-[hsl(var(--surface-2))]/60 opacity-80"
-                                : imminent
-                                ? "border-[hsl(var(--primary))]/30 bg-[hsl(var(--primary))]/5"
-                                : "border-[hsl(var(--border))]/70 bg-[hsl(var(--surface-2))]",
-                        )}
-                    >
-                        <span className={cn(
-                            "absolute inset-y-0 left-0 w-[3px]",
-                            isCancelled ? "bg-[hsl(var(--destructive))]/55" : imminent ? "bg-[hsl(var(--primary))]" : "bg-[hsl(var(--primary))]/40",
-                        )} />
+                        return (
+                            <div
+                                key={b.id}
+                                className={cn(
+                                    "relative flex items-center gap-4 overflow-hidden rounded-xl border px-4 py-3 transition-colors",
+                                    isLive
+                                        ? "border-emerald-500/30 bg-emerald-500/5"
+                                        : imminent
+                                        ? "border-[hsl(var(--primary))]/30 bg-[hsl(var(--primary))]/5"
+                                        : "border-[hsl(var(--border))]/70 bg-[hsl(var(--surface-2))]",
+                                )}
+                            >
+                                <span className={cn(
+                                    "absolute inset-y-0 left-0 w-[3px]",
+                                    isLive ? "bg-emerald-500" : imminent ? "bg-[hsl(var(--primary))]" : "bg-[hsl(var(--primary))]/40",
+                                )} />
 
-                        {/* When */}
-                        <div className="w-16 shrink-0 text-center">
-                            <span className={cn(
-                                "inline-block rounded-full px-1.5 py-px text-[10px] font-semibold uppercase tracking-wider",
-                                imminent
-                                    ? "bg-[hsl(var(--primary))]/15 text-[hsl(var(--primary))]"
-                                    : "text-[hsl(var(--muted-foreground))]",
-                            )}>
-                                {dayLabel}
-                            </span>
-                            <p className="mt-0.5 text-sm font-bold tabular-nums text-[hsl(var(--foreground))]">
-                                {start.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true })}
-                            </p>
-                            {timeRemaining && (
-                                <p className={cn(
-                                    "mt-0.5 text-[10px] tabular-nums leading-none",
-                                    imminent
-                                        ? "font-semibold text-[hsl(var(--primary))]"
-                                        : "text-[hsl(var(--muted-foreground))]",
-                                )}>
-                                    {timeRemaining}
-                                </p>
-                            )}
-                        </div>
+                                {/* Time */}
+                                <div className="w-16 shrink-0 text-center">
+                                    <p className="text-sm font-bold tabular-nums text-[hsl(var(--foreground))]">
+                                        {start.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true })}
+                                    </p>
+                                    {isLive ? (
+                                        <p className="mt-0.5 text-[10px] font-semibold leading-none text-emerald-500">
+                                            Live now
+                                        </p>
+                                    ) : timeRemaining ? (
+                                        <p className={cn(
+                                            "mt-0.5 text-[10px] tabular-nums leading-none",
+                                            imminent
+                                                ? "font-semibold text-[hsl(var(--primary))]"
+                                                : "text-[hsl(var(--muted-foreground))]",
+                                        )}>
+                                            {timeRemaining}
+                                        </p>
+                                    ) : null}
+                                </div>
 
-                        {/* Divider */}
-                        <div className="h-8 w-px shrink-0 bg-[hsl(var(--border))]/60" />
+                                <div className="h-8 w-px shrink-0 bg-[hsl(var(--border))]/60" />
 
-                        {/* What + who */}
-                        <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-semibold text-[hsl(var(--foreground))]">
-                                {b.eventTitle ?? "Session"}
-                            </p>
-                            <p className="mt-0.5 truncate text-xs text-[hsl(var(--muted-foreground))]">
-                                {isCancelled ? `Cancelled${cancelledByLabel ? ` by ${cancelledByLabel}` : ""}` : b.guestName}
-                                {durationMin > 0 && <span> · {durationMin} min</span>}
-                            </p>
-                            {isCancelled && b.cancellationReason && (
-                                <p className="mt-1 line-clamp-2 text-xs text-[hsl(var(--destructive))]">
-                                    {b.cancellationReason}
-                                </p>
-                            )}
-                        </div>
+                                {/* Info */}
+                                <div className="min-w-0 flex-1">
+                                    <p className="truncate text-sm font-semibold text-[hsl(var(--foreground))]">
+                                        {b.eventTitle ?? "Session"}
+                                    </p>
+                                    <p className="mt-0.5 truncate text-xs text-[hsl(var(--muted-foreground))]">
+                                        {b.guestName}
+                                        {durationMin > 0 && <span> · {durationMin} min</span>}
+                                    </p>
+                                    {!roomOpen && roomHint && (
+                                        <p className="mt-1 line-clamp-1 text-xs text-[hsl(var(--muted-foreground))]">
+                                            {roomHint}
+                                        </p>
+                                    )}
+                                </div>
 
-                        {/* Actions */}
-                        <div className="flex shrink-0 items-center gap-1">
-                            {!isCancelled && (
-                                <>
+                                {/* Actions */}
+                                <div className="flex shrink-0 items-center gap-1">
                                     {roomOpen ? (
                                         <Button
                                             asChild
-                                            variant={imminent ? "primary" : "secondary"}
+                                            variant={isLive || imminent ? "primary" : "secondary"}
                                             size="sm"
                                         >
                                             <Link href={`/room/${b.meetCode}`} prefetch>
                                                 <Video className="size-3.5" />
-                                                Join
+                                                {isLive ? "Join" : "Open"}
                                             </Link>
                                         </Button>
                                     ) : (
-                                        <Button variant="secondary" size="sm" disabled title={b.roomMessage || "Room is not open yet"}>
+                                        <Button variant="secondary" size="sm" disabled title={roomHint || "Room is not open yet"}>
                                             <Video className="size-3.5" />
                                             Locked
                                         </Button>
@@ -188,22 +196,22 @@ export function UpcomingBookings({ refreshKey }: Props) {
                                     >
                                         Cancel
                                     </Button>
-                                </>
-                            )}
-                        </div>
-                    </div>
-                );
-            })}
-            {bookings.length > MAX_VISIBLE && (
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            ))}
+
+            {upcoming.length > MAX_VISIBLE && (
                 <button
                     onClick={() => setShowAll((v) => !v)}
-                    className="px-1 pt-1 text-xs text-[hsl(var(--primary))] hover:underline text-left"
+                    className="cursor-pointer px-1 pt-1 text-xs text-[hsl(var(--primary))] hover:underline text-left"
                 >
-                    {showAll
-                        ? "Show less"
-                        : `+ ${bookings.length - MAX_VISIBLE} more — load more`}
+                    {showAll ? "Show less" : `+ ${upcoming.length - MAX_VISIBLE} more`}
                 </button>
             )}
+
             <ConfirmDialog
                 open={cancelTarget !== null}
                 title="Cancel booking?"
@@ -237,10 +245,16 @@ export function UpcomingBookings({ refreshKey }: Props) {
     );
 }
 
-function cancellationActorLabel(cancelledBy?: HostBooking["cancelledBy"]): string {
-    if (cancelledBy === "host") return "you";
-    if (cancelledBy === "guest") return "guest";
-    return "";
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function groupByDay(bookings: HostBooking[]): Array<{ label: string; items: HostBooking[] }> {
+    const map = new Map<string, HostBooking[]>();
+    for (const b of bookings) {
+        const label = relativeDayLabel(new Date(b.startsAt));
+        if (!map.has(label)) map.set(label, []);
+        map.get(label)!.push(b);
+    }
+    return Array.from(map.entries()).map(([label, items]) => ({ label, items }));
 }
 
 function relativeDayLabel(date: Date): string {
@@ -249,14 +263,12 @@ function relativeDayLabel(date: Date): string {
     const diff = Math.round((d.getTime() - today.getTime()) / 86400000);
     if (diff === 0) return "Today";
     if (diff === 1) return "Tomorrow";
-    if (diff < 7) return date.toLocaleDateString([], { weekday: "short" });
-    return date.toLocaleDateString([], { month: "short", day: "numeric" });
+    if (diff < 7) return date.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" });
+    return date.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
 }
 
-function isImminent(start: Date): boolean {
-    const now = Date.now();
-    const ms = start.getTime() - now;
-    // Highlight if starting within 30 min or started within the last 60 min
+function isImminent(start: Date, nowMs: number): boolean {
+    const ms = start.getTime() - nowMs;
     return ms <= 30 * 60 * 1000 && ms >= -60 * 60 * 1000;
 }
 
@@ -281,4 +293,24 @@ function timeRemainingLabel(start: Date): string {
 
 function startOfDay(d: Date): Date {
     return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+function roomAccessHint(b: HostBooking): string | null {
+    if (b.roomStatus === "open") return "Room is open.";
+    if (b.roomStatus === "too_early") {
+        if (b.roomOpensAt) return `Room opens ${formatShortDateTime(new Date(b.roomOpensAt))}.`;
+        return b.roomMessage ?? "Room opens shortly before the scheduled time.";
+    }
+    if (b.roomStatus === "ended") return "Room window has ended.";
+    if (b.roomStatus === "cancelled") return "Booking was cancelled.";
+    return b.roomMessage ?? null;
+}
+
+function formatShortDateTime(date: Date): string {
+    return date.toLocaleString([], {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+    });
 }

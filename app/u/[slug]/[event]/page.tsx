@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Video } from "lucide-react";
+import { ChevronLeft, ChevronRight, MailCheck, Video } from "lucide-react";
 
 import { BufferingButtonLabel } from "@/src/components/ui/BufferingButtonLabel";
 import { Button } from "@/src/components/ui/button";
+import { FormError } from "@/src/components/ui/FormError";
+import { InlineNotice } from "@/src/components/ui/InlineNotice";
 import { Input } from "@/src/components/ui/input";
-import { SessionlyBrand } from "@/src/components/ui/SessionlyBrand";
+import { StandaloneHeader } from "@/src/components/ui/StandaloneHeader";
 import { useSlotHold } from "@/src/hooks/use-slot-hold";
 import { PoweredBy } from "@/src/components/ui/PoweredBy";
 import { initialsOf } from "@/src/lib/avatar";
@@ -58,6 +60,7 @@ export default function PublicEventPage({ params }: PageProps) {
     const [guestName, setGuestName] = useState("");
     const [guestEmail, setGuestEmail] = useState("");
     const [submitting, setSubmitting] = useState(false);
+    const [confirmed, setConfirmed] = useState(false);
     const [submitError, setSubmitError] = useState<string | null>(null);
 
     useEffect(() => {
@@ -188,11 +191,14 @@ export default function PublicEventPage({ params }: PageProps) {
                 guestEmail,
                 holdToken: token,
             });
+            setConfirmed(true);
             router.push(`/m/${booking.meetCode}`);
+            // Leave submitting=true — navigation is in progress and we're
+            // showing the confirmed state. No finally reset on the happy path.
+            return;
         } catch (err: unknown) {
             if (err instanceof PublicApiError && err.code === "SLOT_TAKEN") {
-                setSubmitError("Someone just booked this time. Pick another.");
-                // Refresh the slot grid so the just-taken slot disappears.
+                setSubmitError("That time is no longer available. Pick another.");
                 listSlots(slug, eventSlug, isoDate(windowStart),
                     isoDate(addDays(windowEnd, 1)))
                     .then((res) => setSlots(res.slots))
@@ -202,9 +208,8 @@ export default function PublicEventPage({ params }: PageProps) {
             } else {
                 setSubmitError("Couldn't confirm. Try again.");
             }
-        } finally {
-            setSubmitting(false);
         }
+        setSubmitting(false);
     }
 
     if (metaError) {
@@ -435,56 +440,79 @@ export default function PublicEventPage({ params }: PageProps) {
 
                 {selectedSlot && (
                     <section className="mt-4 lg:mt-5">
-                        <h2 className="label-caps mb-2">Your details</h2>
-                        <form onSubmit={handleConfirm} className="app-panel rounded-2xl p-4 lg:p-5">
-                            <div className="mb-3 text-xs text-[hsl(var(--muted-foreground))]">
-                                <span className="font-medium text-[hsl(var(--foreground))]">
-                                    {new Date(selectedSlot).toLocaleString([], {
-                                        weekday: "short", month: "short", day: "numeric",
-                                        hour: "numeric", minute: "2-digit", hour12: true,
-                                    })}
+                        {confirmed ? (
+                            <div className="app-panel flex items-center gap-4 rounded-2xl p-5">
+                                <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/15">
+                                    <svg className="size-5 text-emerald-500" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                                        <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clipRule="evenodd" />
+                                    </svg>
                                 </span>
-                                <span> · {meta.event.durationMin} min</span>
-                            </div>
-
-                            <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_1fr_auto]">
-                                <div className="flex flex-col gap-1">
-                                    <label htmlFor="name" className="label-caps">Name</label>
-                                    <Input id="name" name="name" value={guestName} onChange={(e) => setGuestName(e.target.value)} required />
-                                </div>
-
-                                <div className="flex flex-col gap-1">
-                                    <label htmlFor="email" className="label-caps">Email</label>
-                                    <Input
-                                        id="email" name="email" type="email"
-                                        autoComplete="email"
-                                        value={guestEmail}
-                                        onChange={(e) => setGuestEmail(e.target.value)}
-                                        required
-                                    />
-                                </div>
-
-                                <div className="self-end">
-                                    <Button
-                                        type="submit" size="default"
-                                        disabled={submitting || !holdToken || !!holdError}
-                                        className="w-full lg:w-auto lg:shrink-0"
-                                    >
-                                        {submitting
-                                            ? <BufferingButtonLabel label="Confirming…" />
-                                            : !holdToken && !holdError
-                                                ? <BufferingButtonLabel label="Reserving…" />
-                                                : "Confirm"}
-                                    </Button>
+                                <div className="min-w-0">
+                                    <p className="text-sm font-semibold text-[hsl(var(--foreground))]">Booking confirmed!</p>
+                                    <p className="mt-0.5 text-xs text-[hsl(var(--muted-foreground))]">
+                                        {new Date(selectedSlot).toLocaleString([], {
+                                            weekday: "short", month: "short", day: "numeric",
+                                            hour: "numeric", minute: "2-digit", hour12: true,
+                                        })}
+                                        {" · "}{meta.event.durationMin} min · Taking you to your confirmation…
+                                    </p>
                                 </div>
                             </div>
+                        ) : (
+                            <>
+                                <h2 className="label-caps mb-2">Your details</h2>
+                                <form onSubmit={handleConfirm} className="app-panel rounded-2xl p-4 lg:p-5">
+                                    <div className="mb-3 text-xs text-[hsl(var(--muted-foreground))]">
+                                        <span className="font-medium text-[hsl(var(--foreground))]">
+                                            {new Date(selectedSlot).toLocaleString([], {
+                                                weekday: "short", month: "short", day: "numeric",
+                                                hour: "numeric", minute: "2-digit", hour12: true,
+                                            })}
+                                        </span>
+                                        <span> · {meta.event.durationMin} min</span>
+                                    </div>
 
-                            {(submitError || holdError) && (
-                                <p className="mt-2 text-xs text-[hsl(var(--destructive))]">
-                                    {submitError ?? holdError}
-                                </p>
-                            )}
-                        </form>
+                                    <InlineNotice icon={MailCheck} className="mb-4 text-xs">
+                                        We will email your confirmation, meeting link, and cancellation link after booking.
+                                    </InlineNotice>
+
+                                    <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_1fr_auto]">
+                                        <div className="flex flex-col gap-1">
+                                            <label htmlFor="name" className="label-caps">Name</label>
+                                            <Input id="name" name="name" value={guestName} onChange={(e) => setGuestName(e.target.value)} placeholder="Your full name" required />
+                                        </div>
+
+                                        <div className="flex flex-col gap-1">
+                                            <label htmlFor="email" className="label-caps">Email</label>
+                                            <Input
+                                                id="email" name="email" type="email"
+                                                autoComplete="email"
+                                                value={guestEmail}
+                                                onChange={(e) => setGuestEmail(e.target.value)}
+                                                placeholder="you@example.com"
+                                                required
+                                            />
+                                        </div>
+
+                                        <div className="self-end">
+                                            <Button
+                                                type="submit" size="default"
+                                                disabled={submitting || !holdToken || !!holdError}
+                                                className="w-full lg:w-auto lg:shrink-0"
+                                            >
+                                                {submitting
+                                                    ? <BufferingButtonLabel label="Confirming…" />
+                                                    : !holdToken && !holdError
+                                                        ? <BufferingButtonLabel label="Reserving…" />
+                                                        : "Confirm"}
+                                            </Button>
+                                        </div>
+                                    </div>
+
+                                    <FormError className="mt-3 text-xs">{submitError ?? holdError}</FormError>
+                                </form>
+                            </>
+                        )}
                     </section>
                 )}
             </div>
@@ -496,9 +524,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     return (
         <div className="relative flex min-h-dvh flex-col">
             <main className="flex flex-1 flex-col items-center px-4 py-6 sm:px-6 sm:py-12">
-                <Link href="/" className="mb-6 sm:mb-8">
-                    <SessionlyBrand size="md" wordmarkClassName="text-2xl" markClassName="size-8" />
-                </Link>
+                <StandaloneHeader />
                 {children}
                 <PoweredBy />
             </main>
