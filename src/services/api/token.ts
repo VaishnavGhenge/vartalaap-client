@@ -1,10 +1,18 @@
-// Access token is cached in memory and persisted in localStorage so a page
-// reload can resume without waiting for refresh-token rotation. The refresh
-// token still stays in the backend's HttpOnly cookie.
+// Two separate token slots:
+//   - access token: identity for the logged-in user (login/register/refresh).
+//     Persisted in localStorage so a page reload can resume without a refresh
+//     round-trip. The refresh token still stays in the backend's HttpOnly cookie.
+//   - room token: short-lived, room-scoped guest JWT issued by the server when
+//     a guest joins via ?gt= or after the host admits a knock. Lives only in
+//     memory — it's tied to the current tab's call, not the device. Storing it
+//     alongside the access token would (a) cause restoreAuthSession to send a
+//     guest JWT to /auth/me (server 500s because the guest's "userID" is not
+//     a real account), and (b) outlive the call.
 const ACCESS_TOKEN_STORAGE_KEY = 'sessionly_access_token'
 
 let _token: string | null = null
 let _loaded = false
+let _roomToken: string | null = null
 
 function readStoredAccessToken(): string | null {
     if (typeof window === 'undefined') return null
@@ -41,4 +49,12 @@ export function setAccessToken(token: string | null): void {
     _token = token
     _loaded = true
     writeStoredAccessToken(token)
+}
+
+export function getRoomToken(): string | null {
+    return _roomToken
+}
+
+export function setRoomToken(token: string | null): void {
+    _roomToken = token
 }

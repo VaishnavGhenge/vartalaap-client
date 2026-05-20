@@ -7,7 +7,7 @@
  */
 
 import { httpServerUri } from '@/src/services/api/config'
-import { getAccessToken, setAccessToken } from '@/src/services/api/token'
+import { getAccessToken, getRoomToken, setAccessToken } from '@/src/services/api/token'
 
 let refreshInFlight: Promise<boolean> | null = null
 
@@ -42,7 +42,10 @@ export async function parseApiError(res: Response): Promise<ApiError> {
 }
 
 export function apiBearerHeaders(): Record<string, string> {
-    const token = getAccessToken()
+    // Identity token wins when both are present: a logged-in user joining via
+    // ?gt= holds both, and /me/* routes only accept identity tokens. SFU
+    // accepts either, so guests with only a room token still get authorized.
+    const token = getAccessToken() ?? getRoomToken()
     return token ? { Authorization: `Bearer ${token}` } : {}
 }
 

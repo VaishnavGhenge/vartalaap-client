@@ -44,7 +44,9 @@ export class SfuSession {
   // `${remoteSessionId}/${trackName}` → pull subscription.
   private readonly remotePullSubs = new Map<string, Subscription>()
   private readonly pubConnStateSub: Subscription
-  private readonly subConnStateSub: Subscription
+  // subConnStateSub is attached lazily on first subscribe() call. See the
+  // "lazy subscribe-session" note in the constructor.
+  private subConnStateSub: Subscription | null = null
 
   private destroyed = false
   private readonly opts: SfuSessionOptions
@@ -75,14 +77,28 @@ export class SfuSession {
       headers,
     })
 
-    // Surface either PC going to `failed`. Callers don't need to distinguish
-    // which direction failed — both are required for a usable call.
+    // Surface the publish PC going to failed. Callers don't need to
+    // distinguish direction — a broken publish PC means no media is being
+    // sent.
     this.pubConnStateSub = this.pubTracks.peerConnectionState$.subscribe((state) => {
       opts.onConnectionStateChange?.(state)
     })
-    this.subConnStateSub = this.subTracks.peerConnectionState$.subscribe((state) => {
-      opts.onConnectionStateChange?.(state)
-    })
+
+    // IMPORTANT: do NOT subscribe to subTracks.peerConnectionState$ here.
+    // Subscribing eagerly triggers partytracks to call /sessions/new and
+    // create the subscribe-side RTCPeerConnection upfront. When the local
+    // peer joins alone and stays alone, this PC has no transceivers, so it
+    // never goes through SDP/ICE; Cloudflare Realtime's server-side session
+    // for it sits unestablished and gets reaped after a few minutes. The
+    // next time a remote peer publishes and we try to .pull() through this
+    // session, CF returns 410 "Session appears to be disconnected" and
+    // partytracks' retry-with-backoff cannot recover (the same sessionId
+    // gets reused on retry, same 410).
+    //
+    // Lazy creation: first call to subscribe() triggers the first .pull(),
+    // which subscribes to session$, which posts /sessions/new and creates a
+    // fresh PC. Because we add a recvonly transceiver immediately, ICE
+    // establishes, and CF keeps the session alive via standard PC heartbeats.
   }
 
   // Pushes every track in the stream. Idempotent per kind — calling with a
@@ -137,6 +153,14 @@ export class SfuSession {
     if (this.destroyed) return
     const key = `${sessionId}/${trackName}`
     if (this.remotePullSubs.has(key)) return
+    // First subscribe activates the connection-state monitor. Doing this
+    // here rather than in the constructor keeps the subscribe-side CF
+    // session lazy — see the note in the constructor.
+    if (!this.subConnStateSub) {
+      this.subConnStateSub = this.subTracks.peerConnectionState$.subscribe((state) => {
+        this.opts.onConnectionStateChange?.(state)
+      })
+    }
     const meta$ = new BehaviorSubject<TrackMetadata>({
       sessionId,
       trackName,
@@ -169,7 +193,7 @@ export class SfuSession {
     for (const sub of this.localPushSubs.values()) sub.unsubscribe()
     for (const sub of this.remotePullSubs.values()) sub.unsubscribe()
     this.pubConnStateSub.unsubscribe()
-    this.subConnStateSub.unsubscribe()
+    this.subConnStateSub?.unsubscribe()
     this.localSubjects.clear()
     this.localPushSubs.clear()
     this.remotePullSubs.clear()

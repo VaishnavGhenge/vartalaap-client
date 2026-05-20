@@ -1,34 +1,21 @@
-import { test, expect, type Page } from '@playwright/test'
+/**
+ * Two-user call scenarios — three-layer media verification.
+ *
+ * Covers the simplest baseline (two peers see each other, one turns camera on,
+ * one leaves, one rejoins). For the more SFU-specific paths (publish error
+ * surface, late-joiner replay, mid-call camera/mic enable) see sfu-tracks.spec.ts.
+ *
+ * Presence is asserted via the participant-count chip rather than peer names —
+ * createCallContexts() logs both peers in as the same auth account, so
+ * name-based assertions can't distinguish them.
+ */
+
+import { test, expect } from './fixtures'
 import { createCallContexts, fillName, joinRoom, createRoom } from './helpers/call'
-
-async function expectRemoteVideoPlaying(page: Page) {
-  await page.waitForFunction(() => {
-    return Array.from(document.querySelectorAll('video')).some((video) => {
-      const quality = video.getVideoPlaybackQuality?.()
-      if (
-        video.muted
-        || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA
-        || video.videoWidth <= 16
-        || video.videoHeight <= 16
-        || (quality && quality.totalVideoFrames === 0)
-      ) {
-        return false
-      }
-
-      const canvas = document.createElement('canvas')
-      canvas.width = 8
-      canvas.height = 8
-      const ctx = canvas.getContext('2d')
-      if (!ctx) return false
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-      const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data
-      for (let i = 0; i < data.length; i += 4) {
-        if (data[i] > 8 || data[i + 1] > 8 || data[i + 2] > 8) return true
-      }
-      return false
-    })
-  }, { timeout: 10_000 })
-}
+import {
+  expectInboundMediaFlowing,
+  expectRemoteVideoLive,
+} from './helpers/webrtc'
 
 test.describe('Two-user call', () => {
   test('remote participant receives camera video after peer turns camera on', async ({ browser }) => {
@@ -41,10 +28,8 @@ test.describe('Two-user call', () => {
     await test.step('both users join with cameras off', async () => {
       await joinRoom(alice, roomCode, 'Alice')
       await joinRoom(bob, roomCode, 'Bob')
-      await expect(alice.getByText('Bob')).toBeVisible({ timeout: 15_000 })
-      await expect(bob.getByText('Alice')).toBeVisible({ timeout: 15_000 })
-      await expect(alice.getByText(/2 participants/i)).toBeVisible()
-      await expect(bob.getByText(/2 participants/i)).toBeVisible()
+      await expect(alice.getByText('2 participants', { exact: true })).toBeVisible({ timeout: 15_000 })
+      await expect(bob.getByText('2 participants', { exact: true })).toBeVisible({ timeout: 15_000 })
       await expect(alice.getByText(/invite someone/i)).not.toBeVisible()
       await expect(bob.getByText(/invite someone/i)).not.toBeVisible()
     })
@@ -54,7 +39,12 @@ test.describe('Two-user call', () => {
     })
 
     await test.step('Bob receives decoded remote video frames', async () => {
-      await expectRemoteVideoPlaying(bob)
+      // Three-layer: stats prove subscribe pulled bytes; pixel content proves
+      // the decoder produced live, non-frozen frames.
+      await Promise.all([
+        expectInboundMediaFlowing(bob, 'video'),
+        expectRemoteVideoLive(bob),
+      ])
     })
 
     await ctx1.close()
@@ -71,19 +61,15 @@ test.describe('Two-user call', () => {
     await test.step('both users join', async () => {
       await joinRoom(page1, roomCode, 'Alice')
       await joinRoom(page2, roomCode, 'Bob')
-      await expect(page1.getByText('Bob')).toBeVisible({ timeout: 15_000 })
+      await expect(page1.getByText('2 participants', { exact: true })).toBeVisible({ timeout: 15_000 })
     })
 
     await test.step('Bob leaves the call', async () => {
       await page2.getByRole('button', { name: /leave call/i }).click()
     })
 
-    await test.step('Alice no longer sees Bob\'s tile', async () => {
-      await expect(page1.getByText('Bob')).not.toBeVisible({ timeout: 10_000 })
-    })
-
     await test.step('Alice is back to 1 participant', async () => {
-      await expect(page1.getByText(/1 participant/i)).toBeVisible()
+      await expect(page1.getByText('1 participant', { exact: true })).toBeVisible({ timeout: 10_000 })
     })
 
     await ctx1.close()
@@ -110,10 +96,10 @@ test.describe('Two-user call', () => {
       await expect(page1.getByRole('button', { name: /leave call/i })).toBeVisible({ timeout: 10_000 })
     })
 
-    await test.step('Bob joins and can see Alice', async () => {
+    await test.step('Bob joins and both see each other', async () => {
       await joinRoom(page2, roomCode, 'Bob')
-      await expect(page2.getByText('Alice')).toBeVisible({ timeout: 15_000 })
-      await expect(page1.getByText('Bob')).toBeVisible({ timeout: 15_000 })
+      await expect(page1.getByText('2 participants', { exact: true })).toBeVisible({ timeout: 15_000 })
+      await expect(page2.getByText('2 participants', { exact: true })).toBeVisible({ timeout: 15_000 })
     })
 
     await ctx1.close()

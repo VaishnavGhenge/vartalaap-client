@@ -2,6 +2,7 @@
 
 import JoinMeet from "@/src/components/features/JoinMeet";
 import MeetCall from "@/src/components/features/MeetCall";
+import KnockingScreen from "@/src/components/features/KnockingScreen";
 import { CallErrorBoundary } from "@/src/components/ui/CallErrorBoundary";
 import { useJoinMeetStore } from "@/src/stores/joinMeet";
 import { useMeetStore } from "@/src/stores/meet";
@@ -17,7 +18,7 @@ export default function MeetManager() {
     const meetCode = params.meetCode;
     const searchParams = useSearchParams();
     const { hasJoinedMeet, setMeetCode, setHasJoinedMeet, userName } = useJoinMeetStore();
-    const { clearMeet, setCurrentMeet, isMuted, isVideoOff } = useMeetStore();
+    const { clearMeet, setCurrentMeet, isMuted, isVideoOff, isKnocking } = useMeetStore();
 
     // If the URL carries ?gt= (guest token from booking email), exchange it for
     // a room-scoped SFU JWT before the user clicks Join. Succeeds silently;
@@ -66,19 +67,23 @@ export default function MeetManager() {
 
     return (
         <div className="flex flex-1 flex-col">
-            {hasJoinedMeet
-                ? (
-                    <CallErrorBoundary onLeave={handleLeave}>
-                        <MeetCall
-                            client={client}
-                            connState={connState}
-                            reconnectAttempt={reconnectAttempt}
-                            routeMeetCode={meetCode}
-                            onLeave={handleLeave}
-                        />
-                    </CallErrorBoundary>
-                )
-                : <JoinMeet />}
+            {!hasJoinedMeet && <JoinMeet />}
+            {/* While knocking, MeetCall must NOT mount: the signaling `joined`
+                ack already populated the peer list, and rendering the grid
+                behind a translucent overlay leaks the room's identity (names,
+                count, who's sharing) to an unadmitted guest. */}
+            {hasJoinedMeet && isKnocking && <KnockingScreen onCancel={handleLeave} />}
+            {hasJoinedMeet && !isKnocking && (
+                <CallErrorBoundary onLeave={handleLeave}>
+                    <MeetCall
+                        client={client}
+                        connState={connState}
+                        reconnectAttempt={reconnectAttempt}
+                        routeMeetCode={meetCode}
+                        onLeave={handleLeave}
+                    />
+                </CallErrorBoundary>
+            )}
         </div>
     );
 }

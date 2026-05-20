@@ -40,6 +40,7 @@ export interface JoinData {
   audio: boolean
   video: boolean
   presenceId?: string
+  needsAdmit?: boolean
 }
 
 export interface JoinedData { peers: PeerInfo[] }

@@ -10,7 +10,7 @@ import type {
 } from '@/src/services/signaling/protocol'
 import { SfuSession } from '@/src/services/webrtc/sfu-session'
 import { playPeerJoined, playPeerLeft, playScreenShareStart, playScreenShareStop } from '@/src/lib/sounds'
-import { getAccessToken, setAccessToken } from '@/src/services/api/token'
+import { getAccessToken, getRoomToken, setRoomToken } from '@/src/services/api/token'
 import { useMeetStore } from '@/src/stores/meet'
 
 // The CLAUDE.md SLO calls anything over 10s a failed connection attempt rather
@@ -101,9 +101,13 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
     const handleKnockGranted = (env: Envelope<KnockGrantedData>) => {
       const token = env.data?.sfuToken
       if (!token) return
-      setAccessToken(token)
+      setRoomToken(token)
       resolveKnockGranted?.(token)
-      useMeetStore.getState().setIsKnocking(false)
+      // setIsKnocking(false) is intentionally deferred to after setSfuSession
+      // below. Clearing the overlay here would unlock the UI before the SFU
+      // session is ready; any camera/mic action in that window calls
+      // sfuSession?.replaceTrack which silently no-ops (sfuSession is still
+      // null). Deferring until after setSfuSession closes that window.
     }
 
     // ── Handlers ────────────────────────────────────────────────────────────
@@ -199,6 +203,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
         audio: a.initialAudio,
         video: a.initialVideo,
         presenceId: client.getPresenceId(),
+        needsAdmit: !getAccessToken() && !getRoomToken(),
       }, { room: roomId })
       // Wait for the server to re-add us to the room before re-publishing.
       // Same race as the initial join: publish before join → tracks not stored.
@@ -252,15 +257,17 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
           audio: a.initialAudio,
           video: a.initialVideo,
           presenceId: client.getPresenceId(),
+          needsAdmit: !getAccessToken() && !getRoomToken(),
         }, { room: roomId })
 
         await joinedAck
         if (disposed) return
 
-        // If no access token is present (guest via knock/admit, not email link),
+        // If no token is present (guest via knock/admit, not email link),
         // announce knock and wait for the host to admit. The handleKnockGranted
-        // handler sets the token and resolves knockGrantedPromise.
-        if (!getAccessToken()) {
+        // handler stores the room token and resolves knockGrantedPromise.
+        const willKnock = !getAccessToken() && !getRoomToken()
+        if (willKnock) {
           useMeetStore.getState().setIsKnocking(true)
           client.send('knock', undefined)
           await knockGrantedPromise
@@ -372,6 +379,10 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
           return
         }
         store.getState().setSfuSession(sfuSession)
+        // Now safe to unlock the call UI — sfuSession is live, so camera/mic
+        // toggles will publish correctly. Doing this before setSfuSession would
+        // create a window where replaceTrack silently no-ops.
+        if (willKnock) useMeetStore.getState().setIsKnocking(false)
 
         // Drain sfu-tracks that arrived while the session was being constructed.
         for (const { sessionId, trackNames } of pendingSfuTracks) {
@@ -428,6 +439,9 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       client.off('error', handleError as (env: Envelope) => void)
       client.off('knock-granted', handleKnockGranted as (env: Envelope) => void)
       useMeetStore.getState().setIsKnocking(false)
+      // Room token is scoped to this specific call. Leaving the page (or
+      // re-joining the same room) should not reuse a stale SFU JWT.
+      setRoomToken(null)
       store.getState().clearAll()
     }
     // Intentionally excluding userName/initialAudio/initialVideo: they're

@@ -1,5 +1,5 @@
 import { httpServerUri } from './config'
-import { setAccessToken } from './token'
+import { setRoomToken } from './token'
 
 export async function exchangeGuestToken(meetCode: string, guestToken: string): Promise<boolean> {
     try {
@@ -12,7 +12,7 @@ export async function exchangeGuestToken(meetCode: string, guestToken: string): 
         if (!res.ok) return false
         const body = await res.json() as { sfuToken?: string }
         if (!body.sfuToken) return false
-        setAccessToken(body.sfuToken)
+        setRoomToken(body.sfuToken)
         return true
     } catch {
         return false

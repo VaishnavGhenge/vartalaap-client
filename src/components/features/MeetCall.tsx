@@ -1,6 +1,6 @@
 "use client";
 
-import { PhoneOff, Copy, Check, Share2, Monitor, UserCheck, Clock, Timer } from "lucide-react";
+import { PhoneOff, Copy, Check, Share2, Monitor, UserCheck, Timer, ChevronDown, ChevronUp, Users } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/src/lib/utils";
 import { resumeSharedAudioContext } from "@/src/lib/audio-context";
@@ -18,7 +18,7 @@ import { useMeetStore } from "@/src/stores/meet";
 import { usePeerStore } from "@/src/stores/peer";
 import { useJoinMeetStore } from "@/src/stores/joinMeet";
 import type { SignalingClient, ConnState } from "@/src/services/signaling/client";
-import type { Envelope, KnockRequestData } from "@/src/services/signaling/protocol";
+import type { Envelope, KnockRequestData, PeerLeftData } from "@/src/services/signaling/protocol";
 
 const LOCAL_TILE_ID = 'local'
 
@@ -31,7 +31,7 @@ interface MeetCallProps {
 }
 
 export default function MeetCall({ client, connState, reconnectAttempt, routeMeetCode, onLeave }: MeetCallProps) {
-    const { isMuted, isVideoOff, isScreenSharing, isKnocking, roomClosesAt, toggleMute, toggleVideo, toggleScreenShare, clearMeet } = useMeetStore();
+    const { isMuted, isVideoOff, isScreenSharing, roomClosesAt, toggleMute, toggleVideo, toggleScreenShare, clearMeet } = useMeetStore();
     const { localStream, screenTrack, enableMic, disableMic, enableCamera, disableCamera, switchCamera, startScreenShare, stopScreenShare, peerConnections, peerStats } = usePeerStore();
     const hasMultipleCameras = useHasMultipleCameras();
     const { userName, meetCode, clearJoinMeet } = useJoinMeetStore();
@@ -42,6 +42,7 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
     const [pinnedId, setPinnedId] = useState<string | null>(null);
     const [isPicking, setIsPicking] = useState(false);
     const [knockRequests, setKnockRequests] = useState<Array<{ peerId: string; name: string }>>([]);
+    const [knockExpanded, setKnockExpanded] = useState(false);
 
     // Session expiry — secsLeft is null when no closesAt (instant rooms).
     // Ticks every second when under 10 min so the in-call timer stays accurate.
@@ -171,8 +172,17 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                 return [...prev, { peerId: env.data!.peerId, name: env.data!.name }];
             });
         };
+        // Remove a knocking guest from the queue if they disconnect before being admitted.
+        const handlePeerLeft = (env: Envelope<PeerLeftData>) => {
+            if (!env.data?.peerId) return;
+            setKnockRequests(prev => prev.filter(r => r.peerId !== env.data!.peerId));
+        };
         client.on('knock-request', handleKnockRequest as (env: Envelope) => void);
-        return () => client.off('knock-request', handleKnockRequest as (env: Envelope) => void);
+        client.on('peer-left', handlePeerLeft as (env: Envelope) => void);
+        return () => {
+            client.off('knock-request', handleKnockRequest as (env: Envelope) => void);
+            client.off('peer-left', handlePeerLeft as (env: Envelope) => void);
+        };
     }, [client]);
 
     // Remove guests from the knock queue once they appear as real peers.
@@ -351,6 +361,16 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
         setKnockRequests(prev => prev.filter(r => r.peerId !== peerId));
     };
 
+    const handleAdmitAll = () => {
+        knockRequests.forEach(r => client?.send('knock-admit', { peerId: r.peerId }));
+        setKnockRequests([]);
+        setKnockExpanded(false);
+    };
+
+    const handleDeny = (peerId: string) => {
+        setKnockRequests(prev => prev.filter(r => r.peerId !== peerId));
+    };
+
     const togglePin = (id: string) => setPinnedId(prev => prev === id ? null : id);
 
     const alone = remotePeers.length === 0;
@@ -423,17 +443,6 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                 onLeave={handleEndCall}
             />
 
-            {/* Guest: waiting to be admitted overlay */}
-            {isKnocking && (
-                <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-[hsl(var(--background))]/90 backdrop-blur-sm">
-                    <div className="glass-pill flex flex-col items-center gap-3 px-8 py-6 text-center">
-                        <Clock className="w-8 h-8 text-[hsl(var(--muted-foreground))] animate-pulse" />
-                        <p className="text-sm font-medium text-[hsl(var(--foreground))]">Waiting to be let in…</p>
-                        <p className="text-xs text-[hsl(var(--muted-foreground))]">The host will admit you shortly.</p>
-                    </div>
-                </div>
-            )}
-
             {/* Session expired overlay — auto-leave countdown */}
             {autoLeaveCountdown !== null && (
                 <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-[hsl(var(--background))]/90 backdrop-blur-sm">
@@ -469,24 +478,116 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                 </div>
             )}
 
-            {/* Host: knock-request banners */}
+            {/* Host: knock-request banner — top-center, merged when multiple */}
             {knockRequests.length > 0 && (
-                <div className="fixed top-4 right-4 z-50 flex flex-col gap-2">
-                    {knockRequests.map(({ peerId, name }) => (
-                        <div key={peerId} className="glass-pill flex items-center gap-3 px-4 py-3 shadow-lg">
-                            <UserCheck className="w-4 h-4 shrink-0 text-[hsl(var(--muted-foreground))]" />
-                            <span className="text-sm font-medium text-[hsl(var(--foreground))]">
-                                {name || 'Someone'} wants to join
-                            </span>
-                            <button
-                                type="button"
-                                onClick={() => handleAdmit(peerId)}
-                                className="ml-1 rounded-full bg-[hsl(var(--primary))] px-3 py-1 text-xs font-semibold text-[hsl(var(--primary-foreground))] hover:opacity-90 transition-opacity"
-                            >
-                                Admit
-                            </button>
+                <div className="fixed top-[68px] left-1/2 -translate-x-1/2 z-50 w-full max-w-sm px-3 pointer-events-none animate-in slide-in-from-top-2 duration-200">
+                    <div className="pointer-events-auto rounded-2xl border border-[hsl(var(--border)/0.55)] bg-[hsl(var(--surface)/0.90)] shadow-lg overflow-hidden"
+                         style={{ backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)' }}>
+
+                        {/* Header row — always visible */}
+                        <div className="flex items-center gap-3 px-4 py-3">
+                            <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[hsl(var(--primary))]/15">
+                                {knockRequests.length === 1
+                                    ? <UserCheck className="w-4 h-4 text-[hsl(var(--primary))]" />
+                                    : <Users className="w-4 h-4 text-[hsl(var(--primary))]" />
+                                }
+                            </div>
+
+                            <div className="flex-1 min-w-0">
+                                {knockRequests.length === 1 ? (
+                                    <p className="text-sm font-semibold text-[hsl(var(--foreground))] truncate">
+                                        <span className="max-w-[140px] inline-block truncate align-bottom">{knockRequests[0].name || 'Someone'}</span>
+                                        {' '}wants to join
+                                    </p>
+                                ) : (
+                                    <p className="text-sm font-semibold text-[hsl(var(--foreground))]">
+                                        {knockRequests.length} people want to join
+                                    </p>
+                                )}
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                                {knockRequests.length === 1 ? (
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDeny(knockRequests[0].peerId)}
+                                            aria-label={`Deny ${knockRequests[0].name || 'guest'}`}
+                                            className="press rounded-lg border border-[hsl(var(--border))] px-3 py-1.5 text-xs font-medium
+                                                       text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--surface-2))] transition-colors"
+                                        >
+                                            Deny
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleAdmit(knockRequests[0].peerId)}
+                                            aria-label={`Admit ${knockRequests[0].name || 'guest'}`}
+                                            className="press rounded-lg bg-[hsl(var(--primary))] px-3 py-1.5 text-xs font-semibold
+                                                       text-[hsl(var(--primary-foreground))] hover:brightness-110 transition-[filter]"
+                                        >
+                                            Admit
+                                        </button>
+                                    </>
+                                ) : (
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={handleAdmitAll}
+                                            className="press rounded-lg bg-[hsl(var(--primary))] px-3 py-1.5 text-xs font-semibold
+                                                       text-[hsl(var(--primary-foreground))] hover:brightness-110 transition-[filter]"
+                                        >
+                                            Admit all
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setKnockExpanded(p => !p)}
+                                            aria-label={knockExpanded ? 'Collapse requests' : 'Expand requests'}
+                                            className="press flex size-7 items-center justify-center rounded-lg border border-[hsl(var(--border))]
+                                                       text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--surface-2))] transition-colors"
+                                        >
+                                            {knockExpanded
+                                                ? <ChevronUp className="w-3.5 h-3.5" />
+                                                : <ChevronDown className="w-3.5 h-3.5" />
+                                            }
+                                        </button>
+                                    </>
+                                )}
+                            </div>
                         </div>
-                    ))}
+
+                        {/* Expanded list — shown for multiple requests only */}
+                        {knockRequests.length > 1 && knockExpanded && (
+                            <div className="border-t border-[hsl(var(--border))]/50">
+                                {knockRequests.map(({ peerId, name }) => (
+                                    <div key={peerId} className="flex items-center gap-3 px-4 py-2.5 border-b border-[hsl(var(--border))]/30 last:border-b-0">
+                                        <span className="flex-1 min-w-0 text-sm text-[hsl(var(--foreground))] truncate">
+                                            {name || 'Someone'}
+                                        </span>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDeny(peerId)}
+                                                aria-label={`Deny ${name || 'guest'}`}
+                                                className="press rounded-lg border border-[hsl(var(--border))] px-2.5 py-1 text-xs font-medium
+                                                           text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--surface-2))] transition-colors"
+                                            >
+                                                Deny
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleAdmit(peerId)}
+                                                aria-label={`Admit ${name || 'guest'}`}
+                                                className="press rounded-lg bg-[hsl(var(--primary))] px-2.5 py-1 text-xs font-semibold
+                                                           text-[hsl(var(--primary-foreground))] hover:brightness-110 transition-[filter]"
+                                            >
+                                                Admit
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
 
