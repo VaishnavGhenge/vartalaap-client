@@ -143,4 +143,19 @@ export async function joinRoom(page: Page, roomCode: string, name: string) {
   await expect(page.getByRole('button', { name: /leave call/i })).toBeVisible({ timeout: 10_000 })
 }
 
+// Creates N independent authenticated browser contexts, each with its own
+// rt cookie so /auth/refresh in one context does not rotate away the others.
+// Each context gets the PC tracker init script so webrtc.ts helpers work.
+// Callers are responsible for closing all returned contexts after the test.
+export async function createNCallContexts(browser: Browser, n: number): Promise<BrowserContext[]> {
+  const states = await Promise.all(Array.from({ length: n }, () => freshAuthState()))
+  return Promise.all(
+    states.map(async (state) => {
+      const ctx = await browser.newContext({ ...CONTEXT_BASE, storageState: state })
+      await ctx.addInitScript(installPeerConnectionTracker)
+      return ctx
+    }),
+  )
+}
+
 export type InitScriptTarget = Page | BrowserContext
