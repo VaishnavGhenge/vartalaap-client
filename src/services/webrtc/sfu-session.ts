@@ -16,26 +16,35 @@ export interface SfuSessionOptions {
 }
 
 /**
- * Wraps two partytracks instances — one publish-only, one subscribe-only — so
- * each underlying RTCPeerConnection only carries transceivers in a single
- * direction. Mixing sendonly and recvonly transceivers in one PC produces SDP
- * answers from Cloudflare Realtime that Chrome's WebRTC stack rejects with
- * `ERROR_CONTENT: Failed to set remote video description send parameters for
- * m-section with mid='N'`, which we hit when a peer who joined without media
- * later enabled their camera.
+ * Wraps partytracks for one local peer. One pubTracks instance (sendonly)
+ * carries all outbound tracks. Subscribe-side uses ONE PartyTracks instance
+ * PER REMOTE SESSION so that renegotiating Carol's subscribe session (adding
+ * her tracks to our PC) never touches the existing Alice↔Bob subscribe
+ * connection.
  *
- * Cost: 2 CF sessions per participant instead of 1 — the Cloudflare Realtime
- * pricing is per-minute-of-PC so this roughly doubles SFU billing per peer.
- * Reliability gain: every renegotiation is direction-pure and never trips the
- * mixed-direction validator.
+ * With a shared subTracks instance (the previous design), every new
+ * subscription triggered a full SDP renegotiation on the same PC. CF Realtime
+ * would issue a new offer that covered ALL existing transceivers; if that offer
+ * or the subsequent PUT /renegotiate was rejected (or caused an ICE restart),
+ * every already-flowing pull was silently disrupted — the bug observed when a
+ * 3rd peer joined an active call.
+ *
+ * Cost: up to N CF subscribe sessions per participant instead of 1. CF pricing
+ * is per-minute-of-PC so at N=4 this is roughly 4× the subscribe-side cost.
+ * The reliability gain — no cross-peer renegotiation interference — is the
+ * correct trade-off at this scale.
  */
 export class SfuSession {
   // Publish-only — all transceivers are sendonly. Owns the CF session whose
   // ID is broadcast to other peers so they can pull our tracks.
   private readonly pubTracks: PartyTracks
-  // Subscribe-only — all transceivers are recvonly. Pulls remote tracks from
-  // other peers' publish sessions.
-  private readonly subTracks: PartyTracks
+
+  // One subscribe-only PartyTracks per remote CF publish sessionId. Each has
+  // its own RTCPeerConnection and CF session so renegotiations are isolated.
+  // Lazily created on first subscribeTrack() call for a given remote session.
+  private readonly subTracksMap = new Map<string, PartyTracks>()
+  // Connection-state subscriptions for each per-session subTracks instance.
+  private readonly subConnStateMap = new Map<string, Subscription>()
 
   // kind ('audio'|'video') → subject feeding the corresponding push.
   // Calling .next() on it makes partytracks replaceTrack the existing sender.
@@ -44,12 +53,11 @@ export class SfuSession {
   // `${remoteSessionId}/${trackName}` → pull subscription.
   private readonly remotePullSubs = new Map<string, Subscription>()
   private readonly pubConnStateSub: Subscription
-  // subConnStateSub is attached lazily on first subscribe() call. See the
-  // "lazy subscribe-session" note in the constructor.
-  private subConnStateSub: Subscription | null = null
 
   private destroyed = false
   private readonly opts: SfuSessionOptions
+  // Shared PartyTracks config reused for each per-session subTracks instance.
+  private readonly subTracksConfig: ConstructorParameters<typeof PartyTracks>[0]
 
   constructor(opts: SfuSessionOptions) {
     this.opts = opts
@@ -60,22 +68,22 @@ export class SfuSession {
 
     const baseParams = `roomId=${encodeURIComponent(opts.roomId)}&peerId=${encodeURIComponent(opts.peerId)}`
 
-    // The `kind` param is purely diagnostic on the server side — it makes
-    // logs distinguish the two sessions for this peer. The server treats both
-    // sessions identically; the registry maps each CF session ID back to the
-    // same (roomId, peerId).
     this.pubTracks = new PartyTracks({
       prefix: `${httpServerUri}/sfu`,
       apiExtraParams: `${baseParams}&kind=publish`,
       iceServers: opts.iceServers,
       headers,
     })
-    this.subTracks = new PartyTracks({
+
+    // Shared config used when creating per-session subscribe PartyTracks.
+    // kind=subscribe is purely diagnostic — the server logs use it to tell
+    // publish and subscribe CF sessions apart.
+    this.subTracksConfig = {
       prefix: `${httpServerUri}/sfu`,
       apiExtraParams: `${baseParams}&kind=subscribe`,
       iceServers: opts.iceServers,
       headers,
-    })
+    }
 
     // Surface the publish PC going to failed. Callers don't need to
     // distinguish direction — a broken publish PC means no media is being
@@ -84,21 +92,9 @@ export class SfuSession {
       opts.onConnectionStateChange?.(state)
     })
 
-    // IMPORTANT: do NOT subscribe to subTracks.peerConnectionState$ here.
-    // Subscribing eagerly triggers partytracks to call /sessions/new and
-    // create the subscribe-side RTCPeerConnection upfront. When the local
-    // peer joins alone and stays alone, this PC has no transceivers, so it
-    // never goes through SDP/ICE; Cloudflare Realtime's server-side session
-    // for it sits unestablished and gets reaped after a few minutes. The
-    // next time a remote peer publishes and we try to .pull() through this
-    // session, CF returns 410 "Session appears to be disconnected" and
-    // partytracks' retry-with-backoff cannot recover (the same sessionId
-    // gets reused on retry, same 410).
-    //
-    // Lazy creation: first call to subscribe() triggers the first .pull(),
-    // which subscribes to session$, which posts /sessions/new and creates a
-    // fresh PC. Because we add a recvonly transceiver immediately, ICE
-    // establishes, and CF keeps the session alive via standard PC heartbeats.
+    // Per-session subTracks instances are created lazily in subscribeTrack().
+    // This keeps subscribe-side CF sessions from being allocated until there
+    // is actually a remote peer to subscribe to.
   }
 
   // Pushes every track in the stream. Idempotent per kind — calling with a
@@ -153,20 +149,29 @@ export class SfuSession {
     if (this.destroyed) return
     const key = `${sessionId}/${trackName}`
     if (this.remotePullSubs.has(key)) return
-    // First subscribe activates the connection-state monitor. Doing this
-    // here rather than in the constructor keeps the subscribe-side CF
-    // session lazy — see the note in the constructor.
-    if (!this.subConnStateSub) {
-      this.subConnStateSub = this.subTracks.peerConnectionState$.subscribe((state) => {
+
+    // Get or create the subscribe-only PartyTracks for this remote session.
+    // Each remote peer gets its own PC + CF session so renegotiations for one
+    // peer never affect subscriptions to others.
+    let subTracks = this.subTracksMap.get(sessionId)
+    if (!subTracks) {
+      subTracks = new PartyTracks(this.subTracksConfig)
+      this.subTracksMap.set(sessionId, subTracks)
+      // Monitor connection state for this per-session subscribe PC. Lazy: the
+      // peerConnectionState$ subscription triggers /sessions/new + ICE only
+      // when there is a real remote peer to subscribe to.
+      const connStateSub = subTracks.peerConnectionState$.subscribe((state) => {
         this.opts.onConnectionStateChange?.(state)
       })
+      this.subConnStateMap.set(sessionId, connStateSub)
     }
+
     const meta$ = new BehaviorSubject<TrackMetadata>({
       sessionId,
       trackName,
       location: 'remote',
     })
-    const track$ = this.subTracks.pull(meta$.asObservable())
+    const track$ = subTracks.pull(meta$.asObservable())
     const sub = track$.subscribe({
       next: (track) => {
         this.opts.onRemoteTrack?.(track, sessionId, trackName)
@@ -176,8 +181,8 @@ export class SfuSession {
     this.remotePullSubs.set(key, sub)
   }
 
-  // Stops pulling every track from a remote session. Used when a peer leaves
-  // so we don't keep idle pulls open against CF.
+  // Stops pulling every track from a remote session and closes that session's
+  // subscribe PC. Called when a peer leaves so idle CF sessions are released.
   unsubscribePeer(sessionId: string): void {
     for (const [key, sub] of this.remotePullSubs) {
       if (key.startsWith(`${sessionId}/`)) {
@@ -185,6 +190,14 @@ export class SfuSession {
         this.remotePullSubs.delete(key)
       }
     }
+    // Unsubscribing the connection-state monitor drops the last reference to
+    // this session's PartyTracks, which closes its underlying PC via refCount.
+    const connStateSub = this.subConnStateMap.get(sessionId)
+    if (connStateSub) {
+      connStateSub.unsubscribe()
+      this.subConnStateMap.delete(sessionId)
+    }
+    this.subTracksMap.delete(sessionId)
   }
 
   close(): void {
@@ -192,10 +205,12 @@ export class SfuSession {
     this.destroyed = true
     for (const sub of this.localPushSubs.values()) sub.unsubscribe()
     for (const sub of this.remotePullSubs.values()) sub.unsubscribe()
+    for (const sub of this.subConnStateMap.values()) sub.unsubscribe()
     this.pubConnStateSub.unsubscribe()
-    this.subConnStateSub?.unsubscribe()
     this.localSubjects.clear()
     this.localPushSubs.clear()
     this.remotePullSubs.clear()
+    this.subTracksMap.clear()
+    this.subConnStateMap.clear()
   }
 }

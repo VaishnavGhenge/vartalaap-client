@@ -42,6 +42,9 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
     const prevScreenSharing = new Map<string, boolean>()
     // Maps CF remoteSessionId → signaling peerId so onRemoteTrack can route tracks.
     const remoteSessionToPeer = new Map<string, string>()
+    // Reverse map: signaling peerId → CF remoteSessionId so handlePeerLeft can
+    // call sfuSession.unsubscribePeer with the right CF session ID.
+    const peerToRemoteSession = new Map<string, string>()
     // sfu-tracks messages that arrive before sfuSession is ready are buffered here.
     const pendingSfuTracks: Array<{ sessionId: string; trackNames: string[] }> = []
 
@@ -142,6 +145,15 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       const remoteId = env.data?.peerId
       if (!remoteId) return
       prevScreenSharing.delete(remoteId)
+      // Release the per-session subscribe PC for this peer so the CF session
+      // is closed and billing stops. Must happen before removePeerConnection
+      // so the sfuSession reference is still valid.
+      const remoteSessionId = peerToRemoteSession.get(remoteId)
+      if (remoteSessionId) {
+        store.getState().sfuSession?.unsubscribePeer(remoteSessionId)
+        peerToRemoteSession.delete(remoteId)
+        remoteSessionToPeer.delete(remoteSessionId)
+      }
       store.getState().removePeerConnection(remoteId)
       playPeerLeft()
     }
@@ -168,8 +180,10 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       const trackNames = env.data.tracks.map((t) => t.trackName)
       // Record the CF sessionId → signaling peerId mapping so onRemoteTrack
       // (fired by partytracks when a pull resolves) can attribute the track
-      // to the right participant.
+      // to the right participant. Also maintain the reverse map so we can
+      // call sfuSession.unsubscribePeer when that signaling peer leaves.
       remoteSessionToPeer.set(env.data.sessionId, env.from)
+      peerToRemoteSession.set(env.from, env.data.sessionId)
       const sfuSession = store.getState().sfuSession
       if (!sfuSession) {
         // partytracks instance not constructed yet — buffer until init below.
@@ -194,6 +208,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
     client.setReconnectedHandler(() => {
       if (disposed) return
       remoteSessionToPeer.clear()
+      peerToRemoteSession.clear()
       pendingSfuTracks.length = 0
       store.getState().clearPeers()
       resetJoinedAck()
