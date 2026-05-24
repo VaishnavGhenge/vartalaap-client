@@ -36,9 +36,12 @@ const origCreateElement = document.createElement.bind(document)
 // beforeEach resets (mockSubscribe = vi.fn()...) are reflected in every call.
 
 let capturedOnRemoteTrack: SfuSessionOptions['onRemoteTrack'] | undefined
-let mockSubscribe: ReturnType<typeof vi.fn>
-let mockPublish: ReturnType<typeof vi.fn>
-let mockClose: ReturnType<typeof vi.fn>
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let mockSubscribe: (...args: any[]) => any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let mockPublish: (...args: any[]) => any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let mockClose: (...args: any[]) => any
 
 vi.mock('@/src/services/webrtc/sfu-session', () => ({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
