@@ -103,6 +103,16 @@ export function playScreenShareStart(): void {
   })
 }
 
+// Three short pulses — someone is knocking and waiting to be admitted.
+export function playKnockRequest(): void {
+  guardPlay('knock-request', () => {
+    const c = ac(); if (!c) return
+    tone(c, 440, 0.12, 0.07, 0)
+    tone(c, 440, 0.12, 0.07, 0.14)
+    tone(c, 440, 0.10, 0.09, 0.28)
+  })
+}
+
 // Soft single descending tone — screen sharing stopped (local or remote).
 export function playScreenShareStop(): void {
   guardPlay('screen-share-stop', () => {

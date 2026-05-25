@@ -49,14 +49,35 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
     const pendingSfuTracks: Array<{ sessionId: string; trackNames: string[] }> = []
 
     // ── Time-to-first-media instrumentation ────────────────────────────────
-    // joinSentAt is captured the moment we hand the `join` envelope to the
-    // signaling client. ttfmRecorded latches so we emit exactly one observation
-    // per call (a peer might publish multiple tracks; only the first matters).
-    // ttfmTimeout fires at TTFM_TIMEOUT_MS and emits result=timeout so the
-    // call-success-rate SLO captures users who gave up waiting.
+    // joinSentAt is captured when the TTFM window opens (see armTtfmTimeout).
+    // ttfmRecorded latches so we emit exactly one observation per call.
+    // The timer is re-armed in three situations:
+    //   1. Initial join (below in the async IIFE)
+    //   2. After knock-granted — lobby wait time is not a SFU quality signal
+    //   3. First peer-joined when we were previously alone — restarts the
+    //      window from the moment a remote track is actually expected
     let joinSentAt = 0
     let ttfmRecorded = false
     let ttfmTimeout: ReturnType<typeof setTimeout> | null = null
+
+    const armTtfmTimeout = () => {
+      if (ttfmTimeout) { clearTimeout(ttfmTimeout); ttfmTimeout = null }
+      joinSentAt = performance.now()
+      ttfmTimeout = setTimeout(() => {
+        ttfmTimeout = null
+        if (ttfmRecorded) return
+        // If no remote peers are present the user is still alone — no media is
+        // expected yet. Skip the emit so solo joins don't pollute the timeout
+        // counter; handlePeerJoined will re-arm when the first peer arrives.
+        if (store.getState().peerConnections.size === 0) return
+        ttfmRecorded = true
+        emitMetric({ name: 'call_attempt', value: 0, result: 'timeout' })
+        Sentry.captureMessage('call setup timeout', {
+          level: 'warning',
+          tags: { ttfm_outcome: 'timeout' },
+        })
+      }, TTFM_TIMEOUT_MS)
+    }
 
     const emitMetric = (data: ClientMetricData) => {
       if (!client) return
@@ -139,6 +160,12 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
         screenSharing: d.screenSharing ?? false, videoHeld: d.videoHeld ?? false,
       })
       playPeerJoined()
+      // If we were alone and the TTFM timer already expired without emitting
+      // (peerConnections was empty at that point), re-arm it now that there is
+      // a peer who should be sending media shortly.
+      if (!ttfmRecorded && !ttfmTimeout) {
+        armTtfmTimeout()
+      }
     }
 
     const handlePeerLeft = (env: Envelope<PeerLeftData>) => {
@@ -251,21 +278,10 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
         // when the room doesn't exist yet — meaning late joiners never receive
         // our tracks during their join replay.
         const a = joinArgs.current
-        joinSentAt = performance.now()
-        // The TTFM clock starts the moment the join envelope leaves the client.
-        // Anything that prevents a remote frame from arriving — server-side
-        // join failure, SFU 5xx, peer never publishing — should land as a
-        // timeout, not silence. The timer is cancelled on success, error, or
-        // unmount.
-        ttfmTimeout = setTimeout(() => {
-          if (ttfmRecorded) return
-          ttfmRecorded = true
-          emitMetric({ name: 'call_attempt', value: 0, result: 'timeout' })
-          Sentry.captureMessage('call setup timeout', {
-            level: 'warning',
-            tags: { ttfm_outcome: 'timeout' },
-          })
-        }, TTFM_TIMEOUT_MS)
+        // Open the TTFM window from the moment the join envelope leaves the
+        // client. The timer is smart: if the room turns out to be empty it
+        // skips the emit and re-arms when the first peer joins instead.
+        armTtfmTimeout()
 
         client.send('join', {
           name: a.userName,
@@ -287,6 +303,10 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
           client.send('knock', undefined)
           await knockGrantedPromise
           if (disposed) return
+          // Re-arm TTFM from the moment we're admitted. The lobby wait time
+          // is not a SFU quality signal — 10 s in a waiting room should not
+          // count as a failed call setup.
+          armTtfmTimeout()
         }
 
         // Fetch ICE/TURN credentials only after the server accepts the room

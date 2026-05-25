@@ -4,7 +4,7 @@ import { PhoneOff, Copy, Check, Share2, Monitor, UserCheck, Timer, ChevronDown, 
 import { toast } from "sonner";
 import { cn } from "@/src/lib/utils";
 import { resumeSharedAudioContext } from "@/src/lib/audio-context";
-import { playLeaveCall, playScreenShareStart, playScreenShareStop } from "@/src/lib/sounds";
+import { playKnockRequest, playLeaveCall, playScreenShareStart, playScreenShareStop } from "@/src/lib/sounds";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAudioLevel } from "@/src/hooks/use-audio-level";
 import { MicButton } from "@/src/components/ui/MicButton";
@@ -19,6 +19,7 @@ import { usePeerStore } from "@/src/stores/peer";
 import { useJoinMeetStore } from "@/src/stores/joinMeet";
 import type { SignalingClient, ConnState } from "@/src/services/signaling/client";
 import type { Envelope, KnockRequestData, PeerLeftData } from "@/src/services/signaling/protocol";
+import { getAccessToken } from "@/src/services/api/token";
 
 const LOCAL_TILE_ID = 'local'
 
@@ -163,12 +164,17 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
     }, [client])
 
     // Host: listen for knock-request and queue incoming guests.
+    // knock-request is broadcast to all room members, but only the authenticated
+    // host should see the admit banner — admitted guests must not accidentally
+    // admit newcomers because they also received the message.
     useEffect(() => {
         if (!client) return;
         const handleKnockRequest = (env: Envelope<KnockRequestData>) => {
             if (!env.data?.peerId) return;
+            if (!getAccessToken()) return;
             setKnockRequests(prev => {
                 if (prev.some(r => r.peerId === env.data!.peerId)) return prev;
+                playKnockRequest();
                 return [...prev, { peerId: env.data!.peerId, name: env.data!.name }];
             });
         };
@@ -184,11 +190,6 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
             client.off('peer-left', handlePeerLeft as (env: Envelope) => void);
         };
     }, [client]);
-
-    // Remove guests from the knock queue once they appear as real peers.
-    useEffect(() => {
-        setKnockRequests(prev => prev.filter(r => !peerConnections.has(r.peerId)));
-    }, [peerConnections]);
 
     const remotePeers = useMemo(() => Array.from(peerConnections.values()), [peerConnections]);
 
