@@ -23,6 +23,7 @@ function computeLayout(count: number, width: number, height: number, gap: number
   const portrait = height > width;
 
   let best: Layout | null = null;
+  let bestArea = 0;
   for (let cols = 1; cols <= count; cols++) {
     const rows = Math.ceil(count / cols);
     const availW = width - gap * (cols - 1);
@@ -42,8 +43,18 @@ function computeLayout(count: number, width: number, height: number, gap: number
       tileHeight = Math.floor(tileWidth / tileAspect);
     }
 
-    const area = tileWidth * tileHeight;
-    if (!best || area > best.tileWidth * best.tileHeight) {
+    // In portrait the row height (tileHeight) can vastly exceed what the 16:9
+    // frame actually occupies. A cols=3 single-row layout scores 105×555=58k
+    // while cols=1 three-row scores 318×179=57k — the wrong winner. Compare
+    // using the effective video height (AR-capped) so the comparison reflects
+    // visible content, not empty row space. tileHeight stays uncapped for
+    // rendering so solo and two-tile portraits still fill the screen naturally.
+    const effectiveH = portrait
+      ? Math.min(tileHeight, Math.floor(tileWidth / tileAspect))
+      : tileHeight;
+    const area = tileWidth * effectiveH;
+    if (area > bestArea) {
+      bestArea = area;
       best = { cols, rows, tileWidth, tileHeight };
     }
   }
