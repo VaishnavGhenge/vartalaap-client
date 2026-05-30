@@ -74,16 +74,30 @@ export interface StatsReportData {
 // histogram. The server is the sole owner of the histogram registry — the
 // browser only sends values. See vartalaap-server/internal/signaling/client.go
 // for the supported (name, phase, result) combinations.
-export type ClientMetricName = 'time_to_first_media' | 'call_setup_phase' | 'call_attempt'
+export type ClientMetricName = 'time_to_first_media' | 'call_setup_phase' | 'call_attempt' | 'call_setup_failure'
 export type CallSetupPhase    = 'ice_gather' | 'pub_connected' | 'sub_connected' | 'first_media'
 export type CallAttemptResult = 'success' | 'timeout' | 'error' | 'abandoned'
 
+// Why a call-setup timeout happened, for the server-side errors-by-type
+// breakdown (vartalaap_call_setup_failures_total{reason}). Each value names a
+// distinct broken link in the host-publishes → sfu-tracks → subscribe → pull
+// chain. The set is whitelisted on the server (client.go observeClientMetric);
+// adding a value here means adding it there too.
+export type CallFailureReason =
+  | 'no_tracks_announced'           // peer is publishing but no sfu-tracks reached us (server broadcast gap)
+  | 'tracks_announced_not_pulled'   // announced + pulled, CF never forwarded media (dead pull)
+  | 'pull_errored'                  // the SFU pull errored (SDP/ICE/CF 4xx)
+  | 'peers_present_none_publishing' // peers here but none advertise media (benign muted room)
+  | 'unknown'
+
 export interface ClientMetricData {
   name: ClientMetricName
-  // Seconds. For 'call_attempt' this is unused but must be a finite number.
+  // Seconds. For 'call_attempt' and 'call_setup_failure' this is unused but must
+  // be a finite number.
   value: number
   phase?: CallSetupPhase
   result?: CallAttemptResult
+  reason?: CallFailureReason
 }
 
 export interface SfuTrackInfo {

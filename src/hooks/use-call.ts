@@ -5,6 +5,7 @@ import { usePeerStore } from '@/src/stores/peer'
 import { fetchIceServers } from '@/src/services/api/ice'
 import type {
   CallAttemptResult,
+  CallFailureReason,
   ClientMetricData,
   Envelope, ErrorData, JoinedData, KnockGrantedData, PeerJoinedData, PeerLeftData, PeerStateData, SfuTracksData,
 } from '@/src/services/signaling/protocol'
@@ -60,6 +61,17 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
     let ttfmRecorded = false
     let ttfmTimeout: ReturnType<typeof setTimeout> | null = null
 
+    // ── Receive-chain diagnostics ──────────────────────────────────────────
+    // A "call setup timeout" is opaque on its own — it just says "no media in
+    // 10s". These counters let the timeout capture name WHICH link of the
+    // host-publishes → sfu-tracks → subscribe → remote-track chain broke, so we
+    // can act on it instead of guessing. Latched per call, never reset.
+    let sfuTracksReceived = 0          // sfu-tracks messages seen (host announced media)
+    const announcedSessions = new Set<string>()   // distinct remote CF sessions announced
+    const tracksArrivedFor = new Set<string>()     // remote sessions that produced ≥1 track
+    let pullErrors = 0                 // pulls that errored (SDP/ICE/CF 4xx)
+    let pullTimeouts = 0               // pulls that never produced a track (dead-track)
+
     const armTtfmTimeout = () => {
       if (ttfmTimeout) { clearTimeout(ttfmTimeout); ttfmTimeout = null }
       joinSentAt = performance.now()
@@ -72,9 +84,53 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
         if (store.getState().peerConnections.size === 0) return
         ttfmRecorded = true
         emitMetric({ name: 'call_attempt', value: 0, result: 'timeout' })
+
+        // Classify the failure so the Sentry event names the broken link
+        // instead of just "no media in 10s". Order matters: each branch rules
+        // out the link before it.
+        const peers = [...store.getState().peerConnections.values()]
+        const publishingPeers = peers.filter((p) => p.audio || p.video)
+        let failureReason: CallFailureReason
+        if (publishingPeers.length === 0) {
+          // Peers are here but none advertise audio/video — there is no media to
+          // receive. Likely a benign "everyone muted" room, not a delivery bug.
+          failureReason = 'peers_present_none_publishing'
+        } else if (sfuTracksReceived === 0) {
+          // A peer is publishing per their state, yet we never got an sfu-tracks
+          // broadcast for them — points at the server broadcast/replay path
+          // (hub.BroadcastSfuTracks), not the SFU pull.
+          failureReason = 'no_tracks_announced'
+        } else if (pullErrors > 0 && tracksArrivedFor.size === 0) {
+          failureReason = 'pull_errored'
+        } else if (pullTimeouts > 0 && tracksArrivedFor.size === 0) {
+          // Tracks were announced and pulled, but CF never forwarded media.
+          // This is the host-enabled-camera-guest-saw-nothing case.
+          failureReason = 'tracks_announced_not_pulled'
+        } else {
+          failureReason = 'unknown'
+        }
+
+        // Feed the errors-by-type golden signal: a timeout-by-reason counter on
+        // the server, separate from the call_attempt outcome counter. Emitted
+        // exactly once per call (sibling to the result=timeout above).
+        emitMetric({ name: 'call_setup_failure', value: 0, reason: failureReason })
         Sentry.captureMessage('call setup timeout', {
           level: 'warning',
-          tags: { ttfm_outcome: 'timeout' },
+          tags: { ttfm_outcome: 'timeout', failure_reason: failureReason },
+          contexts: {
+            sfu_setup: {
+              failure_reason: failureReason,
+              peers: peers.length,
+              publishing_peers: publishingPeers.length,
+              peer_media: peers.map((p) => `${p.audio ? 'a' : ''}${p.video ? 'v' : ''}` || 'none').join(','),
+              sfu_tracks_received: sfuTracksReceived,
+              announced_sessions: announcedSessions.size,
+              tracks_arrived_for: tracksArrivedFor.size,
+              pull_errors: pullErrors,
+              pull_timeouts: pullTimeouts,
+              has_sfu_session: !!store.getState().sfuSession,
+            },
+          },
         })
       }, TTFM_TIMEOUT_MS)
     }
@@ -205,6 +261,18 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
     const handleSfuTracks = (env: Envelope<SfuTracksData>) => {
       if (!env.from || !env.data) return
       const trackNames = env.data.tracks.map((t) => t.trackName)
+      // Diagnostics: record that a peer announced media. If a call-setup
+      // timeout later fires with sfu_tracks_received === 0, we know the
+      // announcement never reached us (server replay/broadcast gap) rather than
+      // the SFU pull failing.
+      sfuTracksReceived++
+      announcedSessions.add(env.data.sessionId)
+      Sentry.addBreadcrumb({
+        category: 'sfu',
+        message: 'sfu-tracks received',
+        level: 'info',
+        data: { from: env.from, sessionId: env.data.sessionId, tracks: trackNames.join(','), buffered: !store.getState().sfuSession },
+      })
       // Record the CF sessionId → signaling peerId mapping so onRemoteTrack
       // (fired by partytracks when a pull resolves) can attribute the track
       // to the right participant. Also maintain the reverse map so we can
@@ -345,6 +413,9 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
           // sfu-tracks via hub.BroadcastSfuTracks (sfu_handler.go), so we
           // don't announce from the client.
           onRemoteTrack: (track, remoteSessionId) => {
+            // Mark this remote session as alive so a later timeout's classifier
+            // can tell "no track ever arrived" from "some did".
+            tracksArrivedFor.add(remoteSessionId)
             // First remote track for this call = end of TTFM window. Latch so
             // additional tracks (audio after video, or a second peer's tracks)
             // don't re-emit. We measure the user-visible "I can see/hear the
@@ -406,7 +477,39 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
             if (disposed) return
             if (state === 'failed') {
               console.warn('[use-call] SFU connection failed')
+              Sentry.addBreadcrumb({
+                category: 'sfu', message: 'connection state failed', level: 'warning',
+              })
             }
+          },
+          // A subscribed remote track errored — it will never arrive. Surface
+          // it (not just console) so the cause is attached to this call's
+          // events, and so a subsequent timeout classifies as 'pull_errored'.
+          onPullError: (sessionId, trackName, err) => {
+            if (disposed) return
+            pullErrors++
+            Sentry.addBreadcrumb({
+              category: 'sfu', message: 'pull errored', level: 'error',
+              data: { sessionId, trackName },
+            })
+            Sentry.captureException(err, { tags: { stage: 'sfu_pull' }, contexts: { sfu_pull: { sessionId, trackName } } })
+          },
+          // Dead-track: pull issued, no error, but CF never forwarded media
+          // within the window. This is the "host's camera never reached the
+          // guest" failure — record it explicitly with the offending track.
+          onPullTimeout: (sessionId, trackName) => {
+            if (disposed) return
+            pullTimeouts++
+            const remotePeerId = remoteSessionToPeer.get(sessionId)
+            Sentry.addBreadcrumb({
+              category: 'sfu', message: 'pull timeout (dead track)', level: 'warning',
+              data: { sessionId, trackName, peerId: remotePeerId },
+            })
+            Sentry.captureMessage('sfu pull timeout', {
+              level: 'warning',
+              tags: { stage: 'sfu_pull', failure_reason: 'dead_track' },
+              contexts: { sfu_pull: { sessionId, trackName, peerId: remotePeerId ?? 'unknown' } },
+            })
           },
         })
         if (disposed) {

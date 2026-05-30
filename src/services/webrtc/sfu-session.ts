@@ -13,7 +13,22 @@ export interface SfuSessionOptions {
   // partytracks re-emits the track if the underlying PC is recreated.
   onRemoteTrack?: (track: MediaStreamTrack, sessionId: string, trackName: string) => void
   onConnectionStateChange?: (state: RTCPeerConnectionState) => void
+  // A pull that errored (SDP/ICE/CF 4xx). The track will never arrive — caller
+  // should surface this, not just log it.
+  onPullError?: (sessionId: string, trackName: string, err: unknown) => void
+  // Dead-track detection: we subscribed to a remote track but no MediaStreamTrack
+  // arrived within SFU_PULL_TIMEOUT_MS. The remote peer announced it (the server
+  // broadcast sfu-tracks), the pull did not error, yet CF never forwarded media.
+  // This is the "host enabled camera, guest never saw it" failure made explicit.
+  onPullTimeout?: (sessionId: string, trackName: string) => void
 }
+
+// How long to wait for a subscribed remote track to produce its first
+// MediaStreamTrack before treating the pull as dead. Sits just under the
+// TTFM_TIMEOUT_MS (10s) call-setup ceiling so the per-track cause is recorded
+// before the call-level timeout fires. See CLAUDE.md SFU failure paths:
+// "Track pull timeout (remote track never arrives) → dead track detection".
+const SFU_PULL_TIMEOUT_MS = 8_000
 
 /**
  * Wraps partytracks for one local peer. One pubTracks instance (sendonly)
@@ -52,6 +67,9 @@ export class SfuSession {
   private readonly localPushSubs = new Map<string, Subscription>()
   // `${remoteSessionId}/${trackName}` → pull subscription.
   private readonly remotePullSubs = new Map<string, Subscription>()
+  // `${remoteSessionId}/${trackName}` → dead-track timer. Set when a pull starts,
+  // cleared on the first track it produces. If it fires, the track never arrived.
+  private readonly pullTimers = new Map<string, ReturnType<typeof setTimeout>>()
   private readonly pubConnStateSub: Subscription
 
   private destroyed = false
@@ -171,12 +189,34 @@ export class SfuSession {
       trackName,
       location: 'remote',
     })
+
+    // Arm dead-track detection. partytracks gives no signal for "pull issued,
+    // CF accepted, but media never flows" — the pull observable simply never
+    // emits. Without this timer that case hangs silently, which is precisely
+    // how "host enabled camera, guest never saw it" goes uninstrumented.
+    const deadTrackTimer = setTimeout(() => {
+      this.pullTimers.delete(key)
+      this.opts.onPullTimeout?.(sessionId, trackName)
+    }, SFU_PULL_TIMEOUT_MS)
+    this.pullTimers.set(key, deadTrackTimer)
+
+    const clearPullTimer = () => {
+      const t = this.pullTimers.get(key)
+      if (t) { clearTimeout(t); this.pullTimers.delete(key) }
+    }
+
     const track$ = subTracks.pull(meta$.asObservable())
     const sub = track$.subscribe({
       next: (track) => {
+        // First media for this track — the pull is alive, disarm the watchdog.
+        clearPullTimer()
         this.opts.onRemoteTrack?.(track, sessionId, trackName)
       },
-      error: (err) => console.error(`[sfu] pull(${sessionId}/${trackName}) errored`, err),
+      error: (err) => {
+        clearPullTimer()
+        console.error(`[sfu] pull(${sessionId}/${trackName}) errored`, err)
+        this.opts.onPullError?.(sessionId, trackName, err)
+      },
     })
     this.remotePullSubs.set(key, sub)
   }
@@ -188,6 +228,8 @@ export class SfuSession {
       if (key.startsWith(`${sessionId}/`)) {
         sub.unsubscribe()
         this.remotePullSubs.delete(key)
+        const t = this.pullTimers.get(key)
+        if (t) { clearTimeout(t); this.pullTimers.delete(key) }
       }
     }
     // Unsubscribing the connection-state monitor drops the last reference to
@@ -206,10 +248,12 @@ export class SfuSession {
     for (const sub of this.localPushSubs.values()) sub.unsubscribe()
     for (const sub of this.remotePullSubs.values()) sub.unsubscribe()
     for (const sub of this.subConnStateMap.values()) sub.unsubscribe()
+    for (const t of this.pullTimers.values()) clearTimeout(t)
     this.pubConnStateSub.unsubscribe()
     this.localSubjects.clear()
     this.localPushSubs.clear()
     this.remotePullSubs.clear()
+    this.pullTimers.clear()
     this.subTracksMap.clear()
     this.subConnStateMap.clear()
   }
