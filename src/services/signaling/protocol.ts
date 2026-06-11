@@ -12,6 +12,7 @@ export type MsgType =
   | 'pong'
   | 'stats-report'
   | 'sfu-tracks'
+  | 'sfu-announce'
   | 'client-metric'
   | 'knock'
   | 'knock-request'
@@ -105,6 +106,10 @@ export interface SfuTrackInfo {
   mid?: string
 }
 
+// Payload of both server→client 'sfu-tracks' (subscribe to these) and
+// client→server 'sfu-announce' (the FULL set of tracks I currently publish —
+// re-sent after every signaling reconnect so the server's stored set survives
+// WS blips; the server replaces, not merges, on announce).
 export interface SfuTracksData {
   sessionId: string
   tracks: SfuTrackInfo[]
