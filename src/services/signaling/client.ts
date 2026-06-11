@@ -1,4 +1,5 @@
 import type { Envelope, MsgType } from './protocol'
+import { callDebug } from '@/src/lib/call-debug'
 
 export type ConnState = 'connecting' | 'connected' | 'reconnecting' | 'failed'
 
@@ -74,6 +75,7 @@ export class SignalingClient {
       try {
         const env = JSON.parse(ev.data) as Envelope
         if (env.type === 'pong') { this.missedPongs = 0; return }
+        callDebug.sigRecv(env.type, env.from, env.type === 'peer-state' ? undefined : env.data)
         this.handlers.get(env.type)?.forEach(h => h(env))
       } catch (err) {
         console.error('signaling: bad message', err)
@@ -92,10 +94,10 @@ export class SignalingClient {
       this.peerId = null
       if (this.disposed) return
       if (established) {
-        // Was connected — grace period keeps brief blips invisible
+        callDebug.sigStateChange('reconnecting (grace)', this.attempt)
         this.graceTimer = setTimeout(() => this.scheduleReconnect(), GRACE_MS)
       } else {
-        // Never reached welcome — retry immediately via backoff
+        callDebug.sigStateChange('reconnecting (never connected)', this.attempt)
         this.scheduleReconnect()
       }
     }
@@ -140,6 +142,7 @@ export class SignalingClient {
 
   send<T>(type: MsgType, data?: T, extra?: Partial<Envelope>) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return
+    if (type !== 'ping') callDebug.sigSend(type, type === 'peer-state' ? undefined : data)
     const env: Envelope = { type, ...extra, data: data as unknown }
     this.ws.send(JSON.stringify(env))
   }

@@ -13,6 +13,7 @@ import { SfuSession } from '@/src/services/webrtc/sfu-session'
 import { playPeerJoined, playPeerLeft, playScreenShareStart, playScreenShareStop } from '@/src/lib/sounds'
 import { getAccessToken, getRoomToken, setRoomToken } from '@/src/services/api/token'
 import { useMeetStore } from '@/src/stores/meet'
+import { callDebug } from '@/src/lib/call-debug'
 
 // The CLAUDE.md SLO calls anything over 10s a failed connection attempt rather
 // than a slow success. If we don't see a remote frame within this window we
@@ -38,6 +39,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
   useEffect(() => {
     if (!client || !roomId || !enabled) return
 
+    callDebug.init()
     const store = usePeerStore
     let disposed = false
     const prevScreenSharing = new Map<string, boolean>()
@@ -85,9 +87,6 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
         ttfmRecorded = true
         emitMetric({ name: 'call_attempt', value: 0, result: 'timeout' })
 
-        // Classify the failure so the Sentry event names the broken link
-        // instead of just "no media in 10s". Order matters: each branch rules
-        // out the link before it.
         const peers = [...store.getState().peerConnections.values()]
         const publishingPeers = peers.filter((p) => p.audio || p.video)
         let failureReason: CallFailureReason
@@ -114,6 +113,15 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
         // the server, separate from the call_attempt outcome counter. Emitted
         // exactly once per call (sibling to the result=timeout above).
         emitMetric({ name: 'call_setup_failure', value: 0, reason: failureReason })
+        callDebug.callTtfmTimeout(failureReason, {
+          peers: peers.length,
+          publishingPeers: publishingPeers.length,
+          sfuTracksReceived,
+          announcedSessions: announcedSessions.size,
+          tracksArrivedFor: tracksArrivedFor.size,
+          pullErrors,
+          pullTimeouts,
+        })
         Sentry.captureMessage('call setup timeout', {
           level: 'warning',
           tags: { ttfm_outcome: 'timeout', failure_reason: failureReason },
@@ -195,10 +203,9 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
     const handleJoined = (env: Envelope<JoinedData>) => {
       const myId = client.getPeerId()
       const peers = env.data?.peers ?? []
+      callDebug.callJoinAcked(peers.filter((p) => p.id !== myId).length)
       for (const p of peers) {
         if (p.id === myId) continue
-        // Register peer metadata only — no per-peer RTCPeerConnection in SFU mode.
-        // Tracks arrive via sfu-tracks after the remote peer publishes.
         store.getState().addPeerConnection(p.id, {
           name: p.name, audio: p.audio, video: p.video,
           screenSharing: p.screenSharing ?? false, videoHeld: p.videoHeld ?? false,
@@ -261,12 +268,9 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
     const handleSfuTracks = (env: Envelope<SfuTracksData>) => {
       if (!env.from || !env.data) return
       const trackNames = env.data.tracks.map((t) => t.trackName)
-      // Diagnostics: record that a peer announced media. If a call-setup
-      // timeout later fires with sfu_tracks_received === 0, we know the
-      // announcement never reached us (server replay/broadcast gap) rather than
-      // the SFU pull failing.
       sfuTracksReceived++
       announcedSessions.add(env.data.sessionId)
+      callDebug.callSfuTracksRecv(env.from, env.data.sessionId, trackNames)
       Sentry.addBreadcrumb({
         category: 'sfu',
         message: 'sfu-tracks received',
@@ -281,7 +285,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       peerToRemoteSession.set(env.from, env.data.sessionId)
       const sfuSession = store.getState().sfuSession
       if (!sfuSession) {
-        // partytracks instance not constructed yet — buffer until init below.
+        callDebug.callSfuTracksBuffered(env.data.sessionId, trackNames)
         pendingSfuTracks.push({ sessionId: env.data.sessionId, trackNames })
         return
       }
@@ -327,6 +331,18 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
             console.error('[use-call] sfu re-publish failed after reconnect', e)
           })
         }
+        // Re-announce our published tracks. The server wiped its stored set
+        // when the old connection dropped (leaveAll → removeSfuTracks), and
+        // the publish() above is a no-op at the HTTP level for tracks that
+        // are already pushed — so without this, peers who join after our
+        // reconnect would never receive our media (failure_reason
+        // no_tracks_announced), and peers who saw our peer-left would never
+        // re-subscribe.
+        const announcement = sfuSession?.getLocalTracksAnnouncement()
+        if (announcement) {
+          callDebug.callSfuAnnounce(announcement.sessionId, announcement.tracks.map((t) => t.trackName), 'reconnect')
+          client.send('sfu-announce', announcement)
+        }
       })()
     })
 
@@ -351,6 +367,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
         // skips the emit and re-arms when the first peer joins instead.
         armTtfmTimeout()
 
+        callDebug.callJoinSent(roomId)
         client.send('join', {
           name: a.userName,
           audio: a.initialAudio,
@@ -381,12 +398,36 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
         // join. The backend gates Cloudflare TURN to rooms that are active
         // now, so pre-join fetching would be denied for instant meetings.
         if (store.getState().iceServers.length === 0) {
-          try {
-            const iceServers = await fetchIceServers(roomId)
+          // One retry with jitter before giving up — a transient API blip
+          // shouldn't cost TURN for the whole call. Proceeding without TURN
+          // is silent degradation for users on restrictive networks (their
+          // pub AND sub PCs can fail ICE entirely), so the failure is
+          // surfaced, not just logged.
+          let iceServers: Awaited<ReturnType<typeof fetchIceServers>> | null = null
+          let iceError: unknown = null
+          for (let attempt = 0; attempt < 2 && !iceServers; attempt++) {
+            if (attempt > 0) await new Promise((r) => setTimeout(r, 1000 + Math.random() * 500))
             if (disposed) return
+            try {
+              iceServers = await fetchIceServers(roomId)
+            } catch (e) {
+              iceError = e
+            }
+          }
+          if (disposed) return
+          if (iceServers) {
+            callDebug.callIceFetched(iceServers)
             store.getState().setIceServers(iceServers)
-          } catch (e) {
-            console.warn('ICE server fetch failed, proceeding without TURN', e)
+          } else {
+            callDebug.callIceFailed(iceError)
+            console.warn('ICE server fetch failed, proceeding without TURN', iceError)
+            Sentry.captureMessage('ice fetch failed', {
+              level: 'warning',
+              tags: { stage: 'ice_fetch' },
+            })
+            import('sonner').then(({ toast }) => {
+              toast.warning('Could not reach the connection relay. The call may not work on restrictive networks.')
+            })
           }
         }
 
@@ -413,13 +454,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
           // sfu-tracks via hub.BroadcastSfuTracks (sfu_handler.go), so we
           // don't announce from the client.
           onRemoteTrack: (track, remoteSessionId) => {
-            // Mark this remote session as alive so a later timeout's classifier
-            // can tell "no track ever arrived" from "some did".
             tracksArrivedFor.add(remoteSessionId)
-            // First remote track for this call = end of TTFM window. Latch so
-            // additional tracks (audio after video, or a second peer's tracks)
-            // don't re-emit. We measure the user-visible "I can see/hear the
-            // other person" moment, not per-track timings.
             if (!ttfmRecorded && joinSentAt > 0) {
               const ttfmSeconds = (performance.now() - joinSentAt) / 1000
               ttfmRecorded = true
@@ -439,6 +474,8 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
               })
             }
             const remotePeerId = remoteSessionToPeer.get(remoteSessionId)
+            const ttfmMsForLog = !ttfmRecorded && joinSentAt > 0 ? performance.now() - joinSentAt : undefined
+            callDebug.callRemoteTrack(remotePeerId ?? '??', track.kind, ttfmMsForLog)
             if (!remotePeerId) {
               console.warn('[use-call] onRemoteTrack: no peer for remoteSessionId', remoteSessionId)
               return
@@ -511,15 +548,41 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
               contexts: { sfu_pull: { sessionId, trackName, peerId: remotePeerId ?? 'unknown' } },
             })
           },
+          // CF acked our published track set (or re-acked it under a new
+          // sessionId after a PC recreation). Mirror it to the signaling
+          // server so its stored copy — the source of the join replay — is
+          // level-triggered rather than depending on the one-shot tracks/new
+          // interception.
+          onLocalTracksChanged: (announcement) => {
+            if (disposed) return
+            callDebug.callSfuAnnounce(announcement.sessionId, announcement.tracks.map((t) => t.trackName), 'change')
+            client.send('sfu-announce', announcement)
+          },
+          // A pushed track never got a CF ack. partytracks keeps retrying in
+          // the background, but the user's tile already shows their camera on
+          // — tell them the other side can't see them yet.
+          onPublishTimeout: (kind) => {
+            if (disposed) return
+            Sentry.captureMessage('sfu publish timeout', {
+              level: 'warning',
+              tags: { stage: 'sfu_publish', failure_reason: 'push_not_acked' },
+              contexts: { sfu_push: { kind } },
+            })
+            import('sonner').then(({ toast }) => {
+              toast.error(
+                kind === 'video'
+                  ? 'Your camera is connected but not reaching others yet. Still retrying — check your network.'
+                  : 'Your microphone is connected but not reaching others yet. Still retrying — check your network.',
+              )
+            })
+          },
         })
         if (disposed) {
           sfuSession.close()
           return
         }
+        callDebug.callSfuSessionReady(peerId, sfuSession)
         store.getState().setSfuSession(sfuSession)
-        // Now safe to unlock the call UI — sfuSession is live, so camera/mic
-        // toggles will publish correctly. Doing this before setSfuSession would
-        // create a window where replaceTrack silently no-ops.
         if (willKnock) useMeetStore.getState().setIsKnocking(false)
 
         // Drain sfu-tracks that arrived while the session was being constructed.
@@ -532,8 +595,10 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
 
         const localStream = store.getState().localStream
         if (localStream) {
+          callDebug.callPublishStart(localStream.getTracks().map((t) => t.kind))
           await sfuSession.publish(localStream).catch((e) => {
             console.error('[use-call] sfu publish failed — no media will be sent', e)
+            callDebug.callPublishError(e)
             // Publish failure means peers will never see our tracks. Even if
             // their tracks arrive (TTFM success), the call is one-sided. Record
             // as error so the success-rate SLO reflects this.

@@ -13,25 +13,35 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // vi.hoisted is required because vi.mock factories run BEFORE the file body
 // is evaluated. The shared `instances` array therefore has to be created in
 // the hoisted block so it exists when the mock factory runs.
+interface FakePushSubject {
+    next: (meta: { sessionId: string; trackName: string }) => void
+    error: (err: unknown) => void
+}
+
 const { instances } = vi.hoisted(() => ({ instances: [] as Array<{
     config: unknown
     pushCalls: unknown[]
+    // One subject per push() call, in call order — tests emit on these to
+    // simulate CF acking (or terminally failing) a pushed track.
+    pushSubjects: FakePushSubject[]
     pullCalls: unknown[]
 }> }))
 
 vi.mock('partytracks/client', async () => {
-    const { BehaviorSubject, Subject, NEVER } = await import('rxjs')
+    const { BehaviorSubject, Subject } = await import('rxjs')
     class FakePartyTracks {
         public peerConnectionState$ = new BehaviorSubject<RTCPeerConnectionState>('new')
         public pullSubject$ = new Subject<MediaStreamTrack>()
-        private inst: { config: unknown; pushCalls: unknown[]; pullCalls: unknown[] }
+        private inst: { config: unknown; pushCalls: unknown[]; pushSubjects: FakePushSubject[]; pullCalls: unknown[] }
         constructor(config: unknown) {
-            this.inst = { config, pushCalls: [], pullCalls: [] }
+            this.inst = { config, pushCalls: [], pushSubjects: [], pullCalls: [] }
             instances.push(this.inst)
         }
         push(track$: unknown) {
             this.inst.pushCalls.push(track$)
-            return NEVER
+            const subject = new Subject<{ sessionId: string; trackName: string }>()
+            this.inst.pushSubjects.push(subject)
+            return subject.asObservable()
         }
         pull(meta$: unknown) {
             this.inst.pullCalls.push(meta$)
@@ -178,4 +188,111 @@ it('publish/subscribe after close are no-ops', async () => {
     const beforeCount = instances.length
     await session.subscribe('cf-sess-ghost', ['audio'])
     expect(instances.length).toBe(beforeCount)
+})
+
+// ─── Local track announcements (sfu-announce self-healing) ───────────────────
+// The signaling server's stored track set is wiped whenever a peer's WS
+// drops; the announcement built from push acks is the only durable record
+// that can restore it. These tests pin: acks accumulate into a full-set
+// announcement, duplicates dedupe, a new sessionId (PC recreation) supersedes
+// the old set, and a stalled push surfaces instead of hanging silently.
+
+it('push acks build the full announcement and fire onLocalTracksChanged once per change', async () => {
+    const onLocalTracksChanged = vi.fn()
+    const session = new SfuSession({
+        roomId: 'room-1', peerId: 'peer-alice', iceServers: [],
+        onLocalTracksChanged,
+    })
+    await session.publish({
+        getTracks: () => [makeTrack('audio'), makeTrack('video')],
+    } as unknown as MediaStream)
+
+    const [audioPush, videoPush] = instances[0].pushSubjects
+    audioPush.next({ sessionId: 'cf-pub-1', trackName: 'tn-audio' })
+    expect(onLocalTracksChanged).toHaveBeenCalledTimes(1)
+    expect(onLocalTracksChanged).toHaveBeenLastCalledWith({
+        sessionId: 'cf-pub-1', tracks: [{ trackName: 'tn-audio' }],
+    })
+
+    videoPush.next({ sessionId: 'cf-pub-1', trackName: 'tn-video' })
+    expect(onLocalTracksChanged).toHaveBeenCalledTimes(2)
+    expect(onLocalTracksChanged).toHaveBeenLastCalledWith({
+        sessionId: 'cf-pub-1', tracks: [{ trackName: 'tn-audio' }, { trackName: 'tn-video' }],
+    })
+    expect(session.getLocalTracksAnnouncement()).toEqual({
+        sessionId: 'cf-pub-1', tracks: [{ trackName: 'tn-audio' }, { trackName: 'tn-video' }],
+    })
+
+    // Re-acks with unchanged metadata (every local replaceTrack re-emits) must
+    // not spam the signaling channel.
+    videoPush.next({ sessionId: 'cf-pub-1', trackName: 'tn-video' })
+    expect(onLocalTracksChanged).toHaveBeenCalledTimes(2)
+})
+
+// partytracks recreates the publish PC after a connection failure and
+// re-pushes every track under a NEW CF sessionId. The announcement must
+// follow the new session and exclude tracks not yet re-acked on it.
+it('a re-ack under a new sessionId supersedes the old announcement', async () => {
+    const onLocalTracksChanged = vi.fn()
+    const session = new SfuSession({
+        roomId: 'room-1', peerId: 'peer-alice', iceServers: [],
+        onLocalTracksChanged,
+    })
+    await session.publish({
+        getTracks: () => [makeTrack('audio'), makeTrack('video')],
+    } as unknown as MediaStream)
+    const [audioPush, videoPush] = instances[0].pushSubjects
+    audioPush.next({ sessionId: 'cf-pub-1', trackName: 'tn-audio' })
+    videoPush.next({ sessionId: 'cf-pub-1', trackName: 'tn-video' })
+
+    // PC recreated: video re-acks first under the new session.
+    videoPush.next({ sessionId: 'cf-pub-2', trackName: 'tn-video-2' })
+    expect(onLocalTracksChanged).toHaveBeenLastCalledWith({
+        sessionId: 'cf-pub-2', tracks: [{ trackName: 'tn-video-2' }],
+    })
+    // Audio follows moments later → full set on the new session.
+    audioPush.next({ sessionId: 'cf-pub-2', trackName: 'tn-audio-2' })
+    expect(onLocalTracksChanged).toHaveBeenLastCalledWith({
+        sessionId: 'cf-pub-2', tracks: [{ trackName: 'tn-audio-2' }, { trackName: 'tn-video-2' }],
+    })
+})
+
+// A push that gets no CF ack within the window must surface via
+// onPublishTimeout — partytracks retries silently forever, so this is the
+// only signal behind "I turned my camera on but nobody sees me".
+it('a push with no ack fires onPublishTimeout; an acked push does not', async () => {
+    vi.useFakeTimers()
+    try {
+        const onPublishTimeout = vi.fn()
+        const session = new SfuSession({
+            roomId: 'room-1', peerId: 'peer-alice', iceServers: [],
+            onPublishTimeout,
+        })
+        await session.publish({
+            getTracks: () => [makeTrack('audio'), makeTrack('video')],
+        } as unknown as MediaStream)
+
+        // Audio acks in time; video never does.
+        instances[0].pushSubjects[0].next({ sessionId: 'cf-pub-1', trackName: 'tn-audio' })
+        vi.advanceTimersByTime(9_000)
+
+        expect(onPublishTimeout).toHaveBeenCalledTimes(1)
+        expect(onPublishTimeout).toHaveBeenCalledWith('video')
+    } finally {
+        vi.useRealTimers()
+    }
+})
+
+// A terminal push error must clear the dead pipeline so the next
+// enableCamera/enableMic re-creates the push. Leaving the dead subject in
+// place turns every later toggle of that kind into a silent no-op.
+it('a terminal push error allows the next publish of that kind to retry', async () => {
+    const session = makeSession()
+    await session.publish({ getTracks: () => [makeTrack('video')] } as unknown as MediaStream)
+    expect(instances[0].pushCalls).toHaveLength(1)
+
+    instances[0].pushSubjects[0].error(new Error('terminal push failure'))
+
+    await session.replaceTrack('video', makeTrack('video'))
+    expect(instances[0].pushCalls).toHaveLength(2)
 })
