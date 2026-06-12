@@ -52,14 +52,21 @@ vi.mock('partytracks/client', async () => {
 })
 
 vi.mock('@/src/services/api/config', () => ({ httpServerUri: 'http://test' }))
+
+// Mutable so tests can simulate a token refresh: SfuSession re-reads this via
+// its token-change subscription and must update its live Headers in place.
+const { authState } = vi.hoisted(() => ({ authState: { token: 'test-token' } }))
 vi.mock('@/src/services/api/fetch', () => ({
-    apiBearerHeaders: () => ({ Authorization: 'Bearer test-token' }),
+    apiBearerHeaders: () =>
+        authState.token ? { Authorization: `Bearer ${authState.token}` } : {},
 }))
 
 import { SfuSession } from '../sfu-session'
+import { setAccessToken } from '@/src/services/api/token'
 
 beforeEach(() => {
     instances.length = 0
+    authState.token = 'test-token'
 })
 
 function makeTrack(kind: 'audio' | 'video' = 'video'): MediaStreamTrack {
@@ -281,6 +288,42 @@ it('a push with no ack fires onPublishTimeout; an acked push does not', async ()
     } finally {
         vi.useRealTimers()
     }
+})
+
+// ─── Live SFU auth headers ────────────────────────────────────────────────
+// partytracks reads config.headers on EVERY request. SfuSession must keep
+// that Headers object current when the token refreshes — a header frozen at
+// construction goes stale after the 15-minute access TTL and turns every
+// later SFU request into a permanent 401 (the "joined but can't share or
+// receive anything" production incident).
+
+it('updates its live auth header in place when the token changes', () => {
+    const session = makeSession()
+    const config = instances[0].config as { headers: Headers }
+    expect(config.headers.get('Authorization')).toBe('Bearer test-token')
+
+    // Simulate a refresh: new token value, then the token-change notification
+    // that the real token store fires.
+    authState.token = 'refreshed-token'
+    setAccessToken('refreshed-token')
+    expect(config.headers.get('Authorization')).toBe('Bearer refreshed-token')
+
+    // Signed out mid-call: header is removed rather than sent stale.
+    authState.token = ''
+    setAccessToken(null)
+    expect(config.headers.get('Authorization')).toBeNull()
+    session.close()
+})
+
+// All PartyTracks instances (publish + per-peer subscribe) must share the
+// same live Headers object so one refresh fixes every connection.
+it('publish and subscribe PartyTracks share the same live Headers instance', async () => {
+    const session = makeSession()
+    await session.subscribe('cf-sess-bob', ['audio'])
+    const pubHeaders = (instances[0].config as { headers: Headers }).headers
+    const subHeaders = (instances[1].config as { headers: Headers }).headers
+    expect(subHeaders).toBe(pubHeaders)
+    session.close()
 })
 
 // A terminal push error must clear the dead pipeline so the next
