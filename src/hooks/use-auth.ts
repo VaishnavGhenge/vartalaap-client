@@ -5,6 +5,17 @@ import { login, logout, register, restoreAuthSession, getMe } from '@/src/servic
 import { useAuthStore } from '@/src/stores/auth'
 import type { RegisterCredentials, UserCredentials } from '@/src/types/auth'
 
+// Reads the ?next= return path from the current URL. Only internal absolute
+// paths are honored ("/room/abc") — anything else (full URLs, protocol-
+// relative "//evil.com") is dropped to keep this from becoming an open
+// redirect.
+export function safeNextPath(): string | null {
+    if (typeof window === 'undefined') return null
+    const next = new URLSearchParams(window.location.search).get('next')
+    if (!next || !next.startsWith('/') || next.startsWith('//') || next.includes('\\')) return null
+    return next
+}
+
 export const useLogin = () => {
     const { login: storeLogin } = useAuthStore()
     const router = useRouter()
@@ -13,8 +24,10 @@ export const useLogin = () => {
         mutationFn: (creds: UserCredentials) => login(creds),
         onSuccess: ({ user }) => {
             storeLogin(user)
-            // Resume onboarding if not complete
-            router.push(user.onboardingStep < 5 ? '/onboarding' : '/dashboard')
+            // Resume onboarding if not complete; otherwise honor a ?next=
+            // return path (e.g. back to the call a session-expired user was
+            // trying to join) before defaulting to the dashboard.
+            router.push(user.onboardingStep < 5 ? '/onboarding' : safeNextPath() ?? '/dashboard')
         },
         onError: (err: Error) => {
             toast.error(err.message || 'Login failed')

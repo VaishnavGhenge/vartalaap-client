@@ -2,8 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Copy, Check, Share2, Settings, Loader2, Clock, CalendarOff } from "lucide-react";
+import { Copy, Check, Share2, Settings, Loader2, Clock, CalendarOff, LogIn } from "lucide-react";
 import { fetchRoomStatus, type RoomStatusResult } from "@/src/services/api/room";
+import { getMe } from "@/src/services/api/auth";
+import { getAccessToken } from "@/src/services/api/token";
+import { useAuthStore } from "@/src/stores/auth";
 import { SettingsPanel } from "@/src/components/ui/SettingsPanel";
 import { resumeSharedAudioContext } from "@/src/lib/audio-context";
 import { playJoinCall } from "@/src/lib/sounds";
@@ -38,6 +41,7 @@ export default function JoinMeet() {
     const [canShare, setCanShare] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
     const [isJoining, setIsJoining] = useState(false);
+    const [sessionExpired, setSessionExpired] = useState(false);
     const [roomStatus, setRoomStatus] = useState<RoomStatusResult | null>(null);
     const [statusChecked, setStatusChecked] = useState(false);
     const canJoinMeet = meetCodePattern.test(params.meetCode);
@@ -112,15 +116,50 @@ export default function JoinMeet() {
         toggleMute();
     };
 
-    const handleJoin = () => {
-        const name = joinName.trim();
-        if (!name || !canJoinMeet || isJoining) return;
-        setIsJoining(true);
+    const proceedJoin = (name: string) => {
         setUserName(name);
         setStoredMeetCode(params.meetCode);
         resumeSharedAudioContext();
         playJoinCall();
         setHasJoinedMeet(true);
+    };
+
+    const handleJoin = async () => {
+        const name = joinName.trim();
+        if (!name || !canJoinMeet || isJoining) return;
+        setIsJoining(true);
+
+        // Preflight: if this user looks logged in, make sure the session is
+        // actually alive BEFORE entering the call. getMe() transparently
+        // refreshes an expired access token; it only fails when the refresh
+        // cookie itself is dead. Catching that here means the user chooses
+        // (sign in / join as guest) in the lobby instead of sitting in a call
+        // where the SFU silently rejects every request. A transient server
+        // error must not block joining — only a confirmed-dead session does
+        // (the failed refresh clears the stored token).
+        if (getAccessToken()) {
+            try {
+                await getMe();
+            } catch {
+                if (!getAccessToken()) {
+                    setIsJoining(false);
+                    setSessionExpired(true);
+                    return;
+                }
+            }
+        }
+
+        proceedJoin(name);
+    };
+
+    const handleContinueAsGuest = () => {
+        // The dead token is already cleared; reset the auth UI state so the
+        // join flow treats us as a guest (name input + knock/admit path).
+        const name = joinName.trim();
+        useAuthStore.getState().logout();
+        setSessionExpired(false);
+        setIsJoining(true);
+        proceedJoin(name);
     };
 
     const handleShare = async () => {
@@ -291,6 +330,13 @@ export default function JoinMeet() {
                             ) : roomStatus && roomStatus.status !== 'open' && roomStatus.status !== 'unavailable' ? (
                                 /* Room is not accessible — show a clear reason */
                                 <RoomStatusCard status={roomStatus} />
+                            ) : sessionExpired ? (
+                                /* Signed-in session can no longer be renewed — let the
+                                   user pick a path instead of failing inside the call. */
+                                <SessionExpiredCard
+                                    meetCode={params.meetCode}
+                                    onContinueAsGuest={handleContinueAsGuest}
+                                />
                             ) : (
                                 <div className="mt-4 flex flex-col gap-3">
                                     {authLoading ? (
@@ -346,6 +392,36 @@ export default function JoinMeet() {
 
         {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} isVideoOff={isVideoOff} />}
         </main>
+    );
+}
+
+function SessionExpiredCard({ meetCode, onContinueAsGuest }: {
+    meetCode: string;
+    onContinueAsGuest: () => void;
+}) {
+    return (
+        <div className="mt-4 flex flex-col gap-3">
+            <div className="rounded-xl border border-[hsl(var(--border))]/70 bg-[hsl(var(--surface-2))] p-4">
+                <div className="flex items-start gap-3">
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--surface-3))] text-[hsl(var(--muted-foreground))]">
+                        <LogIn className="size-4" />
+                    </span>
+                    <div className="min-w-0">
+                        <p className="text-sm font-semibold text-[hsl(var(--foreground))]">Your session has expired</p>
+                        <p className="mt-1 text-sm leading-5 text-[hsl(var(--muted-foreground))]">
+                            Sign in again to join with your profile, or continue as a guest —
+                            the host will be asked to let you in.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <Button asChild size="lg" className="w-full">
+                <a href={`/login?next=${encodeURIComponent(`/room/${meetCode}`)}`}>Sign in again</a>
+            </Button>
+            <Button onClick={onContinueAsGuest} variant="secondary" size="lg" className="w-full">
+                Continue as a guest
+            </Button>
+        </div>
     );
 }
 

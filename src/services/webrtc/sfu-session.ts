@@ -4,6 +4,7 @@ import { BehaviorSubject, Subscription } from 'rxjs'
 import { PartyTracks, type TrackMetadata } from 'partytracks/client'
 import { httpServerUri } from '@/src/services/api/config'
 import { apiBearerHeaders } from '@/src/services/api/fetch'
+import { subscribeTokenChange } from '@/src/services/api/token'
 import type { SfuTracksData } from '@/src/services/signaling/protocol'
 import { callDebug } from '@/src/lib/call-debug'
 
@@ -112,12 +113,20 @@ export class SfuSession {
   // Shared PartyTracks config reused for each per-session subTracks instance.
   private readonly subTracksConfig: ConstructorParameters<typeof PartyTracks>[0]
 
+  // Single live Headers instance shared by the publish and every subscribe
+  // PartyTracks. partytracks reads config.headers on EVERY request, so
+  // updating this object (on token refresh/re-login) means all SFU requests —
+  // including partytracks' internal retries — carry the current token. A
+  // header snapshotted at construction goes stale after the 15-minute access
+  // TTL and turns every later SFU request into a permanent 401.
+  private readonly authHeaders = new Headers()
+  private readonly unsubscribeTokenChange: () => void
+
   constructor(opts: SfuSessionOptions) {
     this.opts = opts
 
-    const headers = new Headers()
-    const auth = apiBearerHeaders().Authorization
-    if (auth) headers.set('Authorization', auth)
+    this.syncAuthHeader()
+    this.unsubscribeTokenChange = subscribeTokenChange(() => this.syncAuthHeader())
 
     const baseParams = `roomId=${encodeURIComponent(opts.roomId)}&peerId=${encodeURIComponent(opts.peerId)}`
 
@@ -125,7 +134,7 @@ export class SfuSession {
       prefix: `${httpServerUri}/sfu`,
       apiExtraParams: `${baseParams}&kind=publish`,
       iceServers: opts.iceServers,
-      headers,
+      headers: this.authHeaders,
     })
 
     // Shared config used when creating per-session subscribe PartyTracks.
@@ -135,7 +144,7 @@ export class SfuSession {
       prefix: `${httpServerUri}/sfu`,
       apiExtraParams: `${baseParams}&kind=subscribe`,
       iceServers: opts.iceServers,
-      headers,
+      headers: this.authHeaders,
     }
 
     // pubConnStateSub is wired lazily in publishTrack() — see field comment.
@@ -143,6 +152,12 @@ export class SfuSession {
     // Per-session subTracks instances are created lazily in subscribeTrack().
     // This keeps subscribe-side CF sessions from being allocated until there
     // is actually a remote peer to subscribe to.
+  }
+
+  private syncAuthHeader(): void {
+    const auth = apiBearerHeaders().Authorization
+    if (auth) this.authHeaders.set('Authorization', auth)
+    else this.authHeaders.delete('Authorization')
   }
 
   // Pushes every track in the stream. Idempotent per kind — calling with a
@@ -359,6 +374,7 @@ export class SfuSession {
     for (const t of this.pullTimers.values()) clearTimeout(t)
     for (const t of this.pushAckTimers.values()) clearTimeout(t)
     this.pubConnStateSub?.unsubscribe()
+    this.unsubscribeTokenChange()
     this.localSubjects.clear()
     this.localPushSubs.clear()
     this.publishedMeta.clear()

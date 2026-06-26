@@ -7,7 +7,7 @@ import { BufferingButtonLabel } from "@/src/components/ui/BufferingButtonLabel";
 import { Input } from "@/src/components/ui/input";
 import { Button } from "@/src/components/ui/button";
 import { StandaloneHeader } from "@/src/components/ui/StandaloneHeader";
-import { useLogin } from "@/src/hooks/use-auth";
+import { useLogin, safeNextPath } from "@/src/hooks/use-auth";
 import { useAuthStore } from "@/src/stores/auth";
 
 export default function Login() {
@@ -18,7 +18,7 @@ export default function Login() {
 
     useEffect(() => {
         if (!isLoading && isAuthenticated && user) {
-            router.replace(user.onboardingStep < 5 ? "/onboarding" : "/dashboard");
+            router.replace(user.onboardingStep < 5 ? "/onboarding" : safeNextPath() ?? "/dashboard");
         }
     }, [isLoading, isAuthenticated, user, router]);
     const { mutate: login, isPending } = useLogin();

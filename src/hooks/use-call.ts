@@ -10,6 +10,7 @@ import type {
   Envelope, ErrorData, JoinedData, KnockGrantedData, PeerJoinedData, PeerLeftData, PeerStateData, SfuTracksData,
 } from '@/src/services/signaling/protocol'
 import { SfuSession } from '@/src/services/webrtc/sfu-session'
+import { startSessionKeepalive } from '@/src/services/api/session-keepalive'
 import { playPeerJoined, playPeerLeft, playScreenShareStart, playScreenShareStop } from '@/src/lib/sounds'
 import { getAccessToken, getRoomToken, setRoomToken } from '@/src/services/api/token'
 import { useMeetStore } from '@/src/stores/meet'
@@ -42,6 +43,36 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
     callDebug.init()
     const store = usePeerStore
     let disposed = false
+
+    // Keep the access token fresh for the whole call. The SFU layer
+    // (partytracks) reads SfuSession's live auth header per request but has
+    // no 401→refresh path of its own — with a 15-minute access TTL, any call
+    // longer than that would otherwise start failing SFU requests silently.
+    // Guests (room token only) are a no-op here.
+    const stopKeepalive = startSessionKeepalive({
+      onSessionDead: () => {
+        if (disposed) return
+        // The call itself keeps working (media and signaling don't need the
+        // token) — but new SFU operations (a joiner's tracks, camera re-
+        // publish after failure) would 401. Tell the user while the call is
+        // still fine, with a one-click path back.
+        Sentry.captureMessage('session expired mid-call', {
+          level: 'warning',
+          tags: { stage: 'session_keepalive' },
+        })
+        import('sonner').then(({ toast }) => {
+          toast.error('Your session expired. Sign in again to keep everything working.', {
+            duration: Infinity,
+            action: {
+              label: 'Sign in',
+              onClick: () => {
+                window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`
+              },
+            },
+          })
+        })
+      },
+    })
     const prevScreenSharing = new Map<string, boolean>()
     // Maps CF remoteSessionId → signaling peerId so onRemoteTrack can route tracks.
     const remoteSessionToPeer = new Map<string, string>()
@@ -619,6 +650,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
     return () => {
       client.send('leave', undefined, { room: roomId })
       disposed = true
+      stopKeepalive()
       // If the user navigated away before TTFM resolved, count it as abandoned —
       // not as success or timeout. Distinguishes "user gave up" from "we failed
       // to deliver" in the SLO breakdown.

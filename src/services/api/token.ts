@@ -14,6 +14,21 @@ let _token: string | null = null
 let _loaded = false
 let _roomToken: string | null = null
 
+// Listeners notified whenever either token slot changes. Long-lived consumers
+// that snapshot a token (SfuSession's live SFU auth headers, the in-call
+// session keepalive) subscribe here instead of polling.
+type TokenListener = () => void
+const tokenListeners = new Set<TokenListener>()
+
+export function subscribeTokenChange(listener: TokenListener): () => void {
+    tokenListeners.add(listener)
+    return () => tokenListeners.delete(listener)
+}
+
+function notifyTokenChange(): void {
+    for (const listener of tokenListeners) listener()
+}
+
 function readStoredAccessToken(): string | null {
     if (typeof window === 'undefined') return null
     try {
@@ -49,6 +64,7 @@ export function setAccessToken(token: string | null): void {
     _token = token
     _loaded = true
     writeStoredAccessToken(token)
+    notifyTokenChange()
 }
 
 export function getRoomToken(): string | null {
@@ -57,4 +73,5 @@ export function getRoomToken(): string | null {
 
 export function setRoomToken(token: string | null): void {
     _roomToken = token
+    notifyTokenChange()
 }

@@ -70,6 +70,7 @@ vi.mock('@/src/services/api/token', () => ({
   getAccessToken: vi.fn(() => 'test-access-token'),
   getRoomToken: vi.fn(() => null),
   setRoomToken: vi.fn(),
+  subscribeTokenChange: vi.fn(() => () => {}),
 }))
 
 vi.mock('@sentry/nextjs', () => ({
