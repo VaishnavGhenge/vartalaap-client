@@ -68,7 +68,7 @@ export function CalendarSyncCard({ refreshKey = 0, onChange }: Props) {
         try {
             // Full navigation, not a popup: popups get blocked, and the OAuth
             // callback returns to the dashboard anyway.
-            window.location.href = await startCalendarConnect();
+            window.location.href = await startCalendarConnect('dashboard');
         } catch (e) {
             setError(e instanceof Error ? e.message : "Could not start the connection.");
             setBusy(false);

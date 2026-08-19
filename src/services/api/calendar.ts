@@ -37,8 +37,17 @@ export async function getCalendarStatus(): Promise<CalendarStatus> {
  * logs. The server identifies the user on the way back through a signed state
  * parameter instead.
  */
-export async function startCalendarConnect(): Promise<string> {
-    const body = await apiFetch<ConnectResponse>('GET', `${httpServerUri}/me/calendar/connect/google`)
+export type CalendarReturnTo = 'dashboard' | 'onboarding'
+
+export async function startCalendarConnect(returnTo: CalendarReturnTo = 'dashboard'): Promise<string> {
+    // `return` tells the server's OAuth callback where to send the browser
+    // afterwards. It is mapped through a closed allowlist server-side, so this
+    // cannot become an open redirect. Without it a host who connects during
+    // onboarding lands on the dashboard and skips the rest of the wizard.
+    const body = await apiFetch<ConnectResponse>(
+        'GET',
+        `${httpServerUri}/me/calendar/connect/google?return=${returnTo}`,
+    )
     return body.authUrl
 }
 
