@@ -41,7 +41,7 @@ import { roomPath } from "@/src/lib/room-routes";
 import { initialsOf } from "@/src/lib/avatar";
 import { cn } from "@/src/lib/utils";
 import { getAvailability } from "@/src/services/api/availability";
-import { calendarCallbackMessage } from "@/src/services/api/calendar";
+import { calendarCallbackMessage, getCalendarStatus } from "@/src/services/api/calendar";
 import { listEventTypes } from "@/src/services/api/event-types";
 import { listMyBookings, type HostBooking } from "@/src/services/api/bookings";
 import { updateProfile } from "@/src/services/api/auth";
@@ -159,14 +159,20 @@ function DashboardInner() {
 
     const refreshSetup = useCallback(async () => {
         try {
-            const [rules, events] = await Promise.all([
+            const [rules, events, calendar] = await Promise.all([
                 getAvailability().catch(() => []),
                 listEventTypes().catch(() => []),
+                // null on failure, which collapses to an omitted checklist row.
+                // Not a silent swallow: the Availability panel's CalendarSyncCard
+                // reports an unreachable lookup where the host can act on it, and
+                // a second banner on Overview would be noise.
+                getCalendarStatus().catch(() => null),
             ]);
             setSetup({
                 profile: !!(user?.slug && user.slug.length > 0),
                 availability: rules.length > 0,
                 eventType: events.some((e) => e.isActive),
+                calendar: calendar?.available ? calendar.connected : undefined,
             });
         } finally {
             setSetupLoaded(true);

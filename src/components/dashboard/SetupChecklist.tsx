@@ -10,6 +10,11 @@ export interface SetupState {
     profile: boolean;
     availability: boolean;
     eventType: boolean;
+    // Tri-state on purpose. `undefined` means the step does not apply to this
+    // deployment (the server has no Google credentials, or we could not ask),
+    // and the row is omitted entirely rather than shown as a task the host has
+    // no way to complete. `false` means connectable but not connected.
+    calendar?: boolean;
 }
 
 interface Props {
@@ -20,28 +25,44 @@ interface Props {
 // flow to work end-to-end. Each row points at the panel that fixes the gap so
 // the user never has to read the docs to know "what's next?"
 export function SetupChecklist({ state }: Props) {
-    const items: Array<{ key: keyof SetupState; title: string; body: string; href: string }> = [
+    const items: Array<{ key: string; title: string; body: string; href: string; done: boolean }> = [
         {
             key: "profile",
             title: "Claim your booking URL",
             body: "Pick a slug guests will see and use.",
             href: "/onboarding",
+            done: state.profile,
         },
         {
             key: "availability",
             title: "Set weekly availability",
             body: "Recurring hours decide which slots guests can pick.",
             href: "/dashboard?panel=availability",
+            done: state.availability,
         },
         {
             key: "eventType",
             title: "Publish an event type",
             body: "An event type is the link guests actually book.",
             href: "/dashboard?panel=booking-types",
+            done: state.eventType,
         },
     ];
 
-    const remaining = items.filter((i) => !state[i.key]);
+    // Last, and only when it applies. The three above are each required before
+    // a guest can book at all; connecting a calendar is not, it prevents a
+    // specific bad outcome once bookings start arriving.
+    if (state.calendar !== undefined) {
+        items.push({
+            key: "calendar",
+            title: "Connect your calendar",
+            body: "Guests can't book over meetings you already have.",
+            href: "/dashboard?panel=availability",
+            done: state.calendar,
+        });
+    }
+
+    const remaining = items.filter((i) => !i.done);
     if (remaining.length === 0) {
         return (
             <div className="flex items-center gap-3 rounded-xl border border-[hsl(var(--primary))]/30 bg-[hsl(var(--primary))]/5 px-4 py-3">
@@ -58,7 +79,7 @@ export function SetupChecklist({ state }: Props) {
     return (
         <div className="flex flex-col gap-2">
             {items.map((it) => {
-                const done = state[it.key];
+                const done = it.done;
                 return (
                     <div
                         key={it.key}
