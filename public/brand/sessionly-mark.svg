@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Sessionly">
+  <title>Sessionly</title>
+  <!-- Brand mark extracted from SessionlyBrandMark. Tile: hsl(243 75% 58%). -->
+  <rect width="512" height="512" rx="116" fill="#4C44E4"/>
+  <!-- Glyph is the nav SVG (32x32 viewBox) scaled to 72% of the tile and centred,
+       matching the component's size-[72%]. 512*0.72 = 368.64; scale = 368.64/32 = 11.52;
+       offset = (512-368.64)/2 = 71.68 -->
+  <g transform="translate(71.68 71.68) scale(11.52)" fill="none">
+    <path d="M9.25 11.25h13.5" stroke="#FFFFFF" stroke-linecap="round" stroke-width="2.25" opacity="0.7"/>
+    <path d="M12 8.5v5M20 8.5v5" stroke="#FFFFFF" stroke-linecap="round" stroke-width="2.25" opacity="0.78"/>
+    <path d="M8.5 17.2c0-1.2.97-2.17 2.17-2.17h7.35c1.2 0 2.17.97 2.17 2.17v.3l3.88-2.12c.63-.34 1.4.11 1.4.83v7.08c0 .72-.77 1.17-1.4.83L20.19 22v.3c0 1.2-.97 2.17-2.17 2.17h-7.35A2.17 2.17 0 0 1 8.5 22.3v-5.1Z" fill="#FFFFFF"/>
+  </g>
+</svg>
