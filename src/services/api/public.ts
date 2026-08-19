@@ -38,6 +38,13 @@ export interface SlotsResponse {
     hostName: string
     hostTimezone: string
     slots: string[]
+    // True when the host has a calendar connected but it could not be read for
+    // this request, so these times may include hours the host is already busy.
+    // The server sets it rather than failing the request: a Google outage
+    // should not take a booking page down. Surfaced to the guest because a
+    // silently wrong slot list is the failure this whole feature exists to
+    // prevent.
+    calendarSyncDegraded?: boolean
 }
 
 export interface BookingResponse {

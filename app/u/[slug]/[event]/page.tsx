@@ -35,6 +35,7 @@ export default function PublicEventPage({ params }: PageProps) {
     const [meta, setMeta] = useState<PublicEventResponse | null>(null);
     const [metaError, setMetaError] = useState<string | null>(null);
     const [slots, setSlots] = useState<string[] | null>(null);
+    const [slotsStale, setSlotsStale] = useState(false);
     const [slotsError, setSlotsError] = useState<string | null>(null);
     const [slotsLoading, setSlotsLoading] = useState(true);
 
@@ -89,6 +90,7 @@ export default function PublicEventPage({ params }: PageProps) {
             .then((res) => {
                 if (cancelled) return;
                 setSlots(res.slots);
+                setSlotsStale(res.calendarSyncDegraded === true);
             })
             .catch((err: unknown) => {
                 if (cancelled) return;
@@ -201,7 +203,10 @@ export default function PublicEventPage({ params }: PageProps) {
                 setSubmitError("That time is no longer available. Pick another.");
                 listSlots(slug, eventSlug, isoDate(windowStart),
                     isoDate(addDays(windowEnd, 1)))
-                    .then((res) => setSlots(res.slots))
+                    .then((res) => {
+                        setSlots(res.slots);
+                        setSlotsStale(res.calendarSyncDegraded === true);
+                    })
                     .catch(() => { /* keep stale slots */ });
             } else if (err instanceof PublicApiError) {
                 setSubmitError(err.message);
@@ -321,6 +326,18 @@ export default function PublicEventPage({ params }: PageProps) {
                                         </Button>
                                     </div>
                                 </div>
+
+                                {/* The host connected a calendar but we could not
+                                    read it, so a listed time may already be taken.
+                                    Better to say so than to let the guest find out
+                                    when the host cancels. */}
+                                {slotsStale && !slotsError && (
+                                    <InlineNotice tone="warning" className="mb-3 text-xs">
+                                        These times couldn&apos;t be checked against {meta.host.name}&apos;s
+                                        calendar just now, so one may already be taken. You&apos;ll get an email
+                                        either way.
+                                    </InlineNotice>
+                                )}
 
                                 {slotsError ? (
                                     <div className="py-6 text-center text-sm text-[hsl(var(--destructive))]">
