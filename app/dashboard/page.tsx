@@ -23,6 +23,7 @@ import {
 
 import { AvailabilityEditor } from "@/src/components/dashboard/AvailabilityEditor";
 import { BookingsPanel } from "@/src/components/dashboard/BookingsPanel";
+import { CalendarSyncCard } from "@/src/components/dashboard/CalendarSyncCard";
 import { EventTypesPanel } from "@/src/components/dashboard/EventTypesPanel";
 import { SetupChecklist, type SetupState } from "@/src/components/dashboard/SetupChecklist";
 import { UpcomingBookings } from "@/src/components/dashboard/UpcomingBookings";
@@ -40,6 +41,7 @@ import { roomPath } from "@/src/lib/room-routes";
 import { initialsOf } from "@/src/lib/avatar";
 import { cn } from "@/src/lib/utils";
 import { getAvailability } from "@/src/services/api/availability";
+import { calendarCallbackMessage } from "@/src/services/api/calendar";
 import { listEventTypes } from "@/src/services/api/event-types";
 import { listMyBookings, type HostBooking } from "@/src/services/api/bookings";
 import { updateProfile } from "@/src/services/api/auth";
@@ -149,6 +151,12 @@ function DashboardInner() {
     const [setupLoaded, setSetupLoaded] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
 
+    // The Google OAuth callback bounces the browser back here with
+    // ?calendar=<outcome>. Read it once on mount: the notice has to survive the
+    // URL cleanup below, so it lives in state rather than being derived from
+    // the query string on every render.
+    const [calendarNotice] = useState(() => calendarCallbackMessage(params.get("calendar")));
+
     const refreshSetup = useCallback(async () => {
         try {
             const [rules, events] = await Promise.all([
@@ -173,6 +181,15 @@ function DashboardInner() {
     useEffect(() => {
         if (!isLoading && !isAuthenticated) router.replace("/login");
     }, [isAuthenticated, isLoading, router]);
+
+    // After returning from Google, show the host the panel the connection
+    // affects and drop ?calendar= from the URL so a reload or a shared link
+    // doesn't replay a stale outcome banner.
+    useEffect(() => {
+        if (!calendarNotice) return;
+        setActivePanel("availability");
+        router.replace("/dashboard?panel=availability", { scroll: false });
+    }, [calendarNotice, router]);
 
     if (isLoading) return <div className="min-h-dvh" />;
     if (!isAuthenticated || !user) return null;
@@ -370,10 +387,21 @@ function DashboardInner() {
 
                     {activePanel === "availability" && (
                         <PanelShell>
-                            <AvailabilityEditor
-                                timezone={user.timezone}
-                                onSaved={() => setRefreshKey((k) => k + 1)}
-                            />
+                            <div className="flex flex-col gap-4">
+                                {calendarNotice && (
+                                    <InlineNotice tone={calendarNotice.tone}>
+                                        {calendarNotice.text}
+                                    </InlineNotice>
+                                )}
+                                <CalendarSyncCard
+                                    refreshKey={refreshKey}
+                                    onChange={() => setRefreshKey((k) => k + 1)}
+                                />
+                                <AvailabilityEditor
+                                    timezone={user.timezone}
+                                    onSaved={() => setRefreshKey((k) => k + 1)}
+                                />
+                            </div>
                         </PanelShell>
                     )}
 
