@@ -1,4 +1,5 @@
 import { LandingHeader } from "@/src/components/ui/LandingHeader";
+import { SiteFooter } from "@/src/components/ui/SiteFooter";
 import { Button } from "@/src/components/ui/button";
 import Link from "next/link";
 
@@ -129,6 +130,7 @@ export default function ChangelogPage() {
 
                 </div>
             </main>
+            <SiteFooter />
         </div>
     );
 }

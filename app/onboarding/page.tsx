@@ -751,7 +751,7 @@ function Step4({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
                         type="button"
                         onClick={() => void connect()}
                         disabled={connecting}
-                        className="flex items-center gap-3 rounded-xl border border-[hsl(var(--border))] p-4 text-left
+                        className="flex cursor-pointer items-center gap-3 rounded-xl border border-[hsl(var(--border))] p-4 text-left
                                    transition-colors hover:bg-[hsl(var(--surface-2))]
                                    disabled:cursor-not-allowed disabled:opacity-60
                                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]/50"

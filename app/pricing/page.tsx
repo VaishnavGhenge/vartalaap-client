@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Check, Minus, ArrowRight } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
 import { LandingHeader } from "@/src/components/ui/LandingHeader";
+import { SiteFooter } from "@/src/components/ui/SiteFooter";
 
 const TIERS = [
     {
@@ -273,6 +274,7 @@ export default function PricingPage() {
                 </section>
 
             </main>
+            <SiteFooter />
         </div>
     );
 }

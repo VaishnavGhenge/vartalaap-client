@@ -5,6 +5,7 @@ import Link from "next/link";
 import { avatarColor, initialsOf } from "@/src/lib/avatar";
 import { Check, ArrowRight, Video, CreditCard, CalendarCheck, Link2, Mic, PhoneOff } from "lucide-react";
 import { LandingHeader } from "@/src/components/ui/LandingHeader";
+import { SiteFooter } from "@/src/components/ui/SiteFooter";
 
 // ─── Booking mockup ───────────────────────────────────────────────────────────
 
@@ -445,6 +446,8 @@ function LandingPage() {
                     <Link href="/register">Create your free account</Link>
                 </Button>
             </section>
+
+            <SiteFooter />
         </div>
     );
 }
