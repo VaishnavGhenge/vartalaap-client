@@ -4,6 +4,7 @@ import { Button } from "@/src/components/ui/button";
 import Link from "next/link";
 import { avatarColor, initialsOf } from "@/src/lib/avatar";
 import { Check, ArrowRight, Video, CreditCard, CalendarCheck, Link2, Mic, PhoneOff } from "lucide-react";
+import { Eyebrow } from "@/src/components/ui/Eyebrow";
 import { LandingHeader } from "@/src/components/ui/LandingHeader";
 import { SiteFooter } from "@/src/components/ui/SiteFooter";
 
@@ -184,45 +185,49 @@ const STEPS = [
 
 function LandingPage() {
     return (
-        <div style={{ fontFamily: "var(--font-jakarta, system-ui)" }}>
+        <div>
             <LandingHeader />
 
             {/* ── Hero ─────────────────────────────────────────────────────── */}
             <section className="relative overflow-hidden px-5 pb-14 pt-10 sm:px-6 sm:pb-20 sm:pt-16">
                 <div
                     className="pointer-events-none absolute inset-0 -z-10"
-                    style={{ background: "radial-gradient(ellipse 80% 50% at 50% -8%, hsl(var(--primary) / 0.13), transparent 68%)" }}
+                    style={{ backgroundImage: "repeating-linear-gradient(0deg, hsl(var(--foreground) / 0.02) 0px, hsl(var(--foreground) / 0.02) 1px, transparent 1px, transparent 4px)" }}
                 />
-                <div className="mx-auto flex max-w-6xl flex-col gap-10 lg:flex-row lg:items-center lg:gap-12">
-                    <div className="w-full max-w-xl flex-1 text-left">
-                        <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--surface))] px-3 py-1.5 text-[11px] sm:text-xs text-[hsl(var(--muted-foreground))] shadow-sm">
-                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                            For coaches, consultants, and therapists
-                        </div>
-                        <h1 className="font-[var(--font-montserrat)] text-[clamp(2.25rem,9vw,5rem)] font-bold leading-[1.05] tracking-tight text-[hsl(var(--foreground))]">
-                            Book clients.<br />Meet online.<br />Get paid.
+                {/* Asymmetric on purpose: 7/5 rather than a centred 50/50, so the
+                    headline owns the page and the product shot sits as evidence
+                    beside it rather than competing with it. */}
+                <div className="mx-auto grid max-w-6xl grid-cols-1 items-center gap-12 lg:grid-cols-12 lg:gap-10">
+                    <div className="lg:col-span-7">
+                        <Eyebrow>For coaches, consultants and therapists</Eyebrow>
+                        <h1 className="mt-7 font-display text-[clamp(2.75rem,8.5vw,5.5rem)] font-normal leading-[0.95] text-[hsl(var(--foreground))]">
+                            Book clients.<br />
+                            Meet online.<br />
+                            <span className="text-[hsl(var(--primary))]">Get paid.</span>
                         </h1>
-                        <p className="mt-5 max-w-md text-base leading-relaxed text-[hsl(var(--muted-foreground))] sm:text-[1.05rem]">
-                            One link. Your client picks a time, joins the video call, and pays — all without leaving your page.
+                        <p className="mt-7 max-w-md text-[1.0625rem] leading-relaxed text-[hsl(var(--muted-foreground))]">
+                            One link. Your client picks a time, joins the video call, and pays,
+                            all without leaving your page.
                         </p>
-                        <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center">
-                            <Button size="lg" className="w-full sm:w-auto px-7 text-base" asChild>
+                        <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
+                            <Button size="lg" className="w-full px-7 text-base sm:w-auto" asChild>
                                 <Link href="/register">Create your page free <ArrowRight className="size-4" /></Link>
                             </Button>
-                            <Button variant="outline" size="lg" className="w-full sm:w-auto text-base" asChild>
+                            <Button variant="ghost" size="lg" className="w-full text-base sm:w-auto" asChild>
                                 <Link href="/pricing">See pricing</Link>
                             </Button>
                         </div>
-                        {/* Comparison strip — centered on mobile (matches full-width buttons), left-aligned from sm+ (matches auto-width buttons) */}
-                        <div className="mt-6 flex justify-center sm:justify-start">
-                            <div className="inline-flex flex-col items-center gap-1 rounded-xl border border-[hsl(var(--border))]/80 bg-[hsl(var(--surface-2))]/60 px-4 py-2.5 text-sm sm:flex-row sm:items-center sm:gap-3">
-                                <span className="text-[hsl(var(--muted-foreground))]/70 line-through">Calendly + Zoom — $25/mo</span>
-                                <span className="hidden text-[hsl(var(--border))] sm:inline">→</span>
-                                <span className="font-semibold text-[hsl(var(--foreground))]">Sessionly — $12/mo</span>
-                            </div>
+                        {/* The price comparison is the sharpest thing on the page, so it
+                            is set as type under a rule rather than hidden in a chip. */}
+                        <div className="mt-9 max-w-md border-t border-[hsl(var(--border))] pt-4 text-sm">
+                            <span className="text-[hsl(var(--muted-foreground))] line-through decoration-[hsl(var(--muted-foreground))]/40">
+                                Calendly + Zoom, $25 a month
+                            </span>
+                            <span className="mx-2.5 text-[hsl(var(--border))]">/</span>
+                            <span className="font-medium text-[hsl(var(--foreground))]">Sessionly, $12</span>
                         </div>
                     </div>
-                    <div className="flex w-full flex-1 justify-center lg:justify-end">
+                    <div className="flex w-full justify-center lg:col-span-5 lg:justify-end">
                         <BookingMockup />
                     </div>
                 </div>
@@ -231,10 +236,13 @@ function LandingPage() {
             {/* ── Social proof ─────────────────────────────────────────────── */}
             <section className="border-t border-[hsl(var(--border))]/60 px-5 py-12 sm:px-6 sm:py-16">
                 <div className="mx-auto max-w-5xl">
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    {/* Rules, not cards. Three bordered boxes in a row is the default
+                        testimonial block everywhere; dividers let the quotes read as
+                        text on a page. */}
+                    <div className="grid grid-cols-1 divide-y divide-[hsl(var(--border))] sm:grid-cols-3 sm:divide-x sm:divide-y-0">
                         {TESTIMONIALS.map(({ quote, name, role }) => (
-                            <div key={name} className="app-panel rounded-2xl p-5 sm:p-6 flex flex-col gap-4">
-                                <p className="text-sm leading-relaxed text-[hsl(var(--foreground))] flex-1">
+                            <div key={name} className="flex flex-col gap-5 py-6 sm:px-6 sm:py-2 sm:first:pl-0 sm:last:pr-0">
+                                <p className="font-display flex-1 text-[1.0625rem] leading-[1.5] text-[hsl(var(--foreground))]">
                                     &ldquo;{quote}&rdquo;
                                 </p>
                                 <div className="flex items-center gap-2.5">
@@ -258,12 +266,12 @@ function LandingPage() {
             {/* ── Features bento ───────────────────────────────────────────── */}
             <section id="features" className="border-t border-[hsl(var(--border))]/60 px-5 py-16 sm:px-6 sm:py-24 lg:py-28">
                 <div className="mx-auto max-w-5xl">
-                    <div className="text-center mb-10 sm:mb-12">
-                        <p className="label-caps text-[hsl(var(--primary))] mb-2">What you get</p>
-                        <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-[hsl(var(--foreground))] leading-tight">
+                    <div className="mb-10 sm:mb-12">
+                        <Eyebrow index={1}>What you get</Eyebrow>
+                        <h2 className="font-display mt-6 max-w-xl text-[2rem] font-normal leading-[1.05] text-[hsl(var(--foreground))] sm:text-[2.75rem]">
                             Replace two tools with one
                         </h2>
-                        <p className="mt-3 text-[hsl(var(--muted-foreground))] max-w-sm mx-auto">
+                        <p className="mt-3 max-w-sm text-[hsl(var(--muted-foreground))]">
                             Stop paying for Calendly and Zoom separately. Sessionly does both.
                         </p>
                     </div>
@@ -334,8 +342,8 @@ function LandingPage() {
             <section id="how-it-works" className="border-t border-[hsl(var(--border))]/60 px-5 py-16 sm:px-6 sm:py-24 lg:py-28">
                 <div className="mx-auto max-w-4xl">
                     <div className="text-center mb-10 sm:mb-14">
-                        <p className="label-caps text-[hsl(var(--primary))] mb-2">Simple by design</p>
-                        <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-[hsl(var(--foreground))] leading-tight">
+                        <Eyebrow index={2}>Simple by design</Eyebrow>
+                        <h2 className="font-display mt-6 text-[2rem] font-normal leading-[1.05] text-[hsl(var(--foreground))] sm:text-[2.75rem]">
                             Up and running in minutes
                         </h2>
                     </div>
@@ -344,8 +352,8 @@ function LandingPage() {
                         <div className="hidden sm:block absolute top-7 left-[calc(16.66%+1rem)] right-[calc(16.66%+1rem)] h-px border-t border-dashed border-[hsl(var(--border))]" />
                         {STEPS.map(({ n, title, body }) => (
                             <div key={n} className="relative flex flex-col items-center sm:items-start text-center sm:text-left">
-                                <div className="relative z-10 mb-4 sm:mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm">
-                                    <span className="text-lg font-bold text-[hsl(var(--primary))]">{n}</span>
+                                <div className="relative z-10 mb-5 flex size-12 items-center justify-center border border-[hsl(var(--border))] bg-[hsl(var(--card))]">
+                                    <span className="font-display text-xl text-[hsl(var(--primary))]">{n}</span>
                                 </div>
                                 <p className="font-semibold text-[hsl(var(--foreground))] mb-2 text-base">{title}</p>
                                 <p className="text-sm text-[hsl(var(--muted-foreground))] leading-relaxed max-w-xs sm:max-w-none">{body}</p>
@@ -358,9 +366,9 @@ function LandingPage() {
             {/* ── Pricing preview ───────────────────────────────────────────── */}
             <section className="border-t border-[hsl(var(--border))]/60 px-5 py-16 sm:px-6 sm:py-24 lg:py-28">
                 <div className="mx-auto max-w-5xl">
-                    <div className="text-center mb-10 sm:mb-12">
-                        <p className="label-caps text-[hsl(var(--primary))] mb-2">Pricing</p>
-                        <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-[hsl(var(--foreground))] leading-tight">
+                    <div className="mb-10 sm:mb-12">
+                        <Eyebrow index={3}>Pricing</Eyebrow>
+                        <h2 className="font-display mt-6 text-[2rem] font-normal leading-[1.05] text-[hsl(var(--foreground))] sm:text-[2.75rem]">
                             Honest pricing. No surprises.
                         </h2>
                         <p className="mt-3 text-[hsl(var(--muted-foreground))]">
@@ -434,9 +442,9 @@ function LandingPage() {
             <section className="border-t border-[hsl(var(--border))]/60 px-5 py-16 sm:px-6 sm:py-24 text-center relative overflow-hidden">
                 <div
                     className="pointer-events-none absolute inset-0 -z-10"
-                    style={{ background: "radial-gradient(ellipse 80% 80% at 50% 120%, hsl(var(--primary) / 0.12), transparent)" }}
+                    style={{ backgroundImage: "repeating-linear-gradient(0deg, hsl(var(--foreground) / 0.02) 0px, hsl(var(--foreground) / 0.02) 1px, transparent 1px, transparent 4px)" }}
                 />
-                <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-[hsl(var(--foreground))] mb-4 leading-tight">
+                <h2 className="font-display mb-5 text-[2rem] font-normal leading-[1.05] text-[hsl(var(--foreground))] sm:text-[2.75rem]">
                     Your booking page is<br className="hidden sm:block" /> two minutes away.
                 </h2>
                 <p className="text-[hsl(var(--muted-foreground))] mb-7 max-w-sm mx-auto">

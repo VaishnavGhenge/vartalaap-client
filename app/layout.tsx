@@ -1,18 +1,30 @@
 import "./globals.css";
 import type {Metadata, Viewport} from "next";
-import { Geist, Inter, Montserrat, Plus_Jakarta_Sans } from "next/font/google";
+import { Fraunces, Geist, Instrument_Sans } from "next/font/google";
 import { cookies } from "next/headers";
 import React from "react";
 import {HomeWrapper} from "@/src/components/ui/HomeWrapper";
 import {Providers} from "@/src/components/providers";
 import {SentryInit} from "@/src/components/SentryInit";
 
-const inter = Inter({ subsets: ["latin"] });
-const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], variable: "--font-jakarta", display: "swap" });
-const montserrat = Montserrat({ subsets: ["latin"], variable: "--font-montserrat", display: "swap" });
-// Wordmark-only font — Vercel's Geist, a premium geometric grotesk
-// commissioned for tech brands. Closest free equivalent to Stripe Sans.
-// Loaded just for the logo so we keep the body in Inter.
+// Two faces, not four. The old stack loaded Inter, Plus Jakarta Sans and
+// Montserrat alongside Geist, which is three of the most-used webfonts in
+// software and the reason nothing on the page had a voice.
+//
+// Fraunces is a warm, high-contrast serif with an optical size axis: it gets
+// its own personality at display sizes without turning mushy in a heading.
+// It carries the editorial, consulting-room register. Instrument Sans handles
+// every pixel of UI — quiet, well-spaced, and specifically not Inter.
+const fraunces = Fraunces({
+    subsets: ["latin"],
+    variable: "--font-display",
+    display: "swap",
+    axes: ["SOFT", "WONK", "opsz"],
+});
+const instrument = Instrument_Sans({ subsets: ["latin"], variable: "--font-ui", display: "swap" });
+
+// Wordmark only. Kept while the logotype is Geist; changing it would change
+// the logo, which is a brand decision rather than a styling one.
 const geist = Geist({ subsets: ["latin"], variable: "--font-brand", display: "swap", weight: ["500", "600", "700"] });
 
 export const metadata: Metadata = {
@@ -40,7 +52,7 @@ export default async function RootLayout({
 
     return (
         <html lang='en' className={isDark ? "dark" : undefined} data-theme={isDark ? "dark" : "light"} suppressHydrationWarning>
-            <body className={`${inter.className} ${jakarta.variable} ${montserrat.variable} ${geist.variable}`}>
+            <body className={`${instrument.className} ${instrument.variable} ${fraunces.variable} ${geist.variable}`}>
                 <SentryInit />
                 <Providers>
                     <HomeWrapper>

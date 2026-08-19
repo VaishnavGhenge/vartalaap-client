@@ -246,47 +246,51 @@ export default function PublicEventPage({ params }: PageProps) {
                   meta line. Same brand-gradient circle so a guest landing
                   here from the marketing site sees a continuous visual.
                 */}
-                <header className="app-panel rounded-2xl px-5 py-5">
-                    <div className="flex items-center gap-3">
+                <header className="border-b border-[hsl(var(--border))] pb-7">
+                    <div className="flex items-start gap-4">
                         {meta.host.avatarUrl ? (
                             <img
                                 src={meta.host.avatarUrl}
                                 alt={meta.host.name}
-                                className="size-10 shrink-0 rounded-full object-cover"
+                                className="size-16 shrink-0 rounded-full object-cover ring-1 ring-[hsl(var(--border))]"
                             />
                         ) : (
-                            <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[hsl(var(--primary))] to-violet-500 text-sm font-semibold text-white">
+                            <div className="font-display flex size-16 shrink-0 items-center justify-center rounded-full bg-[hsl(var(--secondary))] text-xl text-[hsl(var(--secondary-foreground))]">
                                 {initialsOf(meta.host.name)}
                             </div>
                         )}
-                        <div className="min-w-0">
+                        <div className="min-w-0 pt-0.5">
                             <Link
                                 href={`/u/${meta.host.slug}`}
-                                className="block truncate text-sm font-semibold text-[hsl(var(--foreground))] hover:text-[hsl(var(--primary))]"
+                                className="text-[0.6875rem] font-medium uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))] transition-colors hover:text-[hsl(var(--primary))]"
                             >
                                 {meta.host.name}
                             </Link>
-                            <p className="truncate text-xs text-[hsl(var(--muted-foreground))]">
-                                {meta.host.timezone.replace(/_/g, " ")}
-                            </p>
-                        </div>
-                    </div>
-                    <div className="mt-4 border-t border-[hsl(var(--border))]/60 pt-4">
-                        <h1 className="text-xl font-semibold tracking-tight text-[hsl(var(--foreground))] sm:text-2xl">
-                            {meta.event.title}
-                        </h1>
-                        <div className="mt-1 flex items-center gap-2 text-xs text-[hsl(var(--muted-foreground))]">
-                            <Video className="size-3 shrink-0" />
-                            <span>
-                                Video call · {meta.event.durationMin} min
-                                {meta.event.description ? ` · ${meta.event.description}` : ""}
-                            </span>
+                            {/* The session title is the headline of this page. It is what
+                                the guest is deciding about, so it gets display type
+                                rather than sharing a size with the host's timezone. */}
+                            <h1 className="font-display mt-1.5 text-[1.75rem] font-normal leading-[1.1] text-[hsl(var(--foreground))] sm:text-[2.125rem]">
+                                {meta.event.title}
+                            </h1>
+                            <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[hsl(var(--muted-foreground))]">
+                                <span className="inline-flex items-center gap-1.5">
+                                    <Video className="size-3.5 shrink-0" />
+                                    {meta.event.durationMin} min video call
+                                </span>
+                                <span aria-hidden className="text-[hsl(var(--border))]">/</span>
+                                <span>{meta.host.timezone.replace(/_/g, " ")}</span>
+                            </div>
+                            {meta.event.description && (
+                                <p className="mt-3 max-w-prose text-[0.9375rem] leading-relaxed text-[hsl(var(--muted-foreground))]">
+                                    {meta.event.description}
+                                </p>
+                            )}
                         </div>
                     </div>
                 </header>
 
                 <section className="mt-6">
-                    <div className="app-panel no-lift rounded-2xl p-5 lg:p-6">
+                    <div className="pt-1">
                         {/*
                           Below lg the calendar and slot picker stack vertically
                           inside one column (mobile-friendly). At lg+ they split
@@ -425,11 +429,11 @@ export default function PublicEventPage({ params }: PageProps) {
                             {selectedDate && selectedDaySlots.length > 0 && (
                                 <div className="mt-5 border-t border-[hsl(var(--border))]/60 pt-4 lg:mt-0 lg:max-h-[420px] lg:overflow-y-auto lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
                                     <div className="mb-3 flex items-center justify-between">
-                                        <p className="text-sm font-semibold text-[hsl(var(--foreground))]">
-                                            {selectedDate.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+                                        <p className="font-display text-lg text-[hsl(var(--foreground))]">
+                                            {selectedDate.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
                                         </p>
-                                        <span className="rounded-full bg-[hsl(var(--primary)/0.1)] px-2 py-0.5 text-xs font-semibold text-[hsl(var(--primary))]">
-                                            {selectedDaySlots.length} slot{selectedDaySlots.length === 1 ? "" : "s"}
+                                        <span className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">
+                                            {selectedDaySlots.length} open
                                         </span>
                                     </div>
                                     <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-5 lg:grid-cols-4">
@@ -439,10 +443,10 @@ export default function PublicEventPage({ params }: PageProps) {
                                                 type="button"
                                                 onClick={() => { void selectSlot(iso); }}
                                                 className={cn(
-                                                    "press w-full cursor-pointer rounded-lg px-1 py-2.5 text-xs font-medium",
+                                                    "press w-full cursor-pointer px-1 py-3 text-[0.8125rem] font-medium tabular-nums tracking-tight",
                                                     selectedSlot === iso
-                                                        ? "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] shadow-[0_4px_12px_-3px_hsl(var(--primary)/0.45)]"
-                                                        : "border border-[hsl(var(--border))] bg-transparent text-[hsl(var(--foreground))] hover:border-[hsl(var(--primary))]/50 hover:bg-[hsl(var(--primary)/0.06)] hover:text-[hsl(var(--primary))]",
+                                                        ? "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]"
+                                                        : "border border-[hsl(var(--border))] bg-[hsl(var(--surface))] text-[hsl(var(--foreground))] hover:border-[hsl(var(--primary))] hover:text-[hsl(var(--primary))]",
                                                 )}
                                             >
                                                 {new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true })}

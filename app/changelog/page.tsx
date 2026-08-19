@@ -48,7 +48,7 @@ const ENTRIES = [
 
 export default function ChangelogPage() {
     return (
-        <div className="flex min-h-dvh flex-col" style={{ fontFamily: "var(--font-jakarta, system-ui)" }}>
+        <div className="flex min-h-dvh flex-col">
             <LandingHeader />
 
             <main className="flex-1 px-6 pt-20 pb-32">

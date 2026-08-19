@@ -104,7 +104,7 @@ function Cell({ v }: { v: string | boolean }) {
 
 export default function PricingPage() {
     return (
-        <div className="flex min-h-dvh flex-col" style={{ fontFamily: "var(--font-jakarta, system-ui)" }}>
+        <div className="flex min-h-dvh flex-col">
             <LandingHeader />
 
             <main className="flex flex-1 flex-col">
@@ -114,7 +114,7 @@ export default function PricingPage() {
                     <div
                         className="pointer-events-none absolute inset-0 -z-10"
                         style={{
-                            background: "radial-gradient(ellipse 80% 50% at 50% -5%, hsl(var(--primary) / 0.10), transparent 65%)",
+                            backgroundImage: "repeating-linear-gradient(0deg, hsl(var(--foreground) / 0.02) 0px, hsl(var(--foreground) / 0.02) 1px, transparent 1px, transparent 4px)",
                         }}
                     />
                     <h1 className="text-4xl sm:text-5xl font-bold tracking-tight text-[hsl(var(--foreground))] leading-tight">
@@ -259,7 +259,7 @@ export default function PricingPage() {
                     <div
                         className="pointer-events-none absolute inset-0 -z-10"
                         style={{
-                            background: "radial-gradient(ellipse 60% 80% at 50% 120%, hsl(var(--primary) / 0.08), transparent)",
+                            backgroundImage: "repeating-linear-gradient(0deg, hsl(var(--foreground) / 0.02) 0px, hsl(var(--foreground) / 0.02) 1px, transparent 1px, transparent 4px)",
                         }}
                     />
                     <h2 className="text-3xl font-bold tracking-tight text-[hsl(var(--foreground))] mb-3">
