@@ -34,7 +34,14 @@ function BookingMockup() {
             <div className="w-full rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-2xl overflow-hidden">
                 <div className="px-5 pt-5 pb-4 border-b border-[hsl(var(--border))]">
                     <div className="flex items-center gap-3">
-                        <div className="h-9 w-9 rounded-full shrink-0 flex items-center justify-center bg-gradient-to-br from-[hsl(var(--primary))] to-violet-500 text-white font-semibold text-sm">JS</div>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                            src="/brand/demo-host-jane.webp"
+                            alt=""
+                            width={36}
+                            height={36}
+                            className="size-9 shrink-0 rounded-full object-cover ring-1 ring-[hsl(var(--border))]"
+                        />
                         <div>
                             <p className="text-sm font-semibold text-[hsl(var(--foreground))] leading-tight">Jane Smith</p>
                             <p className="text-xs text-[hsl(var(--muted-foreground))]">Business Coach</p>
@@ -115,9 +122,14 @@ function VideoRoomMockup() {
                 </span>
             </div>
             <div className="grid grid-cols-2 gap-2 p-3 bg-[hsl(var(--background))]">
-                <div className="relative aspect-video rounded-lg overflow-hidden bg-gradient-to-br from-[hsl(var(--surface-2))] to-[hsl(var(--surface-3))] flex items-center justify-center">
-                    <div className="h-10 w-10 rounded-full bg-gradient-to-br from-[hsl(var(--primary))] to-violet-500 flex items-center justify-center text-white font-semibold text-sm">JS</div>
-                    <div className="absolute bottom-2 left-2 rounded-md bg-black/50 px-2 py-0.5 text-[10px] text-white font-medium">Jane</div>
+                <div className="relative aspect-video overflow-hidden rounded-lg bg-[hsl(var(--surface-3))]">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                        src="/brand/demo-host-jane-lg.webp"
+                        alt=""
+                        className="h-full w-full object-cover"
+                    />
+                    <div className="absolute bottom-2 left-2 rounded-md bg-black/50 px-2 py-0.5 text-[10px] font-medium text-white">Jane</div>
                     <div className="absolute top-2 right-2 h-5 w-5 rounded-full bg-black/40 flex items-center justify-center">
                         <Mic className="size-2.5 text-white" />
                     </div>
