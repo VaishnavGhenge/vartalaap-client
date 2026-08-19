@@ -122,20 +122,22 @@ function VideoRoomMockup() {
                 </span>
             </div>
             <div className="grid grid-cols-2 gap-2 p-3 bg-[hsl(var(--background))]">
-                <div className="relative aspect-video overflow-hidden rounded-lg bg-[hsl(var(--surface-3))]">
+                <div className="relative flex aspect-video items-center justify-center overflow-hidden rounded-lg bg-[hsl(var(--surface-3))]">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                        src="/brand/demo-host-jane-lg.webp"
+                        src="/brand/demo-host-jane.webp"
                         alt=""
-                        className="h-full w-full object-cover"
+                        width={48}
+                        height={48}
+                        className="size-12 rounded-full object-cover ring-2 ring-[hsl(var(--surface))]/70"
                     />
                     <div className="absolute bottom-2 left-2 rounded-md bg-black/50 px-2 py-0.5 text-[10px] font-medium text-white">Jane</div>
                     <div className="absolute top-2 right-2 h-5 w-5 rounded-full bg-black/40 flex items-center justify-center">
                         <Mic className="size-2.5 text-white" />
                     </div>
                 </div>
-                <div className="relative aspect-video rounded-lg overflow-hidden bg-gradient-to-br from-indigo-900/30 to-violet-900/30 flex items-center justify-center">
-                    <div className="h-10 w-10 rounded-full bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center text-white font-semibold text-sm">AC</div>
+                <div className="relative flex aspect-video items-center justify-center overflow-hidden rounded-lg bg-[hsl(var(--surface-2))]">
+                    <div className="font-display flex size-12 items-center justify-center rounded-full bg-[hsl(var(--secondary))] text-base text-[hsl(var(--secondary-foreground))]">AC</div>
                     <div className="absolute bottom-2 left-2 rounded-md bg-black/50 px-2 py-0.5 text-[10px] text-white font-medium">Alex</div>
                     <div className="absolute top-2 right-2 h-5 w-5 rounded-full bg-black/40 flex items-center justify-center">
                         <Mic className="size-2.5 text-white" />
