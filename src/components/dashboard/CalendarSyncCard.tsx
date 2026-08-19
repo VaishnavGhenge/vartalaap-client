@@ -39,16 +39,20 @@ export function CalendarSyncCard({ refreshKey = 0, onChange }: Props) {
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+    // Distinct from `status === null`. "The server told us calendar sync is
+    // off" and "we could not reach the server to ask" look identical in the
+    // data and must not look identical on screen: the first is a deliberate
+    // hide, the second is a fault the host needs to see.
+    const [loadFailed, setLoadFailed] = useState(false);
 
     const load = useCallback(async () => {
+        setLoadFailed(false);
         try {
             setStatus(await getCalendarStatus());
             setError(null);
         } catch {
-            // A failed status read is not worth an error banner on a panel the
-            // host opened to edit their hours. Hide the card and let the next
-            // load try again.
             setStatus(null);
+            setLoadFailed(true);
         } finally {
             setLoading(false);
         }
@@ -86,9 +90,35 @@ export function CalendarSyncCard({ refreshKey = 0, onChange }: Props) {
         }
     }, [load, onChange]);
 
-    // Nothing to show while loading, and nothing to offer when the server has
-    // no Google credentials — an unusable button is worse than no button.
-    if (loading || !status || !status.available) return null;
+    // Still asking. A spinner here would flash on every panel open for no
+    // information gain.
+    if (loading) return null;
+
+    // We could not ask. Say so, with a way to retry. Rendering nothing here is
+    // what made a stale DNS entry look like a missing feature.
+    if (loadFailed) {
+        return (
+            <InlineNotice tone="warning" title="Couldn't check your calendar connection">
+                <span className="flex flex-wrap items-center gap-2">
+                    <span>Sessionly couldn&apos;t reach the server to load your Google Calendar status.</span>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setLoading(true);
+                            void load();
+                        }}
+                        className="cursor-pointer font-medium text-[hsl(var(--primary))] underline underline-offset-4"
+                    >
+                        Try again
+                    </button>
+                </span>
+            </InlineNotice>
+        );
+    }
+
+    // The server has no Google credentials configured, so there is nothing to
+    // offer. An unusable button is worse than no button.
+    if (!status || !status.available) return null;
 
     const connected = status.connected;
 
