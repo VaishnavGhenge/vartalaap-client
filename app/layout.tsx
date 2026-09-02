@@ -28,8 +28,8 @@ const instrument = Instrument_Sans({ subsets: ["latin"], variable: "--font-ui", 
 const geist = Geist({ subsets: ["latin"], variable: "--font-brand", display: "swap", weight: ["500", "600", "700"] });
 
 export const metadata: Metadata = {
-    title: "Sessionly — Book, meet, and get paid",
-    description: "The scheduling tool for coaches, consultants, and independent professionals. Booking pages and video calls in one place.",
+    title: "Sessionly: booking pages with the video call built in",
+    description: "A booking link for coaches, consultants and therapists, with a private video room for every session. Free while in beta.",
 };
 
 export const viewport: Viewport = {

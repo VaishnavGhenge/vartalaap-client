@@ -97,7 +97,7 @@ const PANEL_COPY: Record<PanelKey, { eyebrow: string; title: string; body: strin
     payments: {
         eyebrow: "Payments",
         title: "Paid sessions are coming",
-        body: "Stripe Connect arrives in the next phase. Until then, everything stays free.",
+        body: "Charging for a session is in development. Until it lands, everything stays free.",
     },
     settings: {
         eyebrow: "Settings",
@@ -424,8 +424,8 @@ function DashboardInner() {
                     {activePanel === "payments" && (
                         <PanelShell>
                             <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                                Paid event types are disabled until Stripe Connect ships. Solo plan
-                                activation will live here.
+                                Paid event types are disabled until the payout path is finished. The
+                                booking form rejects them rather than taking money we cannot yet pass on.
                             </p>
                         </PanelShell>
                     )}

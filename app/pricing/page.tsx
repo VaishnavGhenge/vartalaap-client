@@ -4,92 +4,102 @@ import { Button } from "@/src/components/ui/button";
 import { LandingHeader } from "@/src/components/ui/LandingHeader";
 import { SiteFooter } from "@/src/components/ui/SiteFooter";
 
+// Free is the only plan that can be signed up for. Solo and Teams are the
+// prices we intend to charge; both are listed as unavailable because billing is
+// not wired (see internal/plans/plans.go) and neither's headline feature exists.
+// When a tier becomes chargeable, set available: true and give it a real cta.
 const TIERS = [
     {
         name: "Free",
         price: "$0",
-        cadence: "forever",
-        description: "Try it with real clients before committing to anything.",
+        cadence: "while in beta",
+        description: "Everything that currently works, at no cost, with real clients.",
         cta: "Get started free",
-        ctaVariant: "outline" as const,
-        highlighted: false,
+        ctaVariant: "primary" as const,
+        available: true,
+        highlighted: true,
+        badge: "Available now",
         features: [
             "1 booking page",
             "10 bookings per month",
             "Video calls included",
+            "Google Calendar sync",
+            "Guests cancel from their email link",
         ],
     },
     {
         name: "Solo",
         price: "$12",
         cadence: "per month",
-        description: "For professionals who rely on Sessionly every day.",
-        cta: "Start for free",
-        ctaVariant: "primary" as const,
-        highlighted: true,
-        badge: "Most popular",
+        description: "Waiting on paid sessions and on billing. Neither is finished.",
+        cta: "Not available yet",
+        ctaVariant: "outline" as const,
+        available: false,
+        highlighted: false,
+        badge: "Later",
         features: [
             "Unlimited booking pages",
             "Unlimited bookings",
-            "Video calls included",
-            "Accept payments — 0% extra fee",
+            "Charge for a session",
             "Custom booking URL",
-            "Email reminders",
         ],
     },
     {
         name: "Teams",
         price: "$29",
         cadence: "per month",
-        description: "Up to 5 people sharing one Sessionly account.",
-        cta: "Get started",
+        description: "Not started. Sessionly has no concept of a team account today.",
+        cta: "Not available yet",
         ctaVariant: "outline" as const,
+        available: false,
         highlighted: false,
+        badge: "Later",
         features: [
             "Everything in Solo",
             "Up to 5 team members",
             "Shared booking pages",
-            "Google Calendar sync",
             "Priority support",
         ],
     },
 ];
 
-// [label, free, solo, teams]
+// [label, free, solo, teams]. A row whose Free column is false is a row nobody
+// can use yet: Solo and Teams are not purchasable. Google Calendar sync is on
+// Free because the server does not gate it by plan at all.
 const TABLE: [string, string | boolean, string | boolean, string | boolean][] = [
-    ["Booking pages",       "1",         "Unlimited",  "Unlimited"],
-    ["Bookings per month",  "10",        "Unlimited",  "Unlimited"],
-    ["Video calls",         true,        true,         true],
-    ["Accept payments",     false,       true,         true],
-    ["Platform fee",        "—",         "0%",         "0%"],
-    ["Custom booking URL",  false,       true,         true],
-    ["Email reminders",     false,       true,         true],
-    ["Team members",        "1",         "1",          "Up to 5"],
-    ["Shared booking pages",false,       false,        true],
-    ["Google Calendar sync",false,       false,        true],
-    ["Priority support",    false,       false,        true],
+    ["Booking pages",         "1",   "Unlimited", "Unlimited"],
+    ["Bookings per month",    "10",  "Unlimited", "Unlimited"],
+    ["Video calls",           true,  true,        true],
+    ["Google Calendar sync",  true,  true,        true],
+    ["Guest self-cancel",     true,  true,        true],
+    ["Custom booking URL",    false, true,        true],
+    ["Charge for a session",  false, true,        true],
+    ["Team members",          "1",   "1",         "Up to 5"],
+    ["Shared booking pages",  false, false,       true],
+    ["Priority support",      false, false,       true],
+    ["Purchasable today",     true,  false,       false],
 ];
 
 const FAQS = [
     {
-        q: "Do you take a cut of what my clients pay me?",
-        a: "No. On Solo and Teams you keep 100% of the session price. Your payment provider (Stripe) charges their standard 2.9% + $0.30 per transaction — that's it. We add nothing on top.",
+        q: "Can I charge my clients through Sessionly?",
+        a: "Not yet. You can set a price on an event type, but the booking flow rejects paid events on purpose and returns a clear error rather than pretending to take a payment. No money moves through Sessionly today, in either direction.",
+    },
+    {
+        q: "So what does it cost right now?",
+        a: "Nothing. Free is the only plan you can be on, and there is no card field anywhere in the product. If that changes, we will say so before charging anyone, as the terms already commit us to.",
+    },
+    {
+        q: "Why publish prices you cannot charge?",
+        a: "So the eventual bill is not a surprise. $12 and $29 are what we expect Solo and Teams to cost. Both are unbuilt, so both are marked unavailable rather than sold as a waiting list.",
     },
     {
         q: "What counts as a booking?",
-        a: "Every time a client schedules time with you through your Sessionly link. The count resets at the start of each calendar month on the Free plan. Solo and Teams have no limit.",
+        a: "Every time a client schedules time with you through your link. The Free plan allows 10 per calendar month and 1 booking page. If you hit that ceiling, tell us: right now there is no paid plan to escape to, and knowing someone hit it is more useful to us than the cap is.",
     },
     {
         q: "Do my clients need to create an account?",
-        a: "No. Clients book through your public link, get a confirmation email, and click one link to join the video room. No downloads, no sign-ups.",
-    },
-    {
-        q: "Can I cancel anytime?",
-        a: "Yes — cancel from your settings at any time. You keep full access until the end of the current billing period. No contracts, no penalties.",
-    },
-    {
-        q: "What's included in the Teams plan?",
-        a: "Up to 5 people under one account, each with their own booking page. You can also set up shared pages — for example, clients book with whoever is available next. Full team features are rolling out over the coming months.",
+        a: "No. They book through your public link, get a confirmation email, and click one link to join the video room. No download, no sign-up, no app.",
     },
 ];
 
@@ -118,11 +128,13 @@ export default function PricingPage() {
                         }}
                     />
                     <h1 className="text-4xl sm:text-5xl font-bold tracking-tight text-[hsl(var(--foreground))] leading-tight">
-                        Straightforward pricing.
-                        <br />No surprises.
+                        Free while we&apos;re
+                        <br />in beta.
                     </h1>
-                    <p className="mt-4 text-lg text-[hsl(var(--muted-foreground))] max-w-md mx-auto leading-relaxed">
-                        We don&apos;t take a percentage of what your clients pay you. Pick a plan, pay monthly, cancel anytime.
+                    <p className="mt-4 text-lg text-[hsl(var(--muted-foreground))] max-w-lg mx-auto leading-relaxed">
+                        One plan is real and it costs nothing. The two below it are the prices we expect
+                        to charge once they exist. Neither can be bought today, and we will tell account
+                        holders before that changes.
                     </p>
                 </section>
 
@@ -143,15 +155,18 @@ export default function PricingPage() {
                                         {tier.name}
                                     </p>
                                     {tier.badge && (
-                                        <span className="rounded-full bg-[hsl(var(--primary))]/10 px-2.5 py-0.5
-                                                       text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--primary))]">
+                                        <span className={`rounded-full px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-widest ${
+                                            tier.available
+                                                ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]"
+                                                : "border border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))]"
+                                        }`}>
                                             {tier.badge}
                                         </span>
                                     )}
                                 </div>
 
                                 <div className="flex items-end gap-1.5 mb-1">
-                                    <span className="text-4xl font-bold text-[hsl(var(--foreground))]">{tier.price}</span>
+                                    <span className={`text-4xl font-bold ${tier.available ? "text-[hsl(var(--foreground))]" : "text-[hsl(var(--muted-foreground))]"}`}>{tier.price}</span>
                                     <span className="pb-1 text-sm text-[hsl(var(--muted-foreground))]">{tier.cadence}</span>
                                 </div>
 
@@ -161,19 +176,27 @@ export default function PricingPage() {
 
                                 <ul className="flex flex-col gap-2.5 flex-1 mb-7">
                                     {tier.features.map(f => (
-                                        <li key={f} className="flex items-start gap-2.5 text-sm text-[hsl(var(--foreground))]">
-                                            <Check className="size-4 text-[hsl(var(--primary))] shrink-0 mt-0.5" />
+                                        <li key={f} className={`flex items-start gap-2.5 text-sm ${tier.available ? "text-[hsl(var(--foreground))]" : "text-[hsl(var(--muted-foreground))]"}`}>
+                                            {tier.available
+                                                ? <Check className="size-4 text-[hsl(var(--primary))] shrink-0 mt-0.5" />
+                                                : <Minus className="size-4 text-[hsl(var(--muted-foreground))]/50 shrink-0 mt-0.5" />}
                                             {f}
                                         </li>
                                     ))}
                                 </ul>
 
-                                <Button variant={tier.ctaVariant} size="lg" className="w-full" asChild>
-                                    <Link href="/register">
+                                {tier.available ? (
+                                    <Button variant={tier.ctaVariant} size="lg" className="w-full" asChild>
+                                        <Link href="/register">
+                                            {tier.cta}
+                                            <ArrowRight className="size-4 ml-1" />
+                                        </Link>
+                                    </Button>
+                                ) : (
+                                    <Button variant={tier.ctaVariant} size="lg" className="w-full" disabled>
                                         {tier.cta}
-                                        {tier.highlighted && <ArrowRight className="size-4 ml-1" />}
-                                    </Link>
-                                </Button>
+                                    </Button>
+                                )}
                             </div>
                         ))}
                     </div>
@@ -186,7 +209,7 @@ export default function PricingPage() {
                                 Currently paying for a scheduling tool <em>and</em> a separate video app?
                             </p>
                             <p className="text-sm font-semibold text-[hsl(var(--foreground))] shrink-0">
-                                Sessionly Solo replaces both for $12/mo.
+                                Sessionly does both, free, for as long as the beta runs.
                             </p>
                         </div>
                     </div>
@@ -205,10 +228,10 @@ export default function PricingPage() {
                                         <th className="py-4 pl-7 pr-4 text-left text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wider w-1/2">
                                             Feature
                                         </th>
-                                        <th className="py-4 px-4 text-center text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wider">
+                                        <th className="py-4 px-4 text-center text-xs font-semibold text-[hsl(var(--primary))] uppercase tracking-wider">
                                             Free
                                         </th>
-                                        <th className="py-4 px-4 text-center text-xs font-semibold text-[hsl(var(--primary))] uppercase tracking-wider">
+                                        <th className="py-4 px-4 text-center text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wider">
                                             Solo
                                         </th>
                                         <th className="py-4 pl-4 pr-7 text-center text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wider">
@@ -220,10 +243,10 @@ export default function PricingPage() {
                                     {TABLE.map(([label, free, solo, teams]) => (
                                         <tr key={label} className="border-b border-[hsl(var(--border))] last:border-0">
                                             <td className="py-3.5 pl-7 pr-4 text-sm text-[hsl(var(--foreground))]">{label}</td>
-                                            <td className="py-3.5 px-4 text-center text-sm text-[hsl(var(--muted-foreground))]">
+                                            <td className="py-3.5 px-4 text-center text-sm text-[hsl(var(--foreground))] font-medium">
                                                 <Cell v={free} />
                                             </td>
-                                            <td className="py-3.5 px-4 text-center text-sm text-[hsl(var(--foreground))] font-medium">
+                                            <td className="py-3.5 px-4 text-center text-sm text-[hsl(var(--muted-foreground))]">
                                                 <Cell v={solo} />
                                             </td>
                                             <td className="py-3.5 pl-4 pr-7 text-center text-sm text-[hsl(var(--muted-foreground))]">
@@ -263,10 +286,11 @@ export default function PricingPage() {
                         }}
                     />
                     <h2 className="text-3xl font-bold tracking-tight text-[hsl(var(--foreground))] mb-3">
-                        Try it before you decide.
+                        Nothing to decide yet.
                     </h2>
                     <p className="text-[hsl(var(--muted-foreground))] mb-8 max-w-sm mx-auto leading-relaxed">
-                        The Free plan is real — not a 14-day trial. Upgrade only when you need more.
+                        The Free plan is the product, not a 14-day trial. Take it, use it with real
+                        clients, and tell us where it falls short.
                     </p>
                     <Button size="lg" className="px-10 text-base" asChild>
                         <Link href="/register">Create your free account</Link>

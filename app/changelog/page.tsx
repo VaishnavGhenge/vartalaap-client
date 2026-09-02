@@ -5,18 +5,32 @@ import Link from "next/link";
 
 const ENTRIES = [
     {
+        version: "0.4",
+        date: "September 2026",
+        badge: "Beta",
+        headline: "Calendar sync, and calls that repair themselves",
+        description: "Media now runs through a Cloudflare Realtime SFU instead of peer-to-peer connections, and the call stack reconciles toward a working call instead of giving up on the first failure.",
+        changes: [
+            "Google Calendar sync: busy windows are read before slots are offered, and confirmed bookings are mirrored back",
+            "All media routed through Cloudflare Realtime SFU; one connection per participant instead of one per peer",
+            "Level-triggered call recovery: a stalled track is repaired rather than left frozen",
+            "Time-to-first-media measured against a published p95 target of 3 seconds",
+            "Guests can cancel from their confirmation email without an account",
+        ],
+    },
+    {
         version: "0.3",
         date: "May 2025",
         badge: "Beta",
-        headline: "Booking pages, video rooms, and pricing",
-        description: "The core loop is complete. Create a booking page, share your link, and meet clients in a built-in video room — all without leaving Sessionly.",
+        headline: "Booking pages and video rooms",
+        description: "The core loop works. Create a booking page, share your link, and meet clients in a built-in video room, without leaving Sessionly.",
         changes: [
             "Booking pages with custom URL (e.g. getsessionly.com/u/jane-smith)",
             "Private video room generated for every confirmed booking",
             "5-step onboarding wizard to get set up in under two minutes",
-            "Free, Solo ($12/mo), and Teams ($29/mo) pricing tiers",
-            "Accept payments from clients — 0% platform fee",
+            "Confirmation and cancellation email for both host and guest",
             "Profile page with timezone and display name settings",
+            "Free, Solo and Teams tiers published as prices only: no billing, no paid sessions",
         ],
     },
     {
@@ -27,7 +41,7 @@ const ENTRIES = [
         description: "Login, registration, and the first version of instant video calls via meeting code.",
         changes: [
             "Email and password authentication with secure session management",
-            "Instant video meetings — start a call and share a code",
+            "Instant video meetings: start a call and share a code",
             "Dark and light theme with system preference detection",
             "Responsive layout across desktop and mobile",
         ],
@@ -61,7 +75,8 @@ export default function ChangelogPage() {
                             Changelog
                         </h1>
                         <p className="mt-4 text-lg text-[hsl(var(--muted-foreground))] leading-relaxed">
-                            Every meaningful update to Sessionly, documented.
+                            Every meaningful update to Sessionly, documented. Nothing is listed here
+                            before it works.
                         </p>
                     </div>
 
