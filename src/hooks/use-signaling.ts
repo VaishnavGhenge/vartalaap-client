@@ -21,8 +21,14 @@ export function useSignaling(enabled = true) {
     c.onStateChange = (state, attempt) => {
       setConnState(state)
       setReconnectAttempt(attempt)
+      // The client survives its own reconnect, so it must stay the same object
+      // across a blip. Nulling it on every non-connected state made useCall's
+      // effect tear the call down instead: local media stopped, the room token
+      // cleared (so a guest had to be admitted again), and the reconnect
+      // handler deregistered before it could ever fire. The camera then looked
+      // on while nothing was published.
       if (state === 'connected') setClient(c)
-      else setClient(null)
+      else if (state === 'failed') setClient(null)
     }
 
     c.connect()

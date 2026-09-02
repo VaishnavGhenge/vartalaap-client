@@ -5,7 +5,10 @@ export type ConnState = 'connecting' | 'connected' | 'reconnecting' | 'failed'
 
 type Handler = (env: Envelope) => void
 
-const MAX_ATTEMPTS = 5
+// No attempt cap: nothing in the call stack gives up while the tab is open.
+// Five attempts was ~31s of backoff, which a WiFi-to-cellular switch routinely
+// outlasts — the call then ended on its own while the network was fine again.
+// Unbounded attempts with a capped delay is the same shape as the repair ladder.
 const GRACE_MS = 2000      // grace period before showing reconnect UI
 const PING_MS = 15_000     // heartbeat interval
 const MAX_MISSED_PONGS = 2 // missed pongs before treating connection as dead
@@ -121,10 +124,6 @@ export class SignalingClient {
 
   private scheduleReconnect() {
     if (this.disposed) return
-    if (this.attempt >= MAX_ATTEMPTS) {
-      this.onStateChange?.('failed', this.attempt)
-      return
-    }
     const base  = Math.min(1000 * Math.pow(2, this.attempt), 16_000)
     const delay = base * (0.5 + Math.random() * 0.5)
     this.attempt++

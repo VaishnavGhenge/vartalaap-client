@@ -151,24 +151,47 @@ describe('SignalingClient — reconnection', () => {
     expect(onReconnected).toHaveBeenCalledOnce()
   })
 
-  it('fires onStateChange("failed") after MAX_ATTEMPTS (5) consecutive failures', () => {
+  // Nothing in the call stack gives up while the tab is open. Five attempts was
+  // ~31s of backoff, which a WiFi-to-cellular switch routinely outlasts, and the
+  // call then ended itself while the network was already back.
+  it('keeps reconnecting past the old five-attempt cap', () => {
     const client = new SignalingClient('ws://test')
     const onChange = vi.fn()
     client.onStateChange = onChange
 
     client.connect()
 
-    // Each drop triggers scheduleReconnect. "failed" fires when attempt >= MAX_ATTEMPTS
-    // at the START of scheduleReconnect. Since attempt starts at 0 and increments inside,
-    // we need 6 drops: drops 1-5 each schedule a reconnect, drop 6 hits attempt=5 >= 5.
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 12; i++) {
       ws().open()
       ws().drop()
-      vi.advanceTimersByTime(16_000) // advance past longest backoff (16s)
+      vi.advanceTimersByTime(40_000)
     }
 
-    const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1]
-    expect(lastCall[0]).toBe('failed')
+    expect(onChange.mock.calls.every(([state]) => state !== 'failed')).toBe(true)
+    const attempts = onChange.mock.calls
+      .filter(([state]) => state === 'reconnecting')
+      .map(([, attempt]) => attempt)
+    expect(Math.max(...attempts)).toBeGreaterThan(5)
+  })
+
+  it('caps the backoff delay instead of the attempt count', () => {
+    const client = new SignalingClient('ws://test')
+    client.onStateChange = vi.fn()
+    client.connect()
+
+    for (let i = 0; i < 8; i++) {
+      ws().open()
+      ws().drop()
+      vi.advanceTimersByTime(40_000)
+    }
+    const before = instances.length
+
+    ws().open()
+    ws().drop()
+    // 2s grace, then at most the 16s ceiling plus jitter.
+    vi.advanceTimersByTime(2_000 + 16_000 + 1)
+
+    expect(instances.length).toBe(before + 1)
   })
 
   it('does not reconnect after dispose()', () => {

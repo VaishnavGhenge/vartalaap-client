@@ -23,12 +23,12 @@ describe('ConnectionBanner — reconnecting', () => {
     expect(screen.getByText(/reconnecting/i)).toBeInTheDocument()
   })
 
-  it('displays the current attempt and max attempts', () => {
+  it('displays the current attempt with no ceiling', () => {
     render(
-      <ConnectionBanner connState="reconnecting" reconnectAttempt={3} onLeave={vi.fn()} />
+      <ConnectionBanner connState="reconnecting" reconnectAttempt={9} onLeave={vi.fn()} />
     )
-    expect(screen.getByText(/3/)).toBeInTheDocument()
-    expect(screen.getByText(/5/)).toBeInTheDocument()
+    expect(screen.getByText(/attempt 9/i)).toBeInTheDocument()
+    expect(screen.queryByText(/of \d/i)).not.toBeInTheDocument()
   })
 })
 
@@ -40,34 +40,18 @@ describe('ConnectionBanner — failed', () => {
     expect(screen.getByText(/connection lost/i)).toBeInTheDocument()
   })
 
-  it('shows a 5s countdown', () => {
-    render(
-      <ConnectionBanner connState="failed" reconnectAttempt={5} onLeave={vi.fn()} />
-    )
-    expect(screen.getByText(/5s/)).toBeInTheDocument()
-  })
-
-  it('decrements the countdown every second', () => {
-    render(
-      <ConnectionBanner connState="failed" reconnectAttempt={5} onLeave={vi.fn()} />
-    )
-
-    act(() => vi.advanceTimersByTime(1000))
-    expect(screen.getByText(/4s/)).toBeInTheDocument()
-
-    act(() => vi.advanceTimersByTime(1000))
-    expect(screen.getByText(/3s/)).toBeInTheDocument()
-  })
-
-  it('calls onLeave automatically when countdown reaches 0', () => {
+  // Ending the call for the user was the app giving up on their behalf. Leaving
+  // is now theirs to choose; the client keeps retrying underneath.
+  it('never leaves the call on its own', () => {
     const onLeave = vi.fn()
     render(
-      <ConnectionBanner connState="failed" reconnectAttempt={5} onLeave={onLeave} />
+      <ConnectionBanner connState="failed" reconnectAttempt={9} onLeave={onLeave} />
     )
 
-    act(() => vi.advanceTimersByTime(5000))
+    act(() => vi.advanceTimersByTime(60_000))
 
-    expect(onLeave).toHaveBeenCalledOnce()
+    expect(onLeave).not.toHaveBeenCalled()
+    expect(screen.getByText(/still trying to reconnect/i)).toBeInTheDocument()
   })
 
   it('calls onLeave immediately when the Leave now button is clicked', () => {
@@ -79,23 +63,5 @@ describe('ConnectionBanner — failed', () => {
     fireEvent.click(screen.getByRole('button', { name: /leave now/i }))
 
     expect(onLeave).toHaveBeenCalledOnce()
-  })
-
-  it('resets countdown to 5 if connection recovers and then fails again', () => {
-    const { rerender } = render(
-      <ConnectionBanner connState="failed" reconnectAttempt={5} onLeave={vi.fn()} />
-    )
-
-    act(() => vi.advanceTimersByTime(3000)) // countdown at 2
-    expect(screen.getByText(/2s/)).toBeInTheDocument()
-
-    rerender(
-      <ConnectionBanner connState="reconnecting" reconnectAttempt={1} onLeave={vi.fn()} />
-    )
-    rerender(
-      <ConnectionBanner connState="failed" reconnectAttempt={5} onLeave={vi.fn()} />
-    )
-
-    expect(screen.getByText(/5s/)).toBeInTheDocument()
   })
 })
