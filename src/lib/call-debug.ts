@@ -34,7 +34,6 @@ interface CallDebugState {
   connStates: Record<string, RTCPeerConnectionState>
   // Live reference to the active SfuSession — usable from DevTools console
   // or smoke tests to call .publish() / .subscribe() directly.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sfuSession: any | null
   reset: () => void
 }
@@ -65,7 +64,6 @@ const state: CallDebugState = {
 }
 
 if (isDev && typeof window !== 'undefined') {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ;(window as any).__call_debug = state
 }
 
@@ -123,7 +121,6 @@ export const callDebug = {
     if (!isDev) return
     push('[call]', 'ICE server fetch FAILED — proceeding without TURN', err)
   },
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   callSfuSessionReady(peerId: string, session?: any) {
     if (!isDev) return
     if (session) state.sfuSession = session
