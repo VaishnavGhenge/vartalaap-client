@@ -42,7 +42,7 @@ export interface ReconcilerEvent {
   trackNames: string[]
 }
 
-export type DropReason = 'peer-left' | 'session-replaced' | 'absent-from-snapshot'
+export type DropReason = 'peer-left' | 'session-replaced' | 'absent-from-snapshot' | 'track-unpublished'
 
 export interface CallReconcilerOptions {
   /** Read live: the session does not exist yet when the first tracks arrive. */
@@ -70,6 +70,10 @@ export class CallReconciler {
    * until the next snapshot 15 seconds later.
    */
   private lastVersion = 0
+  /** Set between a reconnect reset and the snapshot answering it. `desired` is
+   * empty or half-rebuilt from the join replay meanwhile, so acting on it would
+   * tear down pulls that are still alive. */
+  private awaitingSnapshot = false
 
   constructor(private readonly opts: CallReconcilerOptions) {}
 
@@ -91,6 +95,7 @@ export class CallReconciler {
       return false
     }
     this.lastVersion = version
+    this.awaitingSnapshot = false
     this.desired.clear()
     for (const entry of entries) {
       this.desired.set(entry.peerId, {
@@ -105,12 +110,25 @@ export class CallReconciler {
     this.desired.delete(peerId)
   }
 
-  /** Signaling reconnected: our whole view is suspect until the next snapshot. */
+  /** The call is over, or the SFU session is gone. Forget everything. */
   clear(): void {
     this.desired.clear()
     this.applied.clear()
     this.sessionToPeer.clear()
     this.lastVersion = 0
+    this.awaitingSnapshot = false
+  }
+
+  /**
+   * Signaling reconnected. The SFU session outlives a WebSocket blip, so
+   * `applied` stays and the snapshot converges onto it. The version floor
+   * resets because a room GC'd while we were gone restarts its counter, which
+   * would otherwise make every later snapshot look stale forever.
+   */
+  resetDesired(): void {
+    this.desired.clear()
+    this.lastVersion = 0
+    this.awaitingSnapshot = true
   }
 
   peerForSession(sessionId: string): string | undefined {
@@ -151,6 +169,23 @@ export class CallReconciler {
         this.drop(session, peerId, have, 'session-replaced')
       }
 
+      // Tracks this peer stopped publishing. Nothing released these before, so
+      // the pull stayed open and the tile kept its last frame.
+      const stale = this.applied.get(peerId)
+      if (stale && !this.awaitingSnapshot) {
+        const gone = [...stale.trackNames].filter((name) => !want.trackNames.has(name))
+        if (gone.length > 0 && gone.length === stale.trackNames.size) {
+          this.drop(session, peerId, stale, 'track-unpublished')
+        } else if (gone.length > 0) {
+          for (const name of gone) {
+            session.unsubscribeTrack(stale.sessionId, name)
+            stale.trackNames.delete(name)
+          }
+          callDebug.reconcileDrop(peerId, stale.sessionId, 'track-unpublished')
+          this.opts.onDrop?.({ peerId, sessionId: stale.sessionId, trackNames: gone, reason: 'track-unpublished' })
+        }
+      }
+
       const applied = this.applied.get(peerId)
       const missing = [...want.trackNames].filter((name) => !applied?.trackNames.has(name))
       if (missing.length === 0) continue
@@ -169,6 +204,7 @@ export class CallReconciler {
       })
     }
 
+    if (this.awaitingSnapshot) return
     for (const [peerId, have] of [...this.applied]) {
       if (this.desired.has(peerId)) continue
       this.drop(session, peerId, have, 'absent-from-snapshot')

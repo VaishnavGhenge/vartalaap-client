@@ -207,6 +207,14 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       }, TTFM_SLO_CEILING_MS)
     }
 
+    // localStream never holds the screen track, so publishing it alone drops an
+    // active share.
+    const republishLocalMedia = async (session: SfuSession) => {
+      const { localStream, screenTrack } = store.getState()
+      if (localStream) await session.publish(localStream)
+      if (screenTrack) await session.replaceTrack('video', screenTrack)
+    }
+
     const emitMetric = (data: ClientMetricData) => {
       if (!client) return
       // Silently swallow if the WS is gone — observability traffic should
@@ -355,6 +363,25 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       const d = env.data
       if (!d) return
       const myId = client.getPeerId()
+
+      // The roster was edge-driven only, so a peer-joined or peer-left lost to
+      // a reconnect was never corrected. The snapshot carries presence; use it.
+      const present = new Set<string>()
+      for (const p of d.peers) {
+        if (p.id === myId) continue
+        present.add(p.id)
+        store.getState().addPeerConnection(p.id, {
+          name: p.name, audio: p.audio, video: p.video,
+          screenSharing: p.screenSharing ?? false, videoHeld: p.videoHeld ?? false,
+        })
+      }
+      for (const id of store.getState().peerConnections.keys()) {
+        if (present.has(id)) continue
+        prevScreenSharing.delete(id)
+        reconciler.removePeer(id)
+        store.getState().removePeerConnection(id)
+      }
+
       const entries = d.tracks
         .filter((t) => t.peerId !== myId)
         .map((t) => ({
@@ -380,11 +407,14 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
 
     client.setReconnectedHandler(() => {
       if (disposed) return
-      // Everything we believed about the room is suspect across a reconnect:
-      // peers may have left and CF sessions may have been rebuilt while we
-      // were gone. Start from nothing and let the snapshot rebuild it.
-      reconciler.clear()
-      store.getState().clearPeers()
+      // What the room wants is suspect; the SFU session is not. It used to be
+      // torn down here (the old clearPeers closed and nulled it) and nothing recreates
+      // it — SfuSession is constructed once, in the IIFE below, keyed on
+      // [client, roomId, enabled], none of which change on a reconnect. So a
+      // single WebSocket blip left the rest of the call unable to publish or
+      // subscribe: peers listed in the roster, no media either way, and every
+      // later camera or screen-share toggle a silent no-op.
+      reconciler.resetDesired()
       resetJoinedAck()
       const a = joinArgs.current
       client.send('join', {
@@ -400,9 +430,8 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
         await joinedAck
         if (disposed) return
         const sfuSession = store.getState().sfuSession
-        const localStream = store.getState().localStream
-        if (sfuSession && localStream) {
-          sfuSession.publish(localStream).catch((e) => {
+        if (sfuSession) {
+          republishLocalMedia(sfuSession).catch((e) => {
             console.error('[use-call] sfu re-publish failed after reconnect', e)
           })
         }

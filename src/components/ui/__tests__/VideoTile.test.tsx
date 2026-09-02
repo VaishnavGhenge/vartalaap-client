@@ -98,6 +98,17 @@ describe('VideoTile', () => {
     expect(screen.getByRole('tooltip')).toHaveTextContent('Fair')
   })
 
+  it.each(['good', 'unknown'] as const)('hides the quality dot when quality is %s', (quality) => {
+    render(
+      <VideoTile
+        participant={{ id: 'peer-1', name: 'Grace' }}
+        stream={makeStream()}
+        quality={quality}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: /Connection quality/ })).not.toBeInTheDocument()
+  })
+
   it('does not show overlays on the local tile', () => {
     render(
       <VideoTile

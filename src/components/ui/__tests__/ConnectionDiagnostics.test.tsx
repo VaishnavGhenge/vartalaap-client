@@ -148,7 +148,7 @@ describe('media flow event history', () => {
     usePeerStore.getState().updateLocalStats({
       outboundBitrateKbps: 1, roundTripTimeMs: 1, candidateType: 'host', timestamp: 1,
     })
-    usePeerStore.getState().clearPeers()
+    usePeerStore.getState().clearAll()
     expect(usePeerStore.getState().mediaFlowEvents).toEqual([])
     expect(usePeerStore.getState().localStats).toBeNull()
   })

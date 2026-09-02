@@ -130,8 +130,13 @@ export const VideoTile = ({
             {/* Media status — high-contrast badges that stay readable over bright video. */}
             {!compact && (
                 <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1.5">
-                    {/* Quality dot */}
-                    {!isLocal && quality && quality !== 'unknown' && (
+                    {/* Quality dot, shown only when there is something to report.
+                        A green dot on every tile for the whole call is decoration:
+                        it is on screen precisely when nobody needs it, and it trains
+                        people to stop looking at the corner where the warning goes.
+                        Good and Measuring render nothing; the diagnostics panel still
+                        reports every state for someone who goes looking. */}
+                    {!isLocal && (quality === 'medium' || quality === 'poor') && (
                         <button
                             type="button"
                             aria-label={`Connection quality: ${QUALITY_LABEL[quality]}`}

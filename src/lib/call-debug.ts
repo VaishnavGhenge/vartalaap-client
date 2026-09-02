@@ -216,6 +216,14 @@ export const callDebug = {
     if (!isDev) return
     push('[sfu]', `unsubscribePeer session:${sessionId}`)
   },
+  sfuUnsubscribeTrack(sessionId: string, trackName: string) {
+    if (!isDev) return
+    push('[sfu]', `unsubscribeTrack session:${sessionId} track:${trackName}`)
+  },
+  sfuPcFailed(direction: string) {
+    if (!isDev) return
+    push('[sfu]', `PC[${direction}] FAILED ⚠ — rebuilding`)
+  },
   sfuClose() {
     if (!isDev) return
     push('[sfu]', 'SfuSession.close()')

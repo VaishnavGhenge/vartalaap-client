@@ -14,15 +14,34 @@ vi.mock('@/src/services/api/ice', () => ({
   fetchIceServers: vi.fn().mockResolvedValue([]),
 }))
 
+// Without a token useCall knocks and waits for an admit that never comes, so
+// setup never reaches the SFU session.
+vi.mock('@/src/services/api/token', () => ({
+  getAccessToken: vi.fn(() => 'test-access-token'),
+  setAccessToken: vi.fn(),
+  getRoomToken: vi.fn(() => null),
+  setRoomToken: vi.fn(),
+  subscribeTokenChange: vi.fn(() => () => {}),
+}))
+
+// use-call does `new SfuSession(...)`, so this has to be constructible — a
+// `function`, not an arrow. It mocked a static create() that no longer exists,
+// which threw inside the setup IIFE, and every test here ran against no SFU
+// session at all while still passing.
 vi.mock('@/src/services/webrtc/sfu-session', () => ({
-  SfuSession: {
-    create: vi.fn().mockResolvedValue({
+  SfuSession: vi.fn(function SfuSessionMock() {
+    return {
       sessionId: 'test-sfu-session',
-      publish: vi.fn().mockResolvedValue([]),
+      publish: vi.fn().mockResolvedValue(undefined),
+      replaceTrack: vi.fn().mockResolvedValue(undefined),
       subscribe: vi.fn().mockResolvedValue(undefined),
+      unsubscribePeer: vi.fn(),
+      unsubscribeTrack: vi.fn(),
+      getLocalTracksAnnouncement: vi.fn(() => null),
+      collectStats: vi.fn().mockResolvedValue([]),
       close: vi.fn(),
-    }),
-  },
+    }
+  }),
 }))
 
 // ─── Fake SignalingClient ─────────────────────────────────────────────────────
@@ -346,7 +365,58 @@ describe('useCall — peer-state', () => {
 })
 
 describe('useCall — reconnect', () => {
-  it('clears all peers and re-sends join when onReconnected fires', async () => {
+  it('re-sends join and asks for a snapshot', async () => {
+    const client = makeClient()
+
+    await act(async () => {
+      renderHook(() => useCall({
+        client, roomId: 'room-1', enabled: true,
+        userName: 'Alice', initialAudio: true, initialVideo: true,
+      }))
+    })
+
+    await act(async () => { client.emit('joined', { data: { peers: [] } }) })
+    const joinCountBefore = client.sent.filter(m => m.type === 'join').length
+
+    await act(async () => {
+      (client as unknown as SignalingClient).onReconnected?.()
+      client.emit('joined', { data: { peers: [] } })
+    })
+
+    expect(client.sent.filter(m => m.type === 'join').length).toBe(joinCountBefore + 1)
+    expect(client.sent.some(m => m.type === 'sync')).toBe(true)
+  })
+
+  // A reconnect used to tear down the SFU session, and nothing recreates it:
+  // the rest of the call could neither publish nor subscribe, so peers were
+  // listed with no media and every camera toggle was a silent no-op.
+  it('keeps the SFU session across a reconnect', async () => {
+    const client = makeClient()
+
+    await act(async () => {
+      renderHook(() => useCall({
+        client, roomId: 'room-1', enabled: true,
+        userName: 'Alice', initialAudio: true, initialVideo: true,
+      }))
+    })
+
+    await act(async () => { client.emit('joined', { data: { peers: [] } }) })
+    // Session setup awaits the ICE fetch after the join ack.
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)) })
+    const session = usePeerStore.getState().sfuSession
+    expect(session).not.toBeNull()
+
+    await act(async () => {
+      (client as unknown as SignalingClient).onReconnected?.()
+      client.emit('joined', { data: { peers: [] } })
+    })
+
+    expect(usePeerStore.getState().sfuSession).toBe(session)
+  })
+
+  // The tile's stream survives too. A live pull never re-emits its track, so a
+  // peer dropped here would stay blank for the rest of the call.
+  it('keeps a peer and their stream across a reconnect', async () => {
     const client = makeClient()
 
     await act(async () => {
@@ -361,18 +431,43 @@ describe('useCall — reconnect', () => {
         data: { peerId: 'peer-bob', name: 'Bob', audio: true, video: true },
       })
     })
-
-    expect(usePeerStore.getState().peerConnections.has('peer-bob')).toBe(true)
-
-    const joinCountBefore = client.sent.filter(m => m.type === 'join').length
+    const stream = new MediaStream()
+    usePeerStore.getState().updatePeerStream('peer-bob', stream)
 
     await act(async () => {
       (client as unknown as SignalingClient).onReconnected?.()
     })
 
-    expect(usePeerStore.getState().peerConnections.size).toBe(0)
-    const joinCountAfter = client.sent.filter(m => m.type === 'join').length
-    expect(joinCountAfter).toBe(joinCountBefore + 1)
+    expect(usePeerStore.getState().peerConnections.get('peer-bob')?.stream).toBe(stream)
+  })
+
+  // Presence is in the snapshot, so a peer-left lost to the reconnect is still
+  // corrected — the roster is no longer purely edge-driven.
+  it('drops a peer who is absent from the snapshot that follows', async () => {
+    const client = makeClient()
+
+    await act(async () => {
+      renderHook(() => useCall({
+        client, roomId: 'room-1', enabled: true,
+        userName: 'Alice', initialAudio: true, initialVideo: true,
+      }))
+    })
+
+    await act(async () => {
+      client.emit('peer-joined', {
+        data: { peerId: 'peer-bob', name: 'Bob', audio: true, video: true },
+      })
+    })
+    expect(usePeerStore.getState().peerConnections.has('peer-bob')).toBe(true)
+
+    await act(async () => {
+      (client as unknown as SignalingClient).onReconnected?.()
+    })
+    await act(async () => {
+      client.emit('room-snapshot', { data: { version: 9, peers: [], tracks: [] } })
+    })
+
+    expect(usePeerStore.getState().peerConnections.has('peer-bob')).toBe(false)
   })
 })
 

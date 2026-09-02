@@ -247,7 +247,10 @@ describe('disableCamera — peer interaction', () => {
     expect(canvas.captureStream).toHaveBeenCalledWith(24)
   })
 
-  it('stops the placeholder after a delay (not synchronously)', async () => {
+  // The placeholder is the outbound video track while the camera is off, so it
+  // has to stay live. A fixed 1s timer used to stop it mid-transmission and
+  // remote peers froze on its last frame.
+  it('keeps the placeholder alive while it is the outbound track', async () => {
     vi.useFakeTimers()
     const { placeholder } = stubCanvasCaptureStream()
     const stream = makeStream([makeTrack('video')])
@@ -255,10 +258,30 @@ describe('disableCamera — peer interaction', () => {
 
     usePeerStore.getState().disableCamera()
 
+    vi.advanceTimersByTime(10_000)
     expect(placeholder.stop).not.toHaveBeenCalled()
-    vi.advanceTimersByTime(1000)
-    expect(placeholder.stop).toHaveBeenCalled()
     vi.useRealTimers()
+  })
+
+  it('stops the placeholder once a real track replaces it', async () => {
+    const { placeholder } = stubCanvasCaptureStream()
+    const sfuSession = { replaceTrack: vi.fn().mockResolvedValue(undefined) }
+    usePeerStore.setState({
+      localStream: makeStream([makeTrack('video')]),
+      sfuSession: sfuSession as unknown as SfuSession,
+      peerConnections: new Map([['peer-1', peerConn()]]),
+    })
+
+    usePeerStore.getState().disableCamera()
+    expect(placeholder.stop).not.toHaveBeenCalled()
+
+    const camera = makeTrack('video')
+    usePeerStore.setState({ localStream: makeStream([camera]) })
+    usePeerStore.getState().stopScreenShare()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(placeholder.stop).toHaveBeenCalled()
   })
 
   it('stops the real video track', async () => {

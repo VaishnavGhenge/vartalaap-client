@@ -7,13 +7,17 @@ import type { SfuSession } from '../sfu-session'
 function fakeSession() {
     const subscribes: Array<{ sessionId: string; trackNames: string[] }> = []
     const unsubscribed: string[] = []
+    const unsubscribedTracks: string[] = []
     const session = {
         subscribe: vi.fn(async (sessionId: string, trackNames: string[]) => {
             subscribes.push({ sessionId, trackNames })
         }),
         unsubscribePeer: vi.fn((sessionId: string) => { unsubscribed.push(sessionId) }),
+        unsubscribeTrack: vi.fn((sessionId: string, trackName: string) => {
+            unsubscribedTracks.push(`${sessionId}/${trackName}`)
+        }),
     } as unknown as SfuSession
-    return { session, subscribes, unsubscribed }
+    return { session, subscribes, unsubscribed, unsubscribedTracks }
 }
 
 function setup(over: { session?: SfuSession | null } = {}) {
@@ -187,5 +191,106 @@ describe('CallReconciler', () => {
         const reconciler = new CallReconciler({ getSession: () => fake.session })
         reconciler.setPeerTracks('alice', 'cf-a', ['t-a'], 1)
         expect(() => reconciler.reconcile()).not.toThrow()
+    })
+
+    // A peer who stops publishing one track while staying in the call. Nothing
+    // released these before, so the pull stayed open on a track that was gone.
+    it('releases a track a present peer stopped publishing', () => {
+        ctx.reconciler.setPeerTracks('alice', 'cf-a', ['t-audio', 't-video'], 1)
+        ctx.reconciler.reconcile()
+
+        ctx.reconciler.setPeerTracks('alice', 'cf-a', ['t-audio'], 2)
+        ctx.reconciler.reconcile()
+
+        expect(ctx.unsubscribedTracks).toEqual(['cf-a/t-video'])
+        expect(ctx.unsubscribed).toEqual([])
+    })
+
+    it('releases the whole session when a present peer stops publishing everything', () => {
+        ctx.reconciler.setPeerTracks('alice', 'cf-a', ['t-audio'], 1)
+        ctx.reconciler.reconcile()
+
+        ctx.reconciler.setPeerTracks('alice', 'cf-a', [], 2)
+        ctx.reconciler.reconcile()
+
+        expect(ctx.unsubscribed).toEqual(['cf-a'])
+        expect(ctx.drops.map(d => d.reason)).toEqual(['track-unpublished'])
+    })
+
+    it('re-pulls a track the peer starts publishing again', () => {
+        ctx.reconciler.setPeerTracks('alice', 'cf-a', ['t-audio', 't-video'], 1)
+        ctx.reconciler.reconcile()
+        ctx.reconciler.setPeerTracks('alice', 'cf-a', ['t-audio'], 2)
+        ctx.reconciler.reconcile()
+
+        ctx.reconciler.setPeerTracks('alice', 'cf-a', ['t-audio', 't-video'], 3)
+        ctx.reconciler.reconcile()
+
+        expect(ctx.subscribes).toEqual([
+            { sessionId: 'cf-a', trackNames: ['t-audio', 't-video'] },
+            { sessionId: 'cf-a', trackNames: ['t-video'] },
+        ])
+    })
+})
+
+// A reconnect keeps the SFU session, so what we are already pulling stays
+// valid. resetDesired must not let a partial view tear it down.
+describe('CallReconciler — signaling reconnect', () => {
+    it('keeps existing pulls until the snapshot arrives', () => {
+        const ctx = setup()
+        ctx.reconciler.setPeerTracks('alice', 'cf-a', ['t-audio'], 5)
+        ctx.reconciler.reconcile()
+
+        ctx.reconciler.resetDesired()
+        ctx.reconciler.reconcile()
+
+        expect(ctx.unsubscribed).toEqual([])
+        expect(ctx.unsubscribedTracks).toEqual([])
+        expect(ctx.reconciler.appliedPeers()).toHaveLength(1)
+    })
+
+    // The join replay arrives one peer at a time and carries no version, so
+    // acting on it as if it were the full room would drop everyone else.
+    it('does not drop a peer missing from a partial replay', () => {
+        const ctx = setup()
+        ctx.reconciler.setPeerTracks('alice', 'cf-a', ['t-audio'], 5)
+        ctx.reconciler.setPeerTracks('bob', 'cf-b', ['t-audio'], 6)
+        ctx.reconciler.reconcile()
+
+        ctx.reconciler.resetDesired()
+        ctx.reconciler.setPeerTracks('alice', 'cf-a', ['t-audio'])
+        ctx.reconciler.reconcile()
+
+        expect(ctx.unsubscribed).toEqual([])
+    })
+
+    it('drops what the snapshot says is gone, once it arrives', () => {
+        const ctx = setup()
+        ctx.reconciler.setPeerTracks('alice', 'cf-a', ['t-audio'], 5)
+        ctx.reconciler.setPeerTracks('bob', 'cf-b', ['t-audio'], 6)
+        ctx.reconciler.reconcile()
+
+        ctx.reconciler.resetDesired()
+        ctx.reconciler.applySnapshot([{ peerId: 'alice', sessionId: 'cf-a', trackNames: ['t-audio'] }], 1)
+        ctx.reconciler.reconcile()
+
+        expect(ctx.unsubscribed).toEqual(['cf-b'])
+    })
+
+    // The room may have been GC'd while we were gone and restarted its version
+    // counter, which the old floor would reject as stale forever.
+    it('accepts a snapshot whose version restarted below the old floor', () => {
+        const ctx = setup()
+        ctx.reconciler.setPeerTracks('alice', 'cf-a', ['t-audio'], 40)
+        ctx.reconciler.reconcile()
+
+        ctx.reconciler.resetDesired()
+        const accepted = ctx.reconciler.applySnapshot(
+            [{ peerId: 'carol', sessionId: 'cf-c', trackNames: ['t-audio'] }], 2,
+        )
+
+        expect(accepted).toBe(true)
+        ctx.reconciler.reconcile()
+        expect(ctx.subscribes.at(-1)).toEqual({ sessionId: 'cf-c', trackNames: ['t-audio'] })
     })
 })

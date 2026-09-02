@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import * as Sentry from '@sentry/nextjs'
 import { devtools } from 'zustand/middleware'
 import { toast } from 'sonner'
 import { SfuSession } from '@/src/services/webrtc/sfu-session'
@@ -153,7 +154,6 @@ interface PeerState {
   startScreenShare: () => Promise<MediaStreamTrack | null>
   stopScreenShare: () => void
 
-  clearPeers: () => void
   clearAll: () => void
 }
 
@@ -183,14 +183,50 @@ const createBackgroundProcessor = (preference: BackgroundEffectPreference) => {
   return null
 }
 
+// Lives exactly as long as it is the outbound video track. A fixed 1s timer
+// used to stop it while it was still the track being transmitted (camera off,
+// or screen picker open longer than a second), freezing remote peers on its
+// last frame.
+let videoPlaceholder: MediaStreamTrack | null = null
+
+// No SFU session yet, or it was torn down. Optional-chaining this away is what
+// made "my camera was never shared" invisible on both sides.
+const noOutboundSession = (kind: 'audio' | 'video') => {
+  console.warn(`[peer] no SFU session — outbound ${kind} not published`)
+  Sentry.captureMessage(`outbound ${kind} dropped: no sfu session`, {
+    level: 'warning',
+    tags: { stage: 'sfu_publish', failure_reason: 'no_session' },
+  })
+}
+
 const replaceVideoTrackOnPeers = (
   newTrack: MediaStreamTrack,
   _peers: Map<string, PeerConnection>,
   sfuSession?: SfuSession | null,
 ) => {
-  sfuSession?.replaceTrack('video', newTrack).catch(e => {
-    console.error('[peer] sfuSession replaceTrack video failed', e)
-  })
+  const superseded = videoPlaceholder !== newTrack ? videoPlaceholder : null
+  if (superseded) videoPlaceholder = null
+  if (!sfuSession) {
+    superseded?.stop()
+    noOutboundSession('video')
+    return
+  }
+  sfuSession.replaceTrack('video', newTrack)
+    .then(() => superseded?.stop())
+    .catch(e => {
+      superseded?.stop()
+      console.error('[peer] sfuSession replaceTrack video failed', e)
+    })
+}
+
+const pushVideoPlaceholder = (
+  peers: Map<string, PeerConnection>,
+  sfuSession?: SfuSession | null,
+) => {
+  const placeholder = createBlackVideoTrack()
+  if (!placeholder) return
+  replaceVideoTrackOnPeers(placeholder, peers, sfuSession)
+  videoPlaceholder = placeholder
 }
 
 // Placeholder sent via replaceTrack when camera is disabled so the video sender survives.
@@ -269,7 +305,11 @@ const replaceAudioSenderOnPeers = (
   _peers: Map<string, PeerConnection>,
   sfuSession?: SfuSession | null,
 ) => {
-  sfuSession?.replaceTrack('audio', track).catch(e => {
+  if (!sfuSession) {
+    noOutboundSession('audio')
+    return
+  }
+  sfuSession.replaceTrack('audio', track).catch(e => {
     console.error('[peer] sfuSession replaceTrack audio failed', e)
   })
 }
@@ -342,18 +382,23 @@ export const usePeerStore = create<PeerState>()(
       }
     },
 
+    // Merges, because `joined` re-announces peers we already have after a
+    // reconnect. Rebuilding the entry dropped `stream`, and a live pull never
+    // re-emits its track, so the tile stayed blank for the rest of the call.
     addPeerConnection: (id, info) =>
       set((state) => {
         const next = new Map(state.peerConnections)
+        const existing = next.get(id)
         next.set(id, {
+          ...existing,
           id,
-          name: info?.name ?? '',
+          name: info?.name ?? existing?.name ?? '',
           audio: info?.audio ?? false,
           video: info?.video ?? false,
-          speaking: false,
+          speaking: existing?.speaking ?? false,
           screenSharing: info?.screenSharing ?? false,
           videoHeld: info?.videoHeld ?? false,
-          connectionState: 'new',
+          connectionState: existing?.connectionState ?? 'new',
         })
         return { peerConnections: next }
       }),
@@ -538,14 +583,7 @@ export const usePeerStore = create<PeerState>()(
       localStream.getVideoTracks().forEach((t) => t.stop())
 
       // replaceTrack(black) keeps the sender alive; peer.removeTrack crashes Safari.
-      // The placeholder is stopped on a timer rather than immediately — replaceTrack is
-      // async, and stopping the source before it resolves leaves senders with a bad track
-      // reference that subsequent replaceTrack calls (e.g. screen share start) cannot find.
-      const placeholder = createBlackVideoTrack()
-      if (placeholder) {
-        replaceVideoTrackOnPeers(placeholder, peerConnections, sfuSession)
-        setTimeout(() => placeholder.stop(), 1000)
-      }
+      pushVideoPlaceholder(peerConnections, sfuSession)
 
       const audioTracks = localStream.getAudioTracks()
       set({
@@ -757,27 +795,11 @@ export const usePeerStore = create<PeerState>()(
       if (cameraTrack) {
         replaceVideoTrackOnPeers(cameraTrack, get().peerConnections, sfuSession)
       } else {
-        const placeholder = createBlackVideoTrack()
-        if (placeholder) {
-          replaceVideoTrackOnPeers(placeholder, get().peerConnections, sfuSession)
-          setTimeout(() => placeholder.stop(), 1000)
-        }
+        pushVideoPlaceholder(get().peerConnections, sfuSession)
       }
     },
 
     setBackgroundBlur: async (enabled) => get().setBackgroundEffect({ mode: enabled ? 'blur-medium' : 'off' }),
-
-    clearPeers: () => {
-      const { sfuSession } = get()
-      sfuSession?.close()
-      set({
-        peerConnections: new Map(),
-        peerStats: new Map(),
-        localStats: null,
-        mediaFlowEvents: [],
-        sfuSession: null,
-      })
-    },
 
     clearAll: () => {
       const { localStream, peerConnections, blurProcessor, rawCameraTrack, noiseSuppressor, rawMicTrack, sfuSession } = get()

@@ -139,6 +139,11 @@ export class SfuSession {
   private readonly pullTimers = new Map<string, ReturnType<typeof setTimeout>>()
   // `${remoteSessionId}/${trackName}` → repair ladder for that pull.
   private readonly pullRepairs = new Map<string, RepairLoop>()
+  // 'pub' | `sub:${sessionId}` → repair ladder for that direction's PC. Push
+  // and pull ack timers fire once at setup, so nothing else notices a PC that
+  // fails later — the network-switch case, where the tab and signaling are
+  // fine and only media is dead.
+  private readonly pcRepairs = new Map<string, RepairLoop>()
   // remote sessionId → the track names we are meant to be pulling from it.
   // Repair rung 2 throws away the subscribe PartyTracks for a session, and
   // this is what tells it which pulls to re-establish on the new one.
@@ -259,8 +264,7 @@ export class SfuSession {
     // the first tracks/new — not up to minutes earlier in the constructor.
     if (!this.pubConnStateSub) {
       this.pubConnStateSub = this.pubTracks.peerConnectionState$.subscribe((state) => {
-        callDebug.sfuConnState('pub', state)
-        this.opts.onConnectionStateChange?.(state)
+        this.onPcState('pub', 'pub', 'publish', state, () => this.resetPubTracks())
       })
       // Re-emits on every PC recreation, so this always holds the live one.
       this.pubPcSub = this.pubTracks.peerConnection$.subscribe((pc) => {
@@ -481,8 +485,10 @@ export class SfuSession {
       subTracks = new PartyTracks(this.subTracksConfig)
       this.subTracksMap.set(sessionId, subTracks)
       const connStateSub = subTracks.peerConnectionState$.subscribe((state) => {
-        callDebug.sfuConnState(`sub:${sessionId.slice(0, 8)}`, state)
-        this.opts.onConnectionStateChange?.(state)
+        this.onPcState(
+          `sub:${sessionId}`, `sub:${sessionId.slice(0, 8)}`, 'subscribe',
+          state, () => this.resetSubSession(sessionId),
+        )
       })
       this.subConnStateMap.set(sessionId, connStateSub)
       this.subPcSubs.set(sessionId, subTracks.peerConnection$.subscribe((pc) => {
@@ -529,6 +535,53 @@ export class SfuSession {
       },
     })
     this.remotePullSubs.set(key, sub)
+  }
+
+  private onPcState(
+    key: string,
+    label: string,
+    stage: 'publish' | 'subscribe',
+    state: RTCPeerConnectionState,
+    rebuild: () => void,
+  ): void {
+    callDebug.sfuConnState(label, state)
+    this.opts.onConnectionStateChange?.(state)
+    const loop = this.pcRepairs.get(key)
+    if (state === 'connected') {
+      if (loop?.repairing) {
+        this.opts.onRepaired?.({ stage, rung: 2, attempt: loop.attempts })
+        callDebug.sfuRepaired(stage, loop.attempts, label)
+        loop.reset()
+      }
+      return
+    }
+    if (state !== 'failed') return
+    this.pcRepair(key, label, stage, rebuild).schedule()
+  }
+
+  // One rung, reported as rung 2: retrying a push or pull over a dead
+  // connection cannot work, so rebuilding is the only repair available.
+  private pcRepair(
+    key: string,
+    label: string,
+    stage: 'publish' | 'subscribe',
+    rebuild: () => void,
+  ): RepairLoop {
+    let loop = this.pcRepairs.get(key)
+    if (!loop) {
+      loop = new RepairLoop({
+        maxRung: 1,
+        attemptsPerRung: 1,
+        repair: (_rung, attempt) => {
+          if (this.destroyed) return
+          callDebug.sfuPcFailed(label)
+          this.opts.onRepair?.({ stage, rung: 2, attempt })
+          rebuild()
+        },
+      })
+      this.pcRepairs.set(key, loop)
+    }
+    return loop
   }
 
   private pullRepair(sessionId: string, trackName: string): RepairLoop {
@@ -607,6 +660,19 @@ export class SfuSession {
     if (t) { clearTimeout(t); this.pullTimers.delete(key) }
   }
 
+  // Stops pulling one track, leaving the rest of that peer's session alone.
+  unsubscribeTrack(sessionId: string, trackName: string): void {
+    const key = `${sessionId}/${trackName}`
+    if (!this.remotePullSubs.has(key)) return
+    callDebug.sfuUnsubscribeTrack(sessionId, trackName)
+    this.remotePullSubs.get(key)?.unsubscribe()
+    this.remotePullSubs.delete(key)
+    this.clearPullTimer(key)
+    this.pullRepairs.get(key)?.cancel()
+    this.pullRepairs.delete(key)
+    this.subSessionTracks.get(sessionId)?.delete(trackName)
+  }
+
   // Stops pulling every track from a remote session and closes that session's
   // subscribe PC. Called when a peer leaves so idle CF sessions are released.
   unsubscribePeer(sessionId: string): void {
@@ -629,6 +695,8 @@ export class SfuSession {
       }
     }
     this.subSessionTracks.delete(sessionId)
+    this.pcRepairs.get(`sub:${sessionId}`)?.cancel()
+    this.pcRepairs.delete(`sub:${sessionId}`)
     // Unsubscribing every reference drops the last one to this session's
     // PartyTracks, which closes its underlying PC via refCount. The stats
     // subscription counts too — leaving it subscribed would keep the CF
@@ -681,6 +749,7 @@ export class SfuSession {
     // would rebuild a CF session for a call that has ended.
     for (const loop of this.pushRepairs.values()) loop.cancel()
     for (const loop of this.pullRepairs.values()) loop.cancel()
+    for (const loop of this.pcRepairs.values()) loop.cancel()
     this.pubConnStateSub?.unsubscribe()
     this.pubPcSub?.unsubscribe()
     this.pubPc = null
@@ -698,6 +767,7 @@ export class SfuSession {
     this.localTracks.clear()
     this.pushRepairs.clear()
     this.pullRepairs.clear()
+    this.pcRepairs.clear()
     this.subSessionTracks.clear()
   }
 }

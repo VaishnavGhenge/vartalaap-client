@@ -249,3 +249,55 @@ describe('a publish connection that drops', () => {
         h.close()
     })
 })
+
+// The network-switch case. Push and pull ack timers fire once, at setup, so
+// before this nothing noticed a connection that failed later: signaling
+// reconnected, the roster refilled, and media stayed dead for the whole call.
+describe('a connection that fails and stays failed', () => {
+    it('rebuilds the publish session', async () => {
+        const h = harness()
+        await h.session.publish({
+            getTracks: () => [{ kind: 'audio', enabled: true, readyState: 'live', stop: vi.fn() }],
+        } as unknown as MediaStream)
+        sfuFake.latestPublish().ackPush(0, { sessionId: 'cf-me', trackName: 't-audio' })
+        const before = sfuFake.publish().length
+
+        sfuFake.latestPublish().peerConnectionState$.next('failed')
+        await vi.advanceTimersByTimeAsync(1_000)
+
+        expect(sfuFake.publish().length).toBe(before + 1)
+        h.close()
+    })
+
+    it('rebuilds one peer subscribe session and re-pulls its tracks', async () => {
+        const h = harness()
+        h.reconciler.setPeerTracks('alice', 'cf-a', ['t-audio'], 1)
+        h.reconciler.reconcile()
+        await vi.advanceTimersByTimeAsync(0)
+        const before = sfuFake.subscribe().length
+
+        sfuFake.latestSubscribe().peerConnectionState$.next('failed')
+        await vi.advanceTimersByTimeAsync(1_000)
+
+        expect(sfuFake.subscribe().length).toBe(before + 1)
+        expect(sfuFake.allPulled().filter((t) => t.trackName === 't-audio').length).toBeGreaterThan(1)
+        h.close()
+    })
+
+    // partytracks rebuilds the connection itself in the common case. Racing it
+    // with a second rebuild would throw away a session that just came back.
+    it('does not rebuild when partytracks recovers on its own', async () => {
+        const h = harness()
+        await h.session.publish({
+            getTracks: () => [{ kind: 'audio', enabled: true, readyState: 'live', stop: vi.fn() }],
+        } as unknown as MediaStream)
+        sfuFake.latestPublish().ackPush(0, { sessionId: 'cf-me', trackName: 't-audio' })
+        const before = sfuFake.publish().length
+
+        sfuFake.latestPublish().killPeerConnection()
+        await vi.advanceTimersByTimeAsync(10_000)
+
+        expect(sfuFake.publish().length).toBe(before)
+        h.close()
+    })
+})

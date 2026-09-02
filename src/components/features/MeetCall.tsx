@@ -20,6 +20,7 @@ import { useJoinMeetStore } from "@/src/stores/joinMeet";
 import type { SignalingClient, ConnState } from "@/src/services/signaling/client";
 import type { Envelope, KnockRequestData, PeerLeftData } from "@/src/services/signaling/protocol";
 import { getAccessToken } from "@/src/services/api/token";
+import { UNRELEASED } from '@/src/lib/feature-flags';
 
 const LOCAL_TILE_ID = 'local'
 
@@ -114,7 +115,7 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
 
     useEffect(() => {
         setCanShare('share' in navigator);
-        setCanScreenShare(typeof navigator.mediaDevices?.getDisplayMedia === 'function');
+        setCanScreenShare(UNRELEASED.screenShare && typeof navigator.mediaDevices?.getDisplayMedia === 'function');
     }, []);
 
     // When the laptop wakes from sleep the OS revokes camera/mic access and the
@@ -676,11 +677,11 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                 <div className="glass-pill gap-2 px-2 py-2 shadow-xl shadow-[hsl(var(--shadow-color))]/25">
                     <MicButton onClickFn={handleMicToggle} action={isMuted ? "close" : "open"} />
                     <CameraButton onClickFn={handleCameraToggle} action={isVideoOff ? "close" : "open"} />
-                    {hasMultipleCameras && !isVideoOff && !isScreenSharing && (
+                    {UNRELEASED.cameraFlip && hasMultipleCameras && !isVideoOff && !isScreenSharing && (
                         <FlipCameraButton onClickFn={handleFlipCamera} />
                     )}
 
-                    {canScreenShare && (
+                    {UNRELEASED.screenShare && canScreenShare && (
                         <button
                             type="button"
                             onClick={handleScreenShare}
