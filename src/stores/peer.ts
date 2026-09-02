@@ -112,6 +112,8 @@ interface PeerState {
   preferredAudioInputId: string
   preferredVideoInputId: string
   preferredAudioOutputId: string
+  /** True from the moment useCall starts a call until it tears one down. */
+  callActive: boolean
   peerConnections: Map<string, PeerConnection>
   peerStats: Map<string, PeerStats>
   localStats: LocalStats | null
@@ -125,6 +127,7 @@ interface PeerState {
   setIceServers: (s: IceServer[]) => void
   setSuppressNoise: (enabled: boolean) => Promise<void>
   setSfuSession: (s: SfuSession | null) => void
+  setCallActive: (v: boolean) => void
 
   addPeerConnection: (
     id: string,
@@ -190,8 +193,11 @@ const createBackgroundProcessor = (preference: BackgroundEffectPreference) => {
 let videoPlaceholder: MediaStreamTrack | null = null
 
 // No SFU session yet, or it was torn down. Optional-chaining this away is what
-// made "my camera was never shared" invisible on both sides.
+// made "my camera was never shared" invisible on both sides. Silent outside a
+// call: the pre-join preview has no session by design, and reporting it there
+// buried the real drops in false positives.
 const noOutboundSession = (kind: 'audio' | 'video') => {
+  if (!usePeerStore.getState().callActive) return
   console.warn(`[peer] no SFU session — outbound ${kind} not published`)
   Sentry.captureMessage(`outbound ${kind} dropped: no sfu session`, {
     level: 'warning',
@@ -321,6 +327,7 @@ export const usePeerStore = create<PeerState>()(
     const savedDevices = getDevicePreferences()
     return {
     localStream: null,
+    callActive: false,
     screenTrack: null,
     blurProcessor: null,
     rawCameraTrack: null,
@@ -342,6 +349,8 @@ export const usePeerStore = create<PeerState>()(
 
     setIceServers: (s) => set({ iceServers: s }),
     setSfuSession: (s) => set({ sfuSession: s }),
+
+    setCallActive: (v) => set({ callActive: v }),
 
     setSuppressNoise: async (enabled) => {
       saveNoiseSuppression(enabled)

@@ -64,6 +64,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
     callDebug.init()
     const store = usePeerStore
     let disposed = false
+    store.getState().setCallActive(true)
 
     // Keep the access token fresh for the whole call. The SFU layer
     // (partytracks) reads SfuSession's live auth header per request but has
@@ -144,18 +145,22 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
         // expected yet. Skip so solo joins don't pollute the counters;
         // handlePeerJoined re-arms when the first peer arrives.
         if (store.getState().peerConnections.size === 0) return
+
+        const peers = [...store.getState().peerConnections.values()]
+        const publishingPeers = peers.filter((p) => p.audio || p.video)
+        // Peers are here but none advertise audio or video, so no media is owed
+        // yet and this is not a slow setup. Counting it made TTFM measure how
+        // long the other person took to switch their camera on: one such join
+        // put p95 at 15s while the SFU was healthy. handlePeerState re-arms the
+        // window the moment someone starts publishing.
+        if (publishingPeers.length === 0) return
+
         // Deliberately NOT latching ttfmRecorded: the outcome is decided when
         // media arrives or the call ends, not here.
         ceilingPassed = true
 
-        const peers = [...store.getState().peerConnections.values()]
-        const publishingPeers = peers.filter((p) => p.audio || p.video)
         let failureReason: CallFailureReason
-        if (publishingPeers.length === 0) {
-          // Peers are here but none advertise audio/video — there is no media to
-          // receive. Likely a benign "everyone muted" room, not a delivery bug.
-          failureReason = 'peers_present_none_publishing'
-        } else if (sfuTracksReceived === 0) {
+        if (sfuTracksReceived === 0) {
           // A peer is publishing per their state, yet we never got an sfu-tracks
           // broadcast for them — points at the server broadcast/replay path
           // (hub.BroadcastSfuTracks), not the SFU pull.
@@ -213,6 +218,19 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       const { localStream, screenTrack } = store.getState()
       if (localStream) await session.publish(localStream)
       if (screenTrack) await session.replaceTrack('video', screenTrack)
+    }
+
+    // A re-mount can leave the device flags saying "camera on" while the
+    // previous cleanup stopped the tracks. Publishing then sends nothing while
+    // the room is told video:true, which is the "camera is on but nobody sees
+    // it" report. Honour the intent instead of advertising media we don't have.
+    const ensureLocalMedia = async () => {
+      const hasLive = (kind: string) =>
+        store.getState().localStream?.getTracks()
+          .some((t) => t.kind === kind && t.readyState === 'live') ?? false
+      const { initialAudio, initialVideo } = joinArgs.current
+      if (initialAudio && !hasLive('audio')) await store.getState().enableMic()
+      if (initialVideo && !hasLive('video')) await store.getState().enableCamera()
     }
 
     const emitMetric = (data: ClientMetricData) => {
@@ -326,6 +344,12 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       if (newScreenSharing && !oldScreenSharing) playScreenShareStart()
       else if (!newScreenSharing && oldScreenSharing) playScreenShareStop()
       prevScreenSharing.set(env.from, newScreenSharing)
+      // A peer started publishing, so media is owed from now. Open the TTFM
+      // window here rather than at join: the wait for someone to unmute is not
+      // a latency this app controls.
+      if (!ttfmRecorded && !ttfmTimeout && (env.data.audio || env.data.video)) {
+        armTtfmTimeout()
+      }
       store.getState().updatePeerMediaState(
         env.from,
         env.data.audio,
@@ -431,6 +455,8 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
         if (disposed) return
         const sfuSession = store.getState().sfuSession
         if (sfuSession) {
+          await ensureLocalMedia()
+          if (disposed) return
           republishLocalMedia(sfuSession).catch((e) => {
             console.error('[use-call] sfu re-publish failed after reconnect', e)
           })
@@ -844,6 +870,10 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
               peerName: remotePeerId ? store.getState().peerConnections.get(remotePeerId)?.name : undefined,
             })
             if (!expected) return
+            // Detection has to end in a repair. This path reported to Sentry
+            // and stopped, so a stream that froze mid-call stayed frozen for
+            // the rest of it — the "video suddenly stuck" report.
+            store.getState().sfuSession?.repairStalledFlow(stall.direction, stall.sessionId)
             Sentry.captureMessage('media flow stalled', {
               level: 'warning',
               tags: {
@@ -858,10 +888,55 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
                   kind: stall.kind,
                   ssrc: stall.ssrc,
                   stalled_for_ms: stall.stalledForMs,
+                  // Left getStats entirely rather than going quiet in place,
+                  // which points at the forwarding side, not the network.
+                  vanished: !!stall.vanished,
                   session_id: stall.sessionId ?? 'pub',
                   peer_id: remotePeerId ?? 'self',
                 },
               },
+            })
+          },
+          // Audio and video playing out at different delays. No repair: the
+          // playout schedule belongs to the browser and there is no lever here
+          // worth pulling blind. This exists so the next report arrives with a
+          // number attached instead of "it was out of sync".
+          onAvSkew: (skew) => {
+            if (disposed) return
+            const remotePeerId = skew.sessionId ? reconciler.peerForSession(skew.sessionId) : undefined
+            store.getState().recordMediaFlowEvent({
+              direction: 'subscribe',
+              kind: skew.skewMs > 0 ? 'audio' : 'video',
+              outcome: 'stalled',
+              durationMs: Math.abs(Math.round(skew.skewMs)),
+              peerId: remotePeerId,
+              peerName: remotePeerId ? store.getState().peerConnections.get(remotePeerId)?.name : undefined,
+            })
+            Sentry.captureMessage('audio/video out of sync', {
+              level: 'warning',
+              tags: {
+                stage: 'media_flow',
+                failure_reason: 'av_skew',
+                skew_direction: skew.skewMs > 0 ? 'audio_behind' : 'video_behind',
+              },
+              contexts: {
+                av_sync: {
+                  skew_ms: Math.round(skew.skewMs),
+                  audio_jitter_buffer_ms: skew.audioJitterBufferMs,
+                  video_jitter_buffer_ms: skew.videoJitterBufferMs,
+                  session_id: skew.sessionId ?? 'pub',
+                  peer_id: remotePeerId ?? 'unknown',
+                },
+              },
+            })
+          },
+          onAvSkewRecover: (skew) => {
+            if (disposed) return
+            Sentry.addBreadcrumb({
+              category: 'stats',
+              message: 'audio/video back in sync',
+              level: 'info',
+              data: { skew_ms: Math.round(skew.skewMs), session_id: skew.sessionId },
             })
           },
           // Breadcrumb only. Recovery is what separates a transient blip from
@@ -869,6 +944,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
           // the same call — not as its own alert.
           onRecover: (stall) => {
             if (disposed) return
+            store.getState().sfuSession?.settleStalledFlow(stall.direction, stall.sessionId)
             const remotePeerId = stall.sessionId ? reconciler.peerForSession(stall.sessionId) : undefined
             store.getState().recordMediaFlowEvent({
               direction: stall.direction,
@@ -897,6 +973,9 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
         // Previously this drained a buffer of raw messages; now it is just a
         // reconcile against state that was already recorded.
         reconciler.reconcile()
+
+        await ensureLocalMedia()
+        if (disposed) return
 
         const localStream = store.getState().localStream
         if (localStream) {
@@ -958,6 +1037,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       // Room token is scoped to this specific call. Leaving the page (or
       // re-joining the same room) should not reuse a stale SFU JWT.
       setRoomToken(null)
+      store.getState().setCallActive(false)
       store.getState().clearAll()
     }
     // Intentionally excluding userName/initialAudio/initialVideo: they're

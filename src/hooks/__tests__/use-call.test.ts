@@ -493,3 +493,104 @@ describe('useCall — cleanup', () => {
     expect((client as unknown as SignalingClient).onReconnected).toBeUndefined()
   })
 })
+
+// TTFM used to open at join, so a host who joined before the guest switched
+// their camera on measured the wait as setup latency: one such join reported
+// p95 = 15s while the SFU was healthy, and filed it as
+// call_setup_failure{peers_present_none_publishing}.
+describe('useCall — the time-to-first-media window', () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  const metrics = (client: ReturnType<typeof makeClient>, name: string) =>
+    client.sent.filter(m => m.type === 'client-metric'
+      && (m.data as { name?: string })?.name === name)
+
+  it('stays shut while a peer is present but publishing nothing', async () => {
+    const client = makeClient()
+    await act(async () => {
+      renderHook(() => useCall({
+        client, roomId: 'room-1', enabled: true,
+        userName: 'Alice', initialAudio: false, initialVideo: false,
+      }))
+    })
+    await act(async () => {
+      client.emit('peer-joined', {
+        data: { peerId: 'peer-bob', name: 'Bob', audio: false, video: false },
+      })
+    })
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(15_000) })
+
+    expect(metrics(client, 'call_setup_failure')).toHaveLength(0)
+  })
+
+  it('opens when that peer starts publishing, and reports if media never lands', async () => {
+    const client = makeClient()
+    await act(async () => {
+      renderHook(() => useCall({
+        client, roomId: 'room-1', enabled: true,
+        userName: 'Alice', initialAudio: false, initialVideo: false,
+      }))
+    })
+    await act(async () => {
+      client.emit('peer-joined', {
+        data: { peerId: 'peer-bob', name: 'Bob', audio: false, video: false },
+      })
+    })
+    await act(async () => { await vi.advanceTimersByTimeAsync(15_000) })
+
+    await act(async () => {
+      client.emit('peer-state', {
+        from: 'peer-bob',
+        data: { audio: false, video: true, speaking: false },
+      })
+    })
+    await act(async () => { await vi.advanceTimersByTimeAsync(11_000) })
+
+    const failures = metrics(client, 'call_setup_failure')
+    expect(failures).toHaveLength(1)
+    expect((failures[0].data as { reason?: string }).reason).not.toBe('peers_present_none_publishing')
+  })
+})
+
+// A re-mount leaves the device flags saying "camera on" while the previous
+// cleanup stopped the tracks. The room was then told video:true with nothing
+// published, and only a manual camera toggle fixed it.
+describe('useCall — device intent versus reality', () => {
+  it('re-acquires the camera when the flags say on but no track is live', async () => {
+    const enableCamera = vi.fn(async () => null)
+    usePeerStore.setState({ localStream: null, enableCamera })
+    const client = makeClient()
+
+    await act(async () => {
+      renderHook(() => useCall({
+        client, roomId: 'room-1', enabled: true,
+        userName: 'Alice', initialAudio: false, initialVideo: true,
+      }))
+    })
+    await act(async () => { client.emit('joined', { data: { peers: [] } }) })
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)) })
+
+    expect(enableCamera).toHaveBeenCalled()
+  })
+
+  it('leaves the camera alone when a live track is already publishing', async () => {
+    const enableCamera = vi.fn(async () => null)
+    const stream = new MediaStream()
+    stream.addTrack({ kind: 'video', readyState: 'live', stop: vi.fn() } as unknown as MediaStreamTrack)
+    usePeerStore.setState({ localStream: stream, enableCamera })
+    const client = makeClient()
+
+    await act(async () => {
+      renderHook(() => useCall({
+        client, roomId: 'room-1', enabled: true,
+        userName: 'Alice', initialAudio: false, initialVideo: true,
+      }))
+    })
+    await act(async () => { client.emit('joined', { data: { peers: [] } }) })
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)) })
+
+    expect(enableCamera).not.toHaveBeenCalled()
+  })
+})
