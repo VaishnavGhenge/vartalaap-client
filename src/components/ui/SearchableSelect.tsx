@@ -54,7 +54,6 @@ export function SearchableSelect({
         ? options.filter((o) => o.label.toLowerCase().includes(query.toLowerCase()))
         : options;
 
-    // Reset highlight to 0 (or to selected item) whenever filter changes or dropdown opens
     useEffect(() => {
         const idx = filtered.findIndex((o) => o.value === value);
         setHighlighted(idx >= 0 ? idx : 0);
