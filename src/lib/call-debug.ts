@@ -213,6 +213,10 @@ export const callDebug = {
     if (!isDev) return
     push('[sfu]', `unsubscribePeer session:${sessionId}`)
   },
+  statsAvSkew(sessionId: string | undefined, skewMs: number) {
+    if (!isDev) return
+    push('[stats]', `A/V skew ${skewMs > 0 ? 'audio behind' : 'video behind'} ${Math.abs(Math.round(skewMs))}ms session:${sessionId ?? 'pub'}`)
+  },
   sfuUnsubscribeTrack(sessionId: string, trackName: string) {
     if (!isDev) return
     push('[sfu]', `unsubscribeTrack session:${sessionId} track:${trackName}`)

@@ -63,6 +63,12 @@ export interface TransportSample {
   roundTripTimeMs: number
   jitterMs: number
   candidateType: 'host' | 'srflx' | 'relay' | 'unknown'
+  /** Mean inbound jitter-buffer delay per kind. Undefined until the browser
+   * has emitted samples for that kind. */
+  audioJitterBufferMs?: number
+  videoJitterBufferMs?: number
+  /** audioJitterBufferMs - videoJitterBufferMs, when both are known. */
+  avSkewMs?: number
   frameWidth?: number
   frameHeight?: number
   framesPerSecond?: number
@@ -81,6 +87,21 @@ export interface FlowStall {
   kind: FlowKind
   ssrc: number
   stalledForMs: number
+  /** The stream left getStats() entirely rather than going quiet in place. */
+  vanished?: boolean
+}
+
+/**
+ * How far a peer's audio playout has drifted from their video. Positive means
+ * audio is behind, which is the direction a recovering jitter buffer produces
+ * and what users describe as lips running ahead of the voice.
+ */
+export interface AvSkew {
+  sourceId: string
+  sessionId?: string
+  skewMs: number
+  audioJitterBufferMs: number
+  videoJitterBufferMs: number
 }
 
 export interface StatsMonitorOptions {
@@ -92,8 +113,13 @@ export interface StatsMonitorOptions {
   onStall?: (stall: FlowStall) => void
   /** A previously stalled stream started moving bytes again. */
   onRecover?: (stall: FlowStall) => void
+  /** A peer's audio and video playout have drifted apart and stayed apart. */
+  onAvSkew?: (skew: AvSkew) => void
+  /** That drift came back inside the threshold. */
+  onAvSkewRecover?: (skew: AvSkew) => void
   intervalMs?: number
   stallAfterMs?: number
+  skewThresholdMs?: number
   /** Injectable for tests. */
   now?: () => number
 }
@@ -114,6 +140,14 @@ const DEFAULT_INTERVAL_MS = 2_000
 // flowing is not.
 const DEFAULT_STALL_AFTER_MS = 6_000
 
+// Lip sync is perceptible from roughly 45ms of audio lag; a quarter second is
+// unambiguous and well clear of normal buffer jitter, so it is the point worth
+// reporting rather than the point worth worrying about.
+const DEFAULT_SKEW_THRESHOLD_MS = 250
+
+// One poll over the threshold is a measurement blip. Two in a row is drift.
+const SKEW_POLLS_TO_CONFIRM = 2
+
 // Thresholds for the coarse quality grade the UI shows as a dot. Initial
 // values, tuned against nothing yet — revisit once the histogram has real
 // production traffic in it.
@@ -126,6 +160,12 @@ const LOSS_MEDIUM_PCT = 5
 interface StreamRecord {
   /** Owning source, so pruning does not have to parse the key. */
   sourceId: string
+  direction: FlowDirection
+  sessionId?: string
+  kind: FlowKind
+  ssrc: number
+  /** Wall clock of the last poll whose report still contained this stream. */
+  lastSeenAt: number
   bytes: number
   /** Stats-report timestamp of the last reading, for accurate bitrate. */
   statsTs: number
@@ -159,6 +199,8 @@ interface RtpStats {
   frameWidth?: number
   frameHeight?: number
   framesPerSecond?: number
+  jitterBufferDelay?: number
+  jitterBufferEmittedCount?: number
 }
 
 interface CandidatePairStats {
@@ -179,9 +221,13 @@ interface LocalCandidateStats {
 export function startStatsMonitor(opts: StatsMonitorOptions): StatsMonitor {
   const intervalMs = opts.intervalMs ?? DEFAULT_INTERVAL_MS
   const stallAfterMs = opts.stallAfterMs ?? DEFAULT_STALL_AFTER_MS
+  const skewThresholdMs = opts.skewThresholdMs ?? DEFAULT_SKEW_THRESHOLD_MS
   const now = opts.now ?? (() => Date.now())
 
   const streams = new Map<string, StreamRecord>()
+  /** sourceId → consecutive polls over the skew threshold, and whether the
+   * crossing has been reported. */
+  const skewRuns = new Map<string, { polls: number; reported: boolean }>()
   let stopped = false
 
   const poll = async (): Promise<void> => {
@@ -208,7 +254,64 @@ export function startStatsMonitor(opts: StatsMonitorOptions): StatsMonitor {
     }
 
     const samples = sources.map((source) => sampleSource(source, t))
+
+    // A stream can leave getStats() entirely: the SFU stopped forwarding it,
+    // or a renegotiation dropped the transceiver. The per-stat loop can only
+    // judge streams it still sees, so without this sweep a track that
+    // disappears is the one failure the monitor never reports — the tile keeps
+    // its last frame and nothing says so. It is also why an audio stall was
+    // recorded for a call whose video had stopped first.
+    for (const record of streams.values()) {
+      if (record.lastSeenAt === t || record.stalled || !record.everFlowed) continue
+      const silentForMs = t - record.lastFlowAt
+      if (silentForMs < stallAfterMs) continue
+      record.stalled = true
+      record.stalledSince = t
+      callDebug.statsFlowStalled(record.direction, record.kind, silentForMs, record.sessionId)
+      opts.onStall?.({
+        sourceId: record.sourceId,
+        direction: record.direction,
+        sessionId: record.sessionId,
+        kind: record.kind,
+        ssrc: record.ssrc,
+        stalledForMs: Math.round(silentForMs),
+        vanished: true,
+      })
+    }
+
+    for (const sample of samples) detectSkew(sample)
+
     if (samples.length > 0) opts.onPoll?.(samples)
+  }
+
+  const detectSkew = (sample: TransportSample): void => {
+    const { avSkewMs, audioJitterBufferMs, videoJitterBufferMs } = sample
+    if (avSkewMs === undefined || audioJitterBufferMs === undefined || videoJitterBufferMs === undefined) {
+      skewRuns.delete(sample.sourceId)
+      return
+    }
+    const run = skewRuns.get(sample.sourceId) ?? { polls: 0, reported: false }
+    const skew: AvSkew = {
+      sourceId: sample.sourceId,
+      sessionId: sample.sessionId,
+      skewMs: avSkewMs,
+      audioJitterBufferMs: round(audioJitterBufferMs),
+      videoJitterBufferMs: round(videoJitterBufferMs),
+    }
+
+    if (Math.abs(avSkewMs) < skewThresholdMs) {
+      if (run.reported) opts.onAvSkewRecover?.(skew)
+      skewRuns.delete(sample.sourceId)
+      return
+    }
+
+    run.polls += 1
+    if (run.polls >= SKEW_POLLS_TO_CONFIRM && !run.reported) {
+      run.reported = true
+      callDebug.statsAvSkew(sample.sessionId, avSkewMs)
+      opts.onAvSkew?.(skew)
+    }
+    skewRuns.set(sample.sourceId, run)
   }
 
   const sampleSource = (source: StatsSource, t: number): TransportSample => {
@@ -233,6 +336,8 @@ export function startStatsMonitor(opts: StatsMonitorOptions): StatsMonitor {
     let frameWidth: number | undefined
     let frameHeight: number | undefined
     let framesPerSecond: number | undefined
+    let audioJitterBufferMs: number | undefined
+    let videoJitterBufferMs: number | undefined
 
     for (const s of rtp) {
       const kind = (s.kind ?? s.mediaType) as FlowKind | undefined
@@ -254,6 +359,11 @@ export function startStatsMonitor(opts: StatsMonitorOptions): StatsMonitor {
 
       const record: StreamRecord = prev ?? {
         sourceId: source.id,
+        direction: source.direction,
+        sessionId: source.sessionId,
+        kind,
+        ssrc,
+        lastSeenAt: t,
         bytes,
         statsTs: s.timestamp,
         lastFlowAt: t,
@@ -263,6 +373,7 @@ export function startStatsMonitor(opts: StatsMonitorOptions): StatsMonitor {
       }
       record.bytes = bytes
       record.statsTs = s.timestamp
+      record.lastSeenAt = t
 
       // Inbound: we cannot know from here whether the remote peer meant to
       // stop sending, so every inbound silence is reported and use-call
@@ -301,6 +412,14 @@ export function startStatsMonitor(opts: StatsMonitorOptions): StatsMonitor {
         packetsReceived += s.packetsReceived ?? 0
         packetsLost += s.packetsLost ?? 0
         if (typeof s.jitter === 'number') jitterMs = Math.max(jitterMs, s.jitter * 1000)
+        // Mean time each frame or sample waited in the jitter buffer. This is
+        // the delay a user hears as lag, and comparing the two kinds is how
+        // "video ahead of audio" becomes a number instead of a report.
+        const bufferedMs = meanJitterBufferMs(s)
+        if (bufferedMs !== undefined) {
+          if (kind === 'audio') audioJitterBufferMs = bufferedMs
+          else videoJitterBufferMs = bufferedMs
+        }
         if (kind === 'video') {
           frameWidth = s.frameWidth ?? frameWidth
           frameHeight = s.frameHeight ?? frameHeight
@@ -326,6 +445,11 @@ export function startStatsMonitor(opts: StatsMonitorOptions): StatsMonitor {
       roundTripTimeMs: rttMs < 0 ? -1 : round(rttMs),
       jitterMs: round(jitterMs),
       candidateType: normalizeCandidateType(local?.candidateType),
+      audioJitterBufferMs,
+      videoJitterBufferMs,
+      avSkewMs: audioJitterBufferMs !== undefined && videoJitterBufferMs !== undefined
+        ? round(audioJitterBufferMs - videoJitterBufferMs)
+        : undefined,
       frameWidth,
       frameHeight,
       framesPerSecond: framesPerSecond !== undefined ? Math.round(framesPerSecond) : undefined,
@@ -341,8 +465,19 @@ export function startStatsMonitor(opts: StatsMonitorOptions): StatsMonitor {
       stopped = true
       clearInterval(timer)
       streams.clear()
+      skewRuns.clear()
     },
   }
+}
+
+// jitterBufferDelay is cumulative seconds; dividing by the emitted count gives
+// the mean wait per sample. Both counters are needed, and a stream that has
+// emitted nothing yet has no meaningful delay.
+function meanJitterBufferMs(s: RtpStats): number | undefined {
+  const delay = s.jitterBufferDelay
+  const emitted = s.jitterBufferEmittedCount
+  if (typeof delay !== 'number' || typeof emitted !== 'number' || emitted <= 0) return undefined
+  return (delay / emitted) * 1000
 }
 
 function makeStall(source: StatsSource, kind: FlowKind, ssrc: number, stalledForMs: number): FlowStall {

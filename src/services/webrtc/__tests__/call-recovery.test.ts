@@ -301,3 +301,88 @@ describe('a connection that fails and stays failed', () => {
         h.close()
     })
 })
+
+// The "video suddenly stuck" report. A pull that arrived and then went quiet
+// had no recovery path: the dead-track timer only covers a track that never
+// arrived, and an acked push never re-arms its ack timer.
+describe('a stream that flowed and then went quiet', () => {
+    it('rebuilds that peer subscribe session and re-pulls', async () => {
+        const h = harness()
+        h.reconciler.setPeerTracks('alice', 'cf-a', ['t-video'], 1)
+        h.reconciler.reconcile()
+        await vi.advanceTimersByTimeAsync(0)
+        sfuFake.latestSubscribe().deliverTrack(0, 'video')
+        const before = sfuFake.subscribe().length
+
+        h.session.repairStalledFlow('subscribe', 'cf-a')
+        await vi.advanceTimersByTimeAsync(1_000)
+
+        expect(sfuFake.subscribe().length).toBe(before + 1)
+        expect(sfuFake.allPulled().filter((t) => t.trackName === 't-video').length).toBeGreaterThan(1)
+        h.close()
+    })
+
+    it('rebuilds the publish session when our own uplink goes quiet', async () => {
+        const h = harness()
+        await h.session.publish({
+            getTracks: () => [{ kind: 'video', enabled: true, readyState: 'live', stop: vi.fn() }],
+        } as unknown as MediaStream)
+        sfuFake.latestPublish().ackPush(0, { sessionId: 'cf-me', trackName: 't-video' })
+        const before = sfuFake.publish().length
+
+        h.session.repairStalledFlow('publish')
+        await vi.advanceTimersByTimeAsync(1_000)
+
+        expect(sfuFake.publish().length).toBe(before + 1)
+        h.close()
+    })
+
+    it('ignores a stall for a peer it is not subscribed to', async () => {
+        const h = harness()
+        const before = sfuFake.subscribe().length
+
+        h.session.repairStalledFlow('subscribe', 'cf-nobody')
+        await vi.advanceTimersByTimeAsync(5_000)
+
+        expect(sfuFake.subscribe().length).toBe(before)
+        h.close()
+    })
+
+    // Repeated stall reports arrive every 2s poll. They must collapse into one
+    // rebuild rather than stacking a new CF session per poll.
+    it('collapses repeated stall reports into one rebuild', async () => {
+        const h = harness()
+        h.reconciler.setPeerTracks('alice', 'cf-a', ['t-video'], 1)
+        h.reconciler.reconcile()
+        await vi.advanceTimersByTimeAsync(0)
+        const before = sfuFake.subscribe().length
+
+        h.session.repairStalledFlow('subscribe', 'cf-a')
+        h.session.repairStalledFlow('subscribe', 'cf-a')
+        h.session.repairStalledFlow('subscribe', 'cf-a')
+        await vi.advanceTimersByTimeAsync(1_000)
+
+        expect(sfuFake.subscribe().length).toBe(before + 1)
+        h.close()
+    })
+
+    it('records a recovery so the ladder can be told from one that only spins', async () => {
+        const repaired: string[] = []
+        let session: SfuSession | null = null
+        const reconciler = new CallReconciler({ getSession: () => session })
+        session = new SfuSession({
+            roomId: 'room-1', peerId: 'peer-me', iceServers: [],
+            onRepaired: (info) => repaired.push(`${info.stage}:${info.rung}`),
+        })
+        reconciler.setPeerTracks('alice', 'cf-a', ['t-video'], 1)
+        reconciler.reconcile()
+        await vi.advanceTimersByTimeAsync(0)
+
+        session.repairStalledFlow('subscribe', 'cf-a')
+        await vi.advanceTimersByTimeAsync(1_000)
+        session.settleStalledFlow('subscribe', 'cf-a')
+
+        expect(repaired).toContain('subscribe:2')
+        session.close()
+    })
+})

@@ -4,6 +4,7 @@ import {
     gradeNetworkPressure,
     gradeQuality,
     startStatsMonitor,
+    type AvSkew,
     type FlowStall,
     type StatsSource,
     type TransportSample,
@@ -21,6 +22,16 @@ function statsReport(entries: Array<Record<string, unknown>>): RTCStatsReport {
 /** An inbound audio stream. `bytes` and `ts` advance across polls. */
 function inboundAudio(bytes: number, ts: number, extra: Record<string, unknown> = {}) {
     return { type: 'inbound-rtp', id: 'in-a', kind: 'audio', ssrc: 111, timestamp: ts, bytesReceived: bytes, ...extra }
+}
+
+function inboundVideo(bytes: number, ts: number, extra: Record<string, unknown> = {}) {
+    return { type: 'inbound-rtp', id: 'in-v', kind: 'video', ssrc: 333, timestamp: ts, bytesReceived: bytes, ...extra }
+}
+
+/** Jitter-buffer counters shaped as the spec defines them: cumulative seconds
+ * over an emitted-sample count, so the mean is delay/count. */
+function buffered(meanMs: number, emitted = 100) {
+    return { jitterBufferDelay: (meanMs / 1000) * emitted, jitterBufferEmittedCount: emitted }
 }
 
 function outboundAudio(bytes: number, ts: number) {
@@ -377,5 +388,195 @@ describe('grading', () => {
         expect(gradeNetworkPressure(180, 0.2)).toBe('medium')
         expect(gradeNetworkPressure(450, 5)).toBe('high')
         expect(gradeNetworkPressure(900, 12)).toBe('severe')
+    })
+})
+
+// A stream that leaves getStats() entirely was the monitor's blind spot: the
+// stall check ran inside the loop over reported stats, so a track the SFU
+// stopped forwarding was never revisited and never flagged. In production this
+// showed up as an audio stall being recorded for a call whose video had
+// stopped first.
+describe('a stream that disappears from the report', () => {
+    it('is reported as a stall once the silence passes the threshold', async () => {
+        const stalls: FlowStall[] = []
+        let clock = 0
+        let report = statsReport([inboundAudio(1_000, 0), inboundVideo(5_000, 0)])
+        const monitor = startStatsMonitor({
+            collect: async () => [{ id: 'sub:cf-a', direction: 'subscribe', sessionId: 'cf-a', report, liveOutboundKinds: [] }],
+            onStall: (s) => stalls.push(s),
+            now: () => clock,
+        })
+
+        await monitor.poll()
+        clock = 2_000
+        report = statsReport([inboundAudio(2_000, 2_000), inboundVideo(9_000, 2_000)])
+        await monitor.poll()
+
+        // Video vanishes from the report while audio keeps flowing.
+        for (const [i, bytes] of [3_000, 4_000, 5_000, 6_000].entries()) {
+            clock = 4_000 + i * 2_000
+            report = statsReport([inboundAudio(bytes, clock)])
+            await monitor.poll()
+        }
+
+        const video = stalls.filter((s) => s.kind === 'video')
+        expect(video).toHaveLength(1)
+        expect(video[0].vanished).toBe(true)
+        expect(video[0].sessionId).toBe('cf-a')
+        expect(video[0].stalledForMs).toBeGreaterThanOrEqual(6_000)
+        expect(stalls.filter((s) => s.kind === 'audio')).toHaveLength(0)
+        monitor.stop()
+    })
+
+    it('reports it once, not on every later poll', async () => {
+        const stalls: FlowStall[] = []
+        let clock = 0
+        let report = statsReport([inboundVideo(5_000, 0)])
+        const monitor = startStatsMonitor({
+            collect: async () => [{ id: 'sub:cf-a', direction: 'subscribe', sessionId: 'cf-a', report, liveOutboundKinds: [] }],
+            onStall: (s) => stalls.push(s),
+            now: () => clock,
+        })
+        await monitor.poll()
+        clock = 2_000
+        report = statsReport([inboundVideo(9_000, 2_000)])
+        await monitor.poll()
+
+        report = statsReport([])
+        for (let i = 0; i < 6; i++) { clock = 4_000 + i * 2_000; await monitor.poll() }
+
+        expect(stalls).toHaveLength(1)
+        monitor.stop()
+    })
+
+    it('says nothing when the whole peer connection goes away', async () => {
+        const stalls: FlowStall[] = []
+        let clock = 0
+        let sources: StatsSource[] = [
+            { id: 'sub:cf-a', direction: 'subscribe', sessionId: 'cf-a', report: statsReport([inboundVideo(5_000, 0)]), liveOutboundKinds: [] },
+        ]
+        const monitor = startStatsMonitor({
+            collect: async () => sources,
+            onStall: (s) => stalls.push(s),
+            now: () => clock,
+        })
+        await monitor.poll()
+        clock = 2_000
+        sources = [{ id: 'sub:cf-a', direction: 'subscribe', sessionId: 'cf-a', report: statsReport([inboundVideo(9_000, 2_000)]), liveOutboundKinds: [] }]
+        await monitor.poll()
+
+        // The peer left, so the source is gone. Nobody is waiting for it.
+        sources = []
+        for (let i = 0; i < 6; i++) { clock = 4_000 + i * 2_000; await monitor.poll() }
+
+        expect(stalls).toHaveLength(0)
+        monitor.stop()
+    })
+})
+
+// "Video was faster and audio was delayed, then it synced itself after a few
+// minutes" had no number behind it anywhere in the app.
+describe('audio/video sync', () => {
+    const source = (audioMs: number, videoMs: number, ts: number): StatsSource[] => ([{
+        id: 'sub:cf-a', direction: 'subscribe', sessionId: 'cf-a', liveOutboundKinds: [],
+        report: statsReport([
+            inboundAudio(1_000 * (ts + 1), ts, buffered(audioMs)),
+            inboundVideo(5_000 * (ts + 1), ts, buffered(videoMs)),
+        ]),
+    }])
+
+    it('measures the gap between the two playout delays', async () => {
+        const samples: TransportSample[][] = []
+        let sources = source(420, 40, 0)
+        const monitor = startStatsMonitor({
+            collect: async () => sources,
+            onPoll: (s) => samples.push(s),
+            now: () => 0,
+        })
+
+        await monitor.poll()
+
+        expect(samples[0][0].audioJitterBufferMs).toBeCloseTo(420, 0)
+        expect(samples[0][0].videoJitterBufferMs).toBeCloseTo(40, 0)
+        expect(samples[0][0].avSkewMs).toBeCloseTo(380, 0)
+        monitor.stop()
+    })
+
+    it('waits for a second poll before calling it drift', async () => {
+        const skews: AvSkew[] = []
+        let sources = source(420, 40, 0)
+        const monitor = startStatsMonitor({
+            collect: async () => sources,
+            onAvSkew: (s) => skews.push(s),
+            now: () => 0,
+        })
+
+        await monitor.poll()
+        expect(skews).toHaveLength(0)
+
+        sources = source(420, 40, 1)
+        await monitor.poll()
+        expect(skews).toHaveLength(1)
+        expect(skews[0].skewMs).toBeCloseTo(380, 0)
+        monitor.stop()
+    })
+
+    it('stays quiet while the two delays are close', async () => {
+        const skews: AvSkew[] = []
+        let sources = source(60, 40, 0)
+        const monitor = startStatsMonitor({
+            collect: async () => sources,
+            onAvSkew: (s) => skews.push(s),
+            now: () => 0,
+        })
+
+        for (let i = 0; i < 5; i++) { sources = source(60, 40, i); await monitor.poll() }
+
+        expect(skews).toHaveLength(0)
+        monitor.stop()
+    })
+
+    // The self-healing the user described: the buffer drains and lip sync
+    // returns without anyone doing anything.
+    it('reports the recovery when the buffer drains', async () => {
+        const skews: AvSkew[] = []
+        const recovered: AvSkew[] = []
+        let sources = source(420, 40, 0)
+        const monitor = startStatsMonitor({
+            collect: async () => sources,
+            onAvSkew: (s) => skews.push(s),
+            onAvSkewRecover: (s) => recovered.push(s),
+            now: () => 0,
+        })
+
+        await monitor.poll()
+        sources = source(420, 40, 1)
+        await monitor.poll()
+        expect(skews).toHaveLength(1)
+
+        sources = source(70, 40, 2)
+        await monitor.poll()
+
+        expect(recovered).toHaveLength(1)
+        expect(recovered[0].skewMs).toBeCloseTo(30, 0)
+        monitor.stop()
+    })
+
+    it('reports nothing when the browser gives no buffer counters', async () => {
+        const skews: AvSkew[] = []
+        let clock = 0
+        const monitor = startStatsMonitor({
+            collect: async () => [{
+                id: 'sub:cf-a', direction: 'subscribe', sessionId: 'cf-a', liveOutboundKinds: [],
+                report: statsReport([inboundAudio(1_000, clock), inboundVideo(5_000, clock)]),
+            }],
+            onAvSkew: (s) => skews.push(s),
+            now: () => clock,
+        })
+
+        for (let i = 0; i < 4; i++) { clock = i * 2_000; await monitor.poll() }
+
+        expect(skews).toHaveLength(0)
+        monitor.stop()
     })
 })

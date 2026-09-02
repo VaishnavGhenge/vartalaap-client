@@ -660,6 +660,38 @@ export class SfuSession {
     if (t) { clearTimeout(t); this.pullTimers.delete(key) }
   }
 
+  /**
+   * A stream that was flowing went silent. Nothing else catches this: the
+   * dead-track timer only covers a track that never arrived, and an already
+   * acked push never re-arms its ack timer. Rebuilding the affected direction
+   * is the only repair available, so this reuses the PC ladder.
+   */
+  repairStalledFlow(direction: 'publish' | 'subscribe', sessionId?: string): void {
+    if (this.destroyed) return
+    if (direction === 'publish') {
+      if (!this.pubConnStateSub) return
+      this.pcRepair('pub', 'pub', 'publish', () => this.resetPubTracks()).schedule()
+      return
+    }
+    if (!sessionId || !this.subTracksMap.has(sessionId)) return
+    this.pcRepair(
+      `sub:${sessionId}`, `sub:${sessionId.slice(0, 8)}`, 'subscribe',
+      () => this.resetSubSession(sessionId),
+    ).schedule()
+  }
+
+  /** Bytes are moving again. Pairs with repairStalledFlow so the repair
+   * counters can distinguish a ladder that heals from one that only spins. */
+  settleStalledFlow(direction: 'publish' | 'subscribe', sessionId?: string): void {
+    const key = direction === 'publish' ? 'pub' : sessionId ? `sub:${sessionId}` : null
+    if (!key) return
+    const loop = this.pcRepairs.get(key)
+    if (!loop?.repairing) return
+    this.opts.onRepaired?.({ stage: direction, rung: 2, attempt: loop.attempts, sessionId })
+    callDebug.sfuRepaired(direction, loop.attempts, key)
+    loop.reset()
+  }
+
   // Stops pulling one track, leaving the rest of that peer's session alone.
   unsubscribeTrack(sessionId: string, trackName: string): void {
     const key = `${sessionId}/${trackName}`
