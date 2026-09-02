@@ -172,7 +172,7 @@ function EventTypeRow({
 }) {
     const publicHref = hostSlug ? `/u/${hostSlug}/${event.slug}` : null;
     return (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-[hsl(var(--border))]/70 bg-[hsl(var(--surface-2))] px-4 py-3">
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--surface-2))] px-4 py-3">
             <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-[hsl(var(--foreground))]">
                     {event.title}
@@ -293,7 +293,7 @@ function EventTypeForm({
     return (
         <form
             onSubmit={handleSubmit}
-            className="flex flex-col gap-4 rounded-xl border border-[hsl(var(--border))]/70 bg-[hsl(var(--surface-2))] p-4"
+            className="flex flex-col gap-4 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--surface-2))] p-4"
         >
             {/* Title + URL */}
             <div className="grid gap-3 sm:grid-cols-2">

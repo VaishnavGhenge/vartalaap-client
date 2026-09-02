@@ -38,7 +38,6 @@ import { ThemeMode, useTheme } from "@/src/components/theme-provider";
 import { callDefaults } from "@/src/lib/call-defaults";
 import { useAuth } from "@/src/hooks/use-auth";
 import { roomPath } from "@/src/lib/room-routes";
-import { initialsOf } from "@/src/lib/avatar";
 import { cn } from "@/src/lib/utils";
 import { getAvailability } from "@/src/services/api/availability";
 import { calendarCallbackMessage, getCalendarStatus } from "@/src/services/api/calendar";
@@ -46,6 +45,7 @@ import { listEventTypes } from "@/src/services/api/event-types";
 import { listMyBookings, type HostBooking } from "@/src/services/api/bookings";
 import { updateProfile } from "@/src/services/api/auth";
 import { SearchableSelect } from "@/src/components/ui/SearchableSelect";
+import { Avatar } from "@/src/components/ui/Avatar";
 import { TIMEZONES } from "@/src/lib/timezones";
 
 type PanelKey = "overview" | "profile" | "availability" | "booking-types" | "bookings" | "payments" | "settings";
@@ -222,7 +222,7 @@ function DashboardInner() {
               and tap-target sizes diverge enough that one shared component
               would have to fork on every prop.
             */}
-            <aside className="hidden border-[hsl(var(--border))]/60 bg-[hsl(var(--background))] lg:sticky lg:top-0 lg:block lg:h-dvh lg:border-r">
+            <aside className="hidden border-[hsl(var(--border))] bg-[hsl(var(--background))] lg:sticky lg:top-0 lg:block lg:h-dvh lg:border-r">
                 <div className="flex h-full flex-col px-3 py-4">
                     <Link href="/dashboard" className="mb-1 flex items-center rounded-xl px-3 py-2 hover:bg-[hsl(var(--surface-2))]">
                         <span className="min-w-0">
@@ -231,7 +231,7 @@ function DashboardInner() {
                         </span>
                     </Link>
 
-                    <div className="mb-3 mt-2 border-t border-[hsl(var(--border))]/50 pt-3">
+                    <div className="mb-3 mt-2 border-t border-[hsl(var(--border))] pt-3">
                         <button
                             type="button"
                             onClick={() => handleSelectPanel("profile")}
@@ -255,14 +255,15 @@ function DashboardInner() {
                                     )}
                                 />
                             ) : (
-                                <div className={cn(
-                                    "flex size-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[hsl(var(--primary))] to-violet-500 text-[11px] font-semibold text-white ring-2 ring-offset-1",
-                                    activePanel === "profile"
-                                        ? "ring-[hsl(var(--primary))]"
-                                        : "ring-transparent group-hover:ring-[hsl(var(--border))]",
-                                )}>
-                                    {initialsOf(user.name || user.email)}
-                                </div>
+                                <Avatar
+                                    name={user.name || user.email}
+                                    className={cn(
+                                        "size-9 text-[0.6875rem] ring-2 ring-offset-1",
+                                        activePanel === "profile"
+                                            ? "ring-[hsl(var(--primary))]"
+                                            : "ring-transparent group-hover:ring-[hsl(var(--border))]",
+                                    )}
+                                />
                             )}
                             <div className="min-w-0 flex-1">
                                 <p className={cn(
@@ -303,7 +304,7 @@ function DashboardInner() {
                         })}
                     </nav>
 
-                    <div className="mt-auto border-t border-[hsl(var(--border))]/50 px-1 pt-3">
+                    <div className="mt-auto border-t border-[hsl(var(--border))] px-1 pt-3">
                         <Button variant="outline" size="sm" className="w-full" asChild>
                             <Link href="/pricing">View plans</Link>
                         </Button>
@@ -320,7 +321,7 @@ function DashboardInner() {
             </aside>
 
             {/* Mobile top bar — minimal, just brand + account actions. */}
-            <header className="sticky top-0 z-30 flex items-center justify-between border-b border-[hsl(var(--border))]/60 bg-[hsl(var(--background))]/95 px-4 py-3 backdrop-blur lg:hidden">
+            <header className="sticky top-0 z-30 flex items-center justify-between border-b border-[hsl(var(--border))] bg-[hsl(var(--background))]/95 px-4 py-3 backdrop-blur lg:hidden">
                 <Link href="/dashboard" className="flex min-w-0 items-center">
                     <SessionlyBrand size="sm" />
                 </Link>
@@ -342,9 +343,7 @@ function DashboardInner() {
                                 className="size-7 rounded-full object-cover"
                             />
                         ) : (
-                            <span className="flex size-7 items-center justify-center rounded-full bg-gradient-to-br from-[hsl(var(--primary))] to-violet-500 text-[11px] font-semibold text-white">
-                                {initialsOf(user.name || user.email)}
-                            </span>
+                            <Avatar name={user.name || user.email} className="size-7 text-[0.625rem]" />
                         )}
                     </button>
                     <button
@@ -442,7 +441,7 @@ function DashboardInner() {
             */}
             <nav
                 aria-label="Dashboard sections"
-                className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-6 border-t border-[hsl(var(--border))]/60 bg-[hsl(var(--background))]/95 backdrop-blur lg:hidden"
+                className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-6 border-t border-[hsl(var(--border))] bg-[hsl(var(--background))]/95 backdrop-blur lg:hidden"
                 style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
             >
                 {SIDEBAR_ITEMS.map(({ key, icon: Icon, label, shortLabel }) => {
@@ -568,7 +567,7 @@ function ActiveSessionsPanel({ refreshKey }: { refreshKey: number }) {
                         const isLive = start <= nowMs;
                         const minsUntil = Math.ceil((start - nowMs) / 60_000);
                         return (
-                            <div key={b.id} className="relative overflow-hidden rounded-xl border border-[hsl(var(--border))]/70 bg-[hsl(var(--surface-2))] px-3 py-2.5">
+                            <div key={b.id} className="relative overflow-hidden rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--surface-2))] px-3 py-2.5">
                                 <span className={cn(
                                     "absolute inset-y-0 left-0 w-[3px]",
                                     isLive ? "bg-emerald-500" : "bg-[hsl(var(--primary))]/50",
@@ -633,7 +632,7 @@ function ShareLinkBlock({ url, href }: { url: string; href: string }) {
     return (
         <div className="flex flex-col items-stretch gap-2 sm:items-end">
             <p className="label-caps text-[hsl(var(--muted-foreground))]">Your booking link</p>
-            <div className="flex items-center gap-2 rounded-xl border border-[hsl(var(--border))]/70 bg-[hsl(var(--surface-2))] px-3 py-2">
+            <div className="flex items-center gap-2 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--surface-2))] px-3 py-2">
                 <Link href={href} target="_blank" rel="noopener noreferrer" className="link truncate text-sm">{url}</Link>
                 <button
                     type="button"
@@ -729,9 +728,10 @@ function ProfilePanel({
                             onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                         />
                     ) : (
-                        <div className="flex size-24 items-center justify-center rounded-full bg-gradient-to-br from-[hsl(var(--primary))] to-violet-500 text-2xl font-semibold text-white ring-2 ring-[hsl(var(--border))]">
-                            {initialsOf(name || user?.email || "")}
-                        </div>
+                        <Avatar
+                            name={name || user?.email || ""}
+                            className="size-24 text-2xl ring-2 ring-[hsl(var(--border))]"
+                        />
                     )}
                     {publicHref && (
                         <Button asChild variant="outline" size="sm">
@@ -796,7 +796,7 @@ function ProfilePanel({
                     <div className="flex flex-col gap-1.5 sm:col-span-2">
                         <label htmlFor="profile-slug" className="label-caps">Booking link</label>
                         <div className="flex rounded-xl border border-[hsl(var(--input))] bg-[hsl(var(--surface-2))] shadow-sm focus-within:border-[hsl(var(--primary))] focus-within:ring-4 focus-within:ring-[hsl(var(--primary))]/15">
-                            <span className="flex items-center border-r border-[hsl(var(--border))]/70 px-3 text-sm text-[hsl(var(--muted-foreground))]">
+                            <span className="flex items-center border-r border-[hsl(var(--border))] px-3 text-sm text-[hsl(var(--muted-foreground))]">
                                 getsessionly.com/u/
                             </span>
                             <input
@@ -852,7 +852,7 @@ function SettingsPanel() {
                 <div
                     role="radiogroup"
                     aria-label="Theme"
-                    className="inline-flex rounded-xl border border-[hsl(var(--border))]/70 bg-[hsl(var(--surface-2))] p-1 gap-1"
+                    className="inline-flex rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--surface-2))] p-1 gap-1"
                 >
                     {THEME_OPTIONS.map(({ label, value, icon: Icon }) => {
                         const active = theme === value;
@@ -884,7 +884,7 @@ function SettingsPanel() {
                 <p className="mb-4 text-sm text-[hsl(var(--muted-foreground))]">
                     Choose what&apos;s on when you first join a call. You can always change this in the prejoin screen.
                 </p>
-                <div className="flex flex-col divide-y divide-[hsl(var(--border))]/50">
+                <div className="flex flex-col divide-y divide-[hsl(var(--border))]">
                     <div className="flex items-center justify-between py-3">
                         <div className="flex items-center gap-2.5">
                             <Mic className="size-4 text-[hsl(var(--muted-foreground))]" />

@@ -13,7 +13,8 @@ import { Input } from "@/src/components/ui/input";
 import { StandaloneHeader } from "@/src/components/ui/StandaloneHeader";
 import { useSlotHold } from "@/src/hooks/use-slot-hold";
 import { PoweredBy } from "@/src/components/ui/PoweredBy";
-import { initialsOf } from "@/src/lib/avatar";
+import { SmallCaps } from "@/src/components/ui/SmallCaps";
+import { Avatar } from "@/src/components/ui/Avatar";
 import { cn } from "@/src/lib/utils";
 import {
     PublicApiError,
@@ -36,6 +37,11 @@ export default function PublicEventPage({ params }: PageProps) {
     const [metaError, setMetaError] = useState<string | null>(null);
     const [slots, setSlots] = useState<string[] | null>(null);
     const [slotsStale, setSlotsStale] = useState(false);
+    // The times on this page are rendered in the VIEWER's timezone, so that is
+    // the one to name. Resolved after mount rather than during render: the
+    // server has no idea where the guest is, and rendering its own zone first
+    // would hydrate into a different string.
+    const [viewerTimezone, setViewerTimezone] = useState<string | null>(null);
     const [slotsError, setSlotsError] = useState<string | null>(null);
     const [slotsLoading, setSlotsLoading] = useState(true);
 
@@ -63,6 +69,16 @@ export default function PublicEventPage({ params }: PageProps) {
     const [submitting, setSubmitting] = useState(false);
     const [confirmed, setConfirmed] = useState(false);
     const [submitError, setSubmitError] = useState<string | null>(null);
+
+    useEffect(() => {
+        try {
+            setViewerTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone || null);
+        } catch {
+            // Some locked-down browsers throw here. Falling back to no label is
+            // better than naming the wrong zone on a booking page.
+            setViewerTimezone(null);
+        }
+    }, []);
 
     useEffect(() => {
         let cancelled = false;
@@ -248,23 +264,13 @@ export default function PublicEventPage({ params }: PageProps) {
                 */}
                 <header className="border-b border-[hsl(var(--border))] pb-7">
                     <div className="flex items-start gap-4">
-                        {meta.host.avatarUrl ? (
-                            <img
-                                src={meta.host.avatarUrl}
-                                alt={meta.host.name}
-                                className="size-16 shrink-0 rounded-full object-cover ring-1 ring-[hsl(var(--border))]"
-                            />
-                        ) : (
-                            <div className="font-display flex size-16 shrink-0 items-center justify-center rounded-full bg-[hsl(var(--secondary))] text-xl text-[hsl(var(--secondary-foreground))]">
-                                {initialsOf(meta.host.name)}
-                            </div>
-                        )}
+                        <Avatar name={meta.host.name} src={meta.host.avatarUrl} size="lg" />
                         <div className="min-w-0 pt-0.5">
                             <Link
                                 href={`/u/${meta.host.slug}`}
-                                className="text-[0.6875rem] font-medium uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))] transition-colors hover:text-[hsl(var(--primary))]"
+                                className="transition-colors hover:text-[hsl(var(--primary))]"
                             >
-                                {meta.host.name}
+                                <SmallCaps className="text-inherit">{meta.host.name}</SmallCaps>
                             </Link>
                             {/* The session title is the headline of this page. It is what
                                 the guest is deciding about, so it gets display type
@@ -278,7 +284,16 @@ export default function PublicEventPage({ params }: PageProps) {
                                     {meta.event.durationMin} min video call
                                 </span>
                                 <span aria-hidden className="text-[hsl(var(--border))]">/</span>
-                                <span>{meta.host.timezone.replace(/_/g, " ")}</span>
+                                {/* The viewer's zone, not the host's. Every time
+                                    on this page is rendered in the guest's
+                                    locale, so naming the host's zone here (as
+                                    this did) put "Asia/Kolkata" above times in
+                                    London and gave the guest no way to tell. */}
+                                <span>
+                                    {viewerTimezone
+                                        ? `Times in ${viewerTimezone.replace(/_/g, " ")}`
+                                        : "Times in your local timezone"}
+                                </span>
                             </div>
                             {meta.event.description && (
                                 <p className="mt-3 max-w-prose text-[0.9375rem] leading-relaxed text-[hsl(var(--muted-foreground))]">
@@ -299,16 +314,24 @@ export default function PublicEventPage({ params }: PageProps) {
                           inflate to ~85px squares on a wide screen — accurate
                           to the grid but unusable.
                         */}
+                            {/* The host connected a calendar but we could not
+                                read it, so a listed time may already be taken.
+                                Better to say so than to let the guest find out
+                                when the host cancels. */}
+                            {slotsStale && !slotsError && (
+                                <InlineNotice tone="warning" className="mb-5 text-xs">
+                                    These times couldn&apos;t be checked against {meta.host.name}&apos;s
+                                    calendar just now, so one may already be taken. You&apos;ll get an email
+                                    either way.
+                                </InlineNotice>
+                            )}
                         <div className="lg:grid lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-6">
                             <div>
                                 <div className="mb-4 flex items-center justify-between">
                                     <div>
-                                        <h2 className="text-lg font-bold tracking-tight text-[hsl(var(--foreground))]">
+                                        <h2 className="text-[0.9375rem] font-semibold tracking-tight text-[hsl(var(--foreground))]">
                                             {monthAnchor.toLocaleDateString(undefined, { month: "long", year: "numeric" })}
                                         </h2>
-                                        <p className="mt-0.5 text-[11px] text-[hsl(var(--muted-foreground))]">
-                                            Times shown in your timezone
-                                        </p>
                                     </div>
                                     <div className="flex gap-0.5">
                                         <Button
@@ -331,17 +354,6 @@ export default function PublicEventPage({ params }: PageProps) {
                                     </div>
                                 </div>
 
-                                {/* The host connected a calendar but we could not
-                                    read it, so a listed time may already be taken.
-                                    Better to say so than to let the guest find out
-                                    when the host cancels. */}
-                                {slotsStale && !slotsError && (
-                                    <InlineNotice tone="warning" className="mb-3 text-xs">
-                                        These times couldn&apos;t be checked against {meta.host.name}&apos;s
-                                        calendar just now, so one may already be taken. You&apos;ll get an email
-                                        either way.
-                                    </InlineNotice>
-                                )}
 
                                 {slotsError ? (
                                     <div className="py-6 text-center text-sm text-[hsl(var(--destructive))]">
@@ -361,9 +373,19 @@ export default function PublicEventPage({ params }: PageProps) {
                                               readable.
                                             */}
                                             {["M","T","W","T","F","S","S"].map((d, i) => (
-                                                <div key={i} className="py-1 text-center text-[10px] font-semibold uppercase tracking-wider text-[hsl(var(--muted-foreground))]">
+                                                <SmallCaps
+                                                    key={i}
+                                                    size="xs"
+                                                    as="div"
+                                                    className={cn(
+                                                        "py-1 text-center",
+                                                        // Weekends are dimmer so a greyed-out 5th and 6th
+                                                        // read as "the weekend" rather than "unexplained".
+                                                        i >= 5 && "text-[hsl(var(--muted-foreground))]/50",
+                                                    )}
+                                                >
                                                     {d}
-                                                </div>
+                                                </SmallCaps>
                                             ))}
                                         </div>
                                         <div className="grid grid-cols-7 gap-0.5">
@@ -421,32 +443,35 @@ export default function PublicEventPage({ params }: PageProps) {
                             {/*
                               Slot column. On lg+ this sits to the right of the
                               calendar with a vertical divider; below lg it
-                              stacks under with a horizontal divider. Rendered
-                              as a vertical list at lg because the column is
-                              narrow; below lg it's a 3- or 4-col grid that
-                              fills the available width.
+                              stacks under with a horizontal divider. Always a
+                              grid: three columns in the narrow lg sidebar,
+                              four when it stacks full width.
                             */}
                             {selectedDate && selectedDaySlots.length > 0 && (
-                                <div className="mt-5 border-t border-[hsl(var(--border))]/60 pt-4 lg:mt-0 lg:max-h-[420px] lg:overflow-y-auto lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+                                <div className="mt-5 border-t border-[hsl(var(--border))] pt-4 lg:mt-0 lg:max-h-none lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
                                     <div className="mb-3 flex items-center justify-between">
-                                        <p className="font-display text-lg text-[hsl(var(--foreground))]">
+                                        <h2 className="text-[0.9375rem] font-semibold tracking-tight text-[hsl(var(--foreground))]">
                                             {selectedDate.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
-                                        </p>
-                                        <span className="text-xs uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">
-                                            {selectedDaySlots.length} open
-                                        </span>
+                                        </h2>
+                                        <SmallCaps size="xs">
+                                            {selectedDaySlots.length} {selectedDaySlots.length === 1 ? "time" : "times"}
+                                        </SmallCaps>
                                     </div>
-                                    <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-5 lg:grid-cols-4">
+                                    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-3">
                                         {selectedDaySlots.map((iso) => (
                                             <button
                                                 key={iso}
                                                 type="button"
                                                 onClick={() => { void selectSlot(iso); }}
                                                 className={cn(
-                                                    "press w-full cursor-pointer px-1 py-3 text-[0.8125rem] font-medium tabular-nums tracking-tight",
+                                                    "press w-full cursor-pointer rounded-lg px-1 py-3 text-[0.8125rem] font-medium tabular-nums tracking-tight transition-colors",
+                                                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]/60",
                                                     selectedSlot === iso
                                                         ? "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]"
-                                                        : "border border-[hsl(var(--border))] bg-[hsl(var(--surface))] text-[hsl(var(--foreground))] hover:border-[hsl(var(--primary))] hover:text-[hsl(var(--primary))]",
+                                                        // These are the page's primary action and used to be
+                                                        // white on cream behind a near-invisible hairline,
+                                                        // which made them the lowest-contrast thing here.
+                                                        : "border border-[hsl(var(--border-strong))] bg-[hsl(var(--surface))] text-[hsl(var(--foreground))] hover:border-[hsl(var(--primary))] hover:bg-[hsl(var(--primary)/0.06)] hover:text-[hsl(var(--primary))]",
                                                 )}
                                             >
                                                 {new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true })}

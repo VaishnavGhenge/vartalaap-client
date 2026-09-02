@@ -55,7 +55,12 @@
         --destructive: 6 61% 44%;
         --destructive-foreground: 0 0% 100%;
 
-        --border: 36 26% 85%;
+        /* Hairlines were 1.28:1 against the page, which is invisible on any
+           display that is not a good one. Raised so structure survives a cheap
+           panel, and paired with --border-strong for edges that carry meaning
+           (inputs, controls, selectable cards) where WCAG wants 3:1. */
+        --border: 36 20% 76%;
+        --border-strong: 36 18% 50%;
         --input: 36 26% 85%;
         --ring: 16 64% 43%;
 
@@ -81,10 +86,10 @@
         --background: 30 21% 7%;    /* #17130F */
         --foreground: 35 32% 93%;   /* #F2EDE6 */
 
-        --card: 27 17% 10%;
+        --card: 27 17% 11%;
         --card-foreground: 35 32% 93%;
 
-        --popover: 27 17% 10%;
+        --popover: 27 17% 11%;
         --popover-foreground: 35 32% 93%;
 
         --primary: 18 71% 58%;      /* #E0764A, lifted for contrast on black */
@@ -99,18 +104,19 @@
         --accent: 39 41% 16%;
         --accent-foreground: 40 74% 80%;
 
-        --destructive: 7 62% 54%;
+        --destructive: 7 62% 59%;
         --destructive-foreground: 0 0% 100%;
 
-        --border: 32 20% 17%;
-        --input: 32 20% 17%;
+        --border: 32 16% 27%;
+        --border-strong: 32 16% 41%;
+        --input: 32 16% 41%;
         --ring: 18 71% 58%;
 
-        --surface: 27 17% 10%;
-        --surface-2: 34 22% 13%;
-        --surface-3: 32 20% 17%;
+        --surface: 27 17% 11%;
+        --surface-2: 34 20% 15%;
+        --surface-3: 32 18% 20%;
         --hero-from: 30 21% 7%;
-        --hero-via: 27 17% 10%;
+        --hero-via: 27 17% 11%;
         --hero-to: 30 21% 7%;
         --brand-soft: 19 41% 26%;
         --brand-glow: 36 60% 50%;

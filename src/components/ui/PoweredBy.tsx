@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { cn } from "@/src/lib/utils";
+import { SmallCaps } from "@/src/components/ui/SmallCaps";
 
 interface Props {
     className?: string;
@@ -15,11 +16,11 @@ export function PoweredBy({ className }: Props) {
         <Link
             href="/"
             className={cn(
-                "mt-8 text-[10px] font-medium uppercase tracking-wider text-[hsl(var(--muted-foreground))]/60 hover:text-[hsl(var(--muted-foreground))]",
+                "mt-8 text-[hsl(var(--muted-foreground))]/60 transition-colors hover:text-[hsl(var(--muted-foreground))]",
                 className,
             )}
         >
-            Powered by Sessionly
+            <SmallCaps size="xs" className="text-inherit">Powered by Sessionly</SmallCaps>
         </Link>
     );
 }

@@ -84,7 +84,7 @@ export function ConfirmDialog({
                 onClick={() => onOpenChange(false)}
                 className="absolute inset-0 cursor-default bg-[hsl(var(--background))]/70 backdrop-blur-sm disabled:pointer-events-none"
             />
-            <div className="app-panel no-lift relative w-full max-w-sm rounded-2xl border border-[hsl(var(--border))]/80 p-4 shadow-2xl">
+            <div className="app-panel no-lift relative w-full max-w-sm rounded-2xl border border-[hsl(var(--border))] p-4 shadow-2xl">
                 <div className="flex items-start gap-3">
                     <span
                         className={cn(
@@ -138,7 +138,7 @@ export function ConfirmDialog({
                             disabled={pending}
                             maxLength={500}
                             rows={3}
-                            className="mt-1 w-full resize-none rounded-xl border border-[hsl(var(--border))]/80 bg-[hsl(var(--surface-2))] px-3 py-2 text-sm text-[hsl(var(--foreground))] outline-none transition-colors placeholder:text-[hsl(var(--muted-foreground))] focus:border-[hsl(var(--primary))]/70 focus:ring-2 focus:ring-[hsl(var(--primary))]/15 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="mt-1 w-full resize-none rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--surface-2))] px-3 py-2 text-sm text-[hsl(var(--foreground))] outline-none transition-colors placeholder:text-[hsl(var(--muted-foreground))] focus:border-[hsl(var(--primary))]/70 focus:ring-2 focus:ring-[hsl(var(--primary))]/15 disabled:cursor-not-allowed disabled:opacity-60"
                         />
                     </div>
                 )}

@@ -4,7 +4,8 @@ import { Mic, MicOff, Pin, PinOff, WifiOff, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { AudioStream, VideoStream } from "@/src/components/ui/Video";
 import { useAudioLevel } from "@/src/hooks/use-audio-level";
-import { avatarColor, initialsOf } from "@/src/lib/avatar";
+import { Avatar } from "@/src/components/ui/Avatar";
+import { initialsOf } from "@/src/lib/avatar";
 import type { PeerStats } from "@/src/stores/peer";
 import { QUALITY_LABEL, QualityDot } from "@/src/components/ui/QualityDot";
 
@@ -82,8 +83,6 @@ export const VideoTile = ({
     }, [isLocal, participant?.speaking]);
     const speaking = speakingProp !== undefined ? speakingProp : (isLocal ? localSpeaking : remoteSpeaking);
 
-    const color = avatarColor(name);
-    const initials = initialsOf(name);
 
     return (
         <div
@@ -93,7 +92,7 @@ export const VideoTile = ({
                          transition-[border-color,box-shadow] duration-150
                          ${speaking
                              ? 'border-2 border-white/70 shadow-[0_0_0_2px_hsl(var(--primary)/0.5)]'
-                             : 'border border-[hsl(var(--border))]/50'
+                             : 'border border-[hsl(var(--border))]'
                          }
                          ${isPinned && !speaking ? 'ring-2 ring-[hsl(var(--primary))]/60' : ''}`}
         >
@@ -103,21 +102,18 @@ export const VideoTile = ({
                 <div aria-hidden="true" className="absolute inset-0 flex items-center justify-center">
                     {compact ? (
                         // Fixed 32 px circle for thumbnail strip tiles
-                        <div className={`flex items-center justify-center rounded-full ${color} text-white font-semibold text-xs`}
-                             style={{ width: 32, height: 32 }}>
-                            {initials}
-                        </div>
+                        <Avatar name={name} style={{ width: 32, height: 32, fontSize: 12 }} />
                     ) : (
-                        <div className={`flex items-center justify-center rounded-full ${color} text-white font-semibold`}
-                             style={{
-                                 width: '22%',
-                                 aspectRatio: '1/1',
-                                 minWidth: 44, minHeight: 44,
-                                 maxWidth: 108, maxHeight: 108,
-                                 fontSize: 'clamp(16px, 3.8vw, 38px)',
-                             }}>
-                            {initials}
-                        </div>
+                        <Avatar
+                            name={name}
+                            style={{
+                                width: '22%',
+                                aspectRatio: '1/1',
+                                minWidth: 44, minHeight: 44,
+                                maxWidth: 108, maxHeight: 108,
+                                fontSize: 'clamp(16px, 3.8vw, 38px)',
+                            }}
+                        />
                     )}
                 </div>
             )}
@@ -239,7 +235,7 @@ export const VideoTile = ({
                     </span>
                 )}
                 {compact
-                    ? <span>{initials}</span>
+                    ? <span>{initialsOf(name)}</span>
                     : <span className="truncate min-w-0">{isScreenSharing ? `${label} • Screen` : label}</span>
                 }
             </div>

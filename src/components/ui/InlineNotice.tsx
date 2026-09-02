@@ -12,7 +12,7 @@ const TONE_STYLES: Record<Tone, {
     title: string;
 }> = {
     info: {
-        container: "border-[hsl(var(--border))]/70 bg-[hsl(var(--surface-2))]/70",
+        container: "border-[hsl(var(--border))] bg-[hsl(var(--surface-2))]/70",
         iconWrap: "bg-[hsl(var(--primary))]/10",
         icon: "text-[hsl(var(--primary))]",
         title: "text-[hsl(var(--foreground))]",

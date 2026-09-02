@@ -21,13 +21,13 @@ import { usePeerStore } from "@/src/stores/peer";
 import { useHasMultipleCameras } from "@/src/hooks/use-has-multiple-cameras";
 import { useMeetStore } from "@/src/stores/meet";
 import { useJoinMeetStore } from "@/src/stores/joinMeet";
-import { avatarColor, initialsOf } from "@/src/lib/avatar";
 import { useAudioLevel } from "@/src/hooks/use-audio-level";
 import { useMediaDevices } from "@/src/hooks/use-media-devices";
 import { supportsAudioOutputSelection } from "@/src/lib/audio-context";
 import { MicLevelMeter } from "@/src/components/ui/MicLevelMeter";
 import { DeviceSelect } from "@/src/components/ui/DeviceSelect";
 import { Collapsible } from "@/src/components/ui/Collapsible";
+import { Avatar } from "@/src/components/ui/Avatar";
 import { callDefaults } from "@/src/lib/call-defaults";
 
 const meetCodePattern = /^[a-z2-9]{3}-[a-z2-9]{4}-[a-z2-9]{3}$/;
@@ -177,8 +177,6 @@ export default function JoinMeet() {
     };
 
     const previewName = joinName || 'You';
-    const avatarBg = avatarColor(previewName);
-    const initials = initialsOf(previewName);
 
     return (
         <main className="relative flex flex-1 overflow-y-auto">
@@ -205,17 +203,16 @@ export default function JoinMeet() {
                             {isVideoOff && (
                                 <div className="absolute inset-0 flex items-center justify-center
                                                 bg-[linear-gradient(160deg,hsl(var(--surface-2)),hsl(var(--surface-3)))]">
-                                    <div className={`flex items-center justify-center rounded-full
-                                                     ${avatarBg} text-white font-semibold`}
-                                         style={{
-                                             width: '22%',
-                                             aspectRatio: '1/1',
-                                             minWidth: 64, minHeight: 64,
-                                             maxWidth: 120, maxHeight: 120,
-                                             fontSize: 'clamp(20px, 4.5vw, 44px)',
-                                         }}>
-                                        {initials}
-                                    </div>
+                                    <Avatar
+                                        name={previewName}
+                                        style={{
+                                            width: '22%',
+                                            aspectRatio: '1/1',
+                                            minWidth: 64, minHeight: 64,
+                                            maxWidth: 120, maxHeight: 120,
+                                            fontSize: 'clamp(20px, 4.5vw, 44px)',
+                                        }}
+                                    />
                                 </div>
                             )}
 
@@ -340,17 +337,15 @@ export default function JoinMeet() {
                             ) : (
                                 <div className="mt-4 flex flex-col gap-3">
                                     {authLoading ? (
-                                        <p className="rounded-xl border border-[hsl(var(--border))]/70 bg-[hsl(var(--surface-2))] px-3 py-2.5 text-sm text-[hsl(var(--muted-foreground))]">
+                                        <p className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--surface-2))] px-3 py-2.5 text-sm text-[hsl(var(--muted-foreground))]">
                                             Preparing your session…
                                         </p>
                                     ) : isAuthenticated && user ? (
-                                        <div className="flex items-center gap-3 rounded-xl border border-[hsl(var(--border))]/70 bg-[hsl(var(--surface-2))] px-3 py-2.5">
+                                        <div className="flex items-center gap-3 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--surface-2))] px-3 py-2.5">
                                             {user.avatarUrl ? (
                                                 <img src={user.avatarUrl} alt={joinName} className="size-8 rounded-full object-cover" />
                                             ) : (
-                                                <span className={`flex size-8 items-center justify-center rounded-full ${avatarColor(joinName)} text-xs font-semibold text-white`}>
-                                                    {initialsOf(joinName)}
-                                                </span>
+                                                <Avatar name={joinName} size="xs" />
                                             )}
                                             <div className="min-w-0">
                                                 <p className="truncate text-sm font-medium text-[hsl(var(--foreground))]">{joinName}</p>
@@ -401,7 +396,7 @@ function SessionExpiredCard({ meetCode, onContinueAsGuest }: {
 }) {
     return (
         <div className="mt-4 flex flex-col gap-3">
-            <div className="rounded-xl border border-[hsl(var(--border))]/70 bg-[hsl(var(--surface-2))] p-4">
+            <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--surface-2))] p-4">
                 <div className="flex items-start gap-3">
                     <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--surface-3))] text-[hsl(var(--muted-foreground))]">
                         <LogIn className="size-4" />
@@ -440,7 +435,7 @@ function RoomStatusCard({ status }: { status: RoomStatusResult }) {
         : "Check the meeting link or ask the host for a new one.");
 
     return (
-        <div className="mt-4 rounded-xl border border-[hsl(var(--border))]/70 bg-[hsl(var(--surface-2))] p-4">
+        <div className="mt-4 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--surface-2))] p-4">
             <div className="flex items-start gap-3">
                 <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--surface-3))] text-[hsl(var(--muted-foreground))]">
                     <Icon className="size-4" />

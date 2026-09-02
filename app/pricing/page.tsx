@@ -218,7 +218,7 @@ export default function PricingPage() {
                                 </thead>
                                 <tbody>
                                     {TABLE.map(([label, free, solo, teams]) => (
-                                        <tr key={label} className="border-b border-[hsl(var(--border))]/50 last:border-0">
+                                        <tr key={label} className="border-b border-[hsl(var(--border))] last:border-0">
                                             <td className="py-3.5 pl-7 pr-4 text-sm text-[hsl(var(--foreground))]">{label}</td>
                                             <td className="py-3.5 px-4 text-center text-sm text-[hsl(var(--muted-foreground))]">
                                                 <Cell v={free} />
@@ -255,7 +255,7 @@ export default function PricingPage() {
                 </section>
 
                 {/* ── Bottom CTA ───────────────────────────────────── */}
-                <section className="relative overflow-hidden border-t border-[hsl(var(--border))]/60 px-6 py-24 text-center">
+                <section className="relative overflow-hidden border-t border-[hsl(var(--border))] px-6 py-24 text-center">
                     <div
                         className="pointer-events-none absolute inset-0 -z-10"
                         style={{

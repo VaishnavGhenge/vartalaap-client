@@ -86,7 +86,7 @@ export function SetupChecklist({ state }: Props) {
                         className={cn(
                             "flex items-center justify-between gap-3 rounded-xl border px-4 py-3",
                             done
-                                ? "border-[hsl(var(--border))]/60 bg-[hsl(var(--surface-2))]"
+                                ? "border-[hsl(var(--border))] bg-[hsl(var(--surface-2))]"
                                 : "border-[hsl(var(--primary))]/30 bg-[hsl(var(--primary))]/5",
                         )}
                     >

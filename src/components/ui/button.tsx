@@ -18,7 +18,7 @@ const buttonVariants = cva(
         primary:
           "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] shadow-sm hover:brightness-110",
         secondary:
-          "bg-[hsl(var(--surface-2))] text-[hsl(var(--foreground))] border border-[hsl(var(--border))]/70 hover:bg-[hsl(var(--surface-3))]",
+          "bg-[hsl(var(--surface-2))] text-[hsl(var(--foreground))] border border-[hsl(var(--border))] hover:bg-[hsl(var(--surface-3))]",
         outline:
           "border border-[hsl(var(--border))] bg-transparent text-[hsl(var(--foreground))] hover:bg-[hsl(var(--surface-2))]",
         destructive:

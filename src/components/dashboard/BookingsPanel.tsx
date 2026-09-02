@@ -253,12 +253,12 @@ function BookingRow({ b, nowMs, tab, onCancel }: {
         <div className={cn(
             "relative flex items-center gap-4 overflow-hidden rounded-xl border px-4 py-3 transition-colors",
             isCancelled
-                ? "border-[hsl(var(--border))]/60 bg-[hsl(var(--surface-2))]/60 opacity-70"
+                ? "border-[hsl(var(--border))] bg-[hsl(var(--surface-2))]/60 opacity-70"
                 : isLive
                 ? "border-emerald-500/30 bg-emerald-500/5"
                 : isImminent
                 ? "border-[hsl(var(--primary))]/30 bg-[hsl(var(--primary))]/5"
-                : "border-[hsl(var(--border))]/70 bg-[hsl(var(--surface-2))]",
+                : "border-[hsl(var(--border))] bg-[hsl(var(--surface-2))]",
         )}>
             <span className={cn(
                 "absolute inset-y-0 left-0 w-[3px]",
@@ -287,7 +287,7 @@ function BookingRow({ b, nowMs, tab, onCancel }: {
                 )}
             </div>
 
-            <div className="h-8 w-px shrink-0 bg-[hsl(var(--border))]/60" />
+            <div className="h-8 w-px shrink-0 bg-[hsl(var(--border))]" />
 
             {/* Info */}
             <div className="min-w-0 flex-1">
@@ -357,7 +357,7 @@ function EmptyState({ tab }: { tab: TabKey }) {
     };
     const { icon: Icon, message } = copy[tab];
     return (
-        <div className="rounded-xl border border-dashed border-[hsl(var(--border))]/70 bg-[hsl(var(--surface-2))] px-4 py-8 text-center">
+        <div className="rounded-xl border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--surface-2))] px-4 py-8 text-center">
             <Icon className="mx-auto mb-2 size-5 text-[hsl(var(--muted-foreground))]" />
             <p className="text-sm text-[hsl(var(--muted-foreground))]">{message}</p>
         </div>

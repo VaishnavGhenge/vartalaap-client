@@ -62,7 +62,7 @@ export function UpcomingBookings({ refreshKey }: Props) {
 
     if (upcoming.length === 0) {
         return (
-            <div className="rounded-xl border border-dashed border-[hsl(var(--border))]/70 bg-[hsl(var(--surface-2))] px-4 py-6 text-center">
+            <div className="rounded-xl border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--surface-2))] px-4 py-6 text-center">
                 <Calendar className="mx-auto mb-2 size-5 text-[hsl(var(--muted-foreground))]" />
                 <p className="text-sm text-[hsl(var(--muted-foreground))]">No upcoming bookings yet.</p>
             </div>
@@ -119,7 +119,7 @@ export function UpcomingBookings({ refreshKey }: Props) {
                                         ? "border-emerald-500/30 bg-emerald-500/5"
                                         : imminent
                                         ? "border-[hsl(var(--primary))]/30 bg-[hsl(var(--primary))]/5"
-                                        : "border-[hsl(var(--border))]/70 bg-[hsl(var(--surface-2))]",
+                                        : "border-[hsl(var(--border))] bg-[hsl(var(--surface-2))]",
                                 )}
                             >
                                 <span className={cn(
@@ -148,7 +148,7 @@ export function UpcomingBookings({ refreshKey }: Props) {
                                     ) : null}
                                 </div>
 
-                                <div className="h-8 w-px shrink-0 bg-[hsl(var(--border))]/60" />
+                                <div className="h-8 w-px shrink-0 bg-[hsl(var(--border))]" />
 
                                 {/* Info */}
                                 <div className="min-w-0 flex-1">

@@ -33,7 +33,7 @@ export function LandingHeader() {
 
     return (
         <header className="sticky top-0 z-50 w-full px-3 pt-3">
-            <div className="mx-auto flex h-14 max-w-6xl items-center justify-between rounded-2xl border border-[hsl(var(--border))]/70 bg-[hsl(var(--background))]/82 px-4 shadow-xl backdrop-blur-xl
+            <div className="mx-auto flex h-14 max-w-6xl items-center justify-between rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--background))]/82 px-4 shadow-xl backdrop-blur-xl
                             md:grid md:grid-cols-[1fr_auto_1fr]">
 
                 <Link href="/" className="flex items-center select-none" onClick={() => setOpen(false)}>
@@ -112,7 +112,7 @@ export function LandingHeader() {
                 />
                 {/* Panel */}
                 <div
-                    className={`relative mx-3 mt-1 rounded-2xl border border-[hsl(var(--border))]/70
+                    className={`relative mx-3 mt-1 rounded-2xl border border-[hsl(var(--border))]
                                bg-[hsl(var(--background))]/95 shadow-2xl backdrop-blur-xl
                                transition-transform duration-200 ease-out
                                ${open ? "translate-y-0" : "-translate-y-3"}`}
@@ -131,7 +131,7 @@ export function LandingHeader() {
                             </Link>
                         ))}
                     </nav>
-                    <div className="border-t border-[hsl(var(--border))]/60 p-3 flex flex-col gap-2">
+                    <div className="border-t border-[hsl(var(--border))] p-3 flex flex-col gap-2">
                         {isAuthenticated ? (
                             <Button size="lg" className="w-full text-base font-semibold" asChild>
                                 <Link href="/dashboard" onClick={() => setOpen(false)}>Dashboard</Link>

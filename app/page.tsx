@@ -2,11 +2,11 @@
 
 import { Button } from "@/src/components/ui/button";
 import Link from "next/link";
-import { avatarColor, initialsOf } from "@/src/lib/avatar";
 import { Check, ArrowRight, Video, CreditCard, CalendarCheck, Link2, Mic, PhoneOff } from "lucide-react";
 import { Eyebrow } from "@/src/components/ui/Eyebrow";
 import { LandingHeader } from "@/src/components/ui/LandingHeader";
 import { SiteFooter } from "@/src/components/ui/SiteFooter";
+import { Avatar } from "@/src/components/ui/Avatar";
 
 // ─── Booking mockup ───────────────────────────────────────────────────────────
 
@@ -94,7 +94,7 @@ function BookingMockup() {
                         {MOCK_SLOTS.map(({ time, active, muted }) => (
                             <span key={time} className={`text-center text-[11px] py-2 rounded-lg border font-medium ${
                                 active ? "border-transparent bg-[hsl(var(--primary))] text-white shadow-[0_4px_12px_-3px_hsl(var(--primary)/0.45)]"
-                                : muted ? "border-[hsl(var(--border))]/60 text-[hsl(var(--muted-foreground))]/45"
+                                : muted ? "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))]/45"
                                 : "border-[hsl(var(--border))] bg-transparent text-[hsl(var(--foreground))]"
                             }`}>{time}</span>
                         ))}
@@ -114,7 +114,7 @@ function BookingMockup() {
 function VideoRoomMockup() {
     return (
         <div className="relative w-full rounded-xl overflow-hidden border border-[hsl(var(--border))] bg-[hsl(var(--background))] shadow-xl" aria-hidden="true">
-            <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-[hsl(var(--border))]/60 bg-[hsl(var(--surface-2))]/60 sm:px-4">
+            <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-[hsl(var(--border))] bg-[hsl(var(--surface-2))]/60 sm:px-4">
                 <span className="truncate text-[10px] sm:text-[11px] text-[hsl(var(--muted-foreground))] font-medium">getsessionly.com/room/abc-defg</span>
                 <span className="flex shrink-0 items-center gap-1.5 text-[10px] sm:text-[11px] font-medium text-emerald-500">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -144,7 +144,7 @@ function VideoRoomMockup() {
                     </div>
                 </div>
             </div>
-            <div className="flex items-center justify-center gap-2 px-4 py-3 border-t border-[hsl(var(--border))]/60 bg-[hsl(var(--surface-2))]/40">
+            <div className="flex items-center justify-center gap-2 px-4 py-3 border-t border-[hsl(var(--border))] bg-[hsl(var(--surface-2))]/40">
                 <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[hsl(var(--surface-3))] text-[hsl(var(--foreground))]">
                     <Mic className="size-4" />
                 </div>
@@ -248,7 +248,7 @@ function LandingPage() {
             </section>
 
             {/* ── Social proof ─────────────────────────────────────────────── */}
-            <section className="border-t border-[hsl(var(--border))]/60 px-5 py-12 sm:px-6 sm:py-16">
+            <section className="border-t border-[hsl(var(--border))] px-5 py-12 sm:px-6 sm:py-16">
                 <div className="mx-auto max-w-5xl">
                     {/* Rules, not cards. Three bordered boxes in a row is the default
                         testimonial block everywhere; dividers let the quotes read as
@@ -260,12 +260,7 @@ function LandingPage() {
                                     &ldquo;{quote}&rdquo;
                                 </p>
                                 <div className="flex items-center gap-2.5">
-                                    <div
-                                        aria-label={name}
-                                        className={`h-9 w-9 rounded-full shrink-0 flex items-center justify-center text-xs font-semibold text-white ${avatarColor(name)}`}
-                                    >
-                                        {initialsOf(name)}
-                                    </div>
+                                    <Avatar name={name} size="sm" />
                                     <div>
                                         <p className="text-sm font-semibold text-[hsl(var(--foreground))] leading-tight">{name}</p>
                                         <p className="text-xs text-[hsl(var(--muted-foreground))]">{role}</p>
@@ -278,7 +273,7 @@ function LandingPage() {
             </section>
 
             {/* ── Features bento ───────────────────────────────────────────── */}
-            <section id="features" className="border-t border-[hsl(var(--border))]/60 px-5 py-16 sm:px-6 sm:py-24 lg:py-28">
+            <section id="features" className="border-t border-[hsl(var(--border))] px-5 py-16 sm:px-6 sm:py-24 lg:py-28">
                 <div className="mx-auto max-w-5xl">
                     <div className="mb-10 sm:mb-12">
                         <Eyebrow index={1}>What you get</Eyebrow>
@@ -353,7 +348,7 @@ function LandingPage() {
             </section>
 
             {/* ── How it works ─────────────────────────────────────────────── */}
-            <section id="how-it-works" className="border-t border-[hsl(var(--border))]/60 px-5 py-16 sm:px-6 sm:py-24 lg:py-28">
+            <section id="how-it-works" className="border-t border-[hsl(var(--border))] px-5 py-16 sm:px-6 sm:py-24 lg:py-28">
                 <div className="mx-auto max-w-4xl">
                     <div className="text-center mb-10 sm:mb-14">
                         <Eyebrow index={2}>Simple by design</Eyebrow>
@@ -378,7 +373,7 @@ function LandingPage() {
             </section>
 
             {/* ── Pricing preview ───────────────────────────────────────────── */}
-            <section className="border-t border-[hsl(var(--border))]/60 px-5 py-16 sm:px-6 sm:py-24 lg:py-28">
+            <section className="border-t border-[hsl(var(--border))] px-5 py-16 sm:px-6 sm:py-24 lg:py-28">
                 <div className="mx-auto max-w-5xl">
                     <div className="mb-10 sm:mb-12">
                         <Eyebrow index={3}>Pricing</Eyebrow>
@@ -453,7 +448,7 @@ function LandingPage() {
             </section>
 
             {/* ── Footer CTA ────────────────────────────────────────────────── */}
-            <section className="border-t border-[hsl(var(--border))]/60 px-5 py-16 sm:px-6 sm:py-24 text-center relative overflow-hidden">
+            <section className="border-t border-[hsl(var(--border))] px-5 py-16 sm:px-6 sm:py-24 text-center relative overflow-hidden">
                 <div
                     className="pointer-events-none absolute inset-0 -z-10"
                     style={{ backgroundImage: "repeating-linear-gradient(0deg, hsl(var(--foreground) / 0.02) 0px, hsl(var(--foreground) / 0.02) 1px, transparent 1px, transparent 4px)" }}

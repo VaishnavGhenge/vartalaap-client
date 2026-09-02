@@ -228,7 +228,7 @@ export function AvailabilityEditor({ timezone, onSaved }: Props) {
                 <p className="text-xs text-[hsl(var(--muted-foreground))]">
                     Recurring weekly template. All times in {timezone.replace(/_/g, " ")}.
                 </p>
-                <div className="flex items-center rounded-lg border border-[hsl(var(--border))]/60 bg-[hsl(var(--surface-2))] p-0.5">
+                <div className="flex items-center rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--surface-2))] p-0.5">
                     {(["chart", "manual"] as EditorMode[]).map((m) => (
                         <button
                             key={m}
@@ -301,7 +301,7 @@ export function AvailabilityEditor({ timezone, onSaved }: Props) {
                                     <div className="relative flex-1">
                                         {hoveredSlot?.dayIdx === dayIdx && (
                                             <div
-                                                className="pointer-events-none absolute -top-7 z-20 -translate-x-1/2 whitespace-nowrap rounded-md border border-[hsl(var(--border))]/60 bg-[hsl(var(--surface))] px-2 py-0.5 text-[11px] font-medium text-[hsl(var(--foreground))] shadow-sm"
+                                                className="pointer-events-none absolute -top-7 z-20 -translate-x-1/2 whitespace-nowrap rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--surface))] px-2 py-0.5 text-[11px] font-medium text-[hsl(var(--foreground))] shadow-sm"
                                                 style={{ left: `${((hoveredSlot.slotIdx + 0.5) / SLOTS_PER_DAY) * 100}%` }}
                                             >
                                                 {slotLabel(hoveredSlot.slotIdx)}–{slotLabel(hoveredSlot.slotIdx + 1)}
@@ -313,8 +313,8 @@ export function AvailabilityEditor({ timezone, onSaved }: Props) {
                                             className={cn(
                                                 "relative overflow-hidden rounded-xl ring-1 transition-colors",
                                                 enabled
-                                                    ? "bg-[hsl(var(--surface-2))] ring-[hsl(var(--border))]/60"
-                                                    : "bg-[hsl(var(--surface-2))]/40 ring-[hsl(var(--border))]/30",
+                                                    ? "bg-[hsl(var(--surface-2))] ring-[hsl(var(--border))]"
+                                                    : "bg-[hsl(var(--surface-2))]/40 ring-[hsl(var(--border))]",
                                             )}
                                             style={{ height: 40 }}
                                         >
@@ -412,7 +412,7 @@ export function AvailabilityEditor({ timezone, onSaved }: Props) {
 
             {/* ── Manual mode ── */}
             {mode === "manual" && (
-                <div className="flex flex-col divide-y divide-[hsl(var(--border))]/40">
+                <div className="flex flex-col divide-y divide-[hsl(var(--border))]">
                     {DAYS.map((day) => {
                         const cfg = days[day];
                         const enabled = cfg.enabled;
@@ -530,7 +530,7 @@ export function AvailabilityEditor({ timezone, onSaved }: Props) {
             )}
 
             {/* ── Footer ── */}
-            <div className="mt-5 flex items-center justify-between gap-3 border-t border-[hsl(var(--border))]/40 pt-4">
+            <div className="mt-5 flex items-center justify-between gap-3 border-t border-[hsl(var(--border))] pt-4">
                 <div className="min-w-0 text-xs">
                     {error ? (
                         <span className="text-[hsl(var(--destructive))]">{error}</span>

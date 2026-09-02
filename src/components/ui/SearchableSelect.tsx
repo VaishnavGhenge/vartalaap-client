@@ -181,11 +181,11 @@ export function SearchableSelect({
             {/* Dropdown */}
             {open && (
                 <div
-                    className="absolute left-0 right-0 top-[calc(100%+6px)] z-50 overflow-hidden rounded-xl border border-[hsl(var(--border))]/80 bg-[hsl(var(--popover))] shadow-xl"
+                    className="absolute left-0 right-0 top-[calc(100%+6px)] z-50 overflow-hidden rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--popover))] shadow-xl"
                     onKeyDown={handleDropdownKeyDown}
                 >
                     {showSearch && (
-                        <div className="flex items-center gap-2 border-b border-[hsl(var(--border))]/60 px-3 py-2">
+                        <div className="flex items-center gap-2 border-b border-[hsl(var(--border))] px-3 py-2">
                             <Search className="size-3.5 shrink-0 text-[hsl(var(--muted-foreground))]" />
                             <input
                                 ref={searchRef}

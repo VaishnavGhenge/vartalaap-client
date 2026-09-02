@@ -6,7 +6,7 @@ import { cn } from "@/src/lib/utils"
 
 const selectVariants = cva(
   [
-    "w-full cursor-pointer appearance-none border border-[hsl(var(--border))]",
+    "w-full cursor-pointer appearance-none border border-[hsl(var(--border-strong))]",
     "bg-[hsl(var(--surface))] text-[hsl(var(--foreground))] shadow-sm outline-none",
     "transition-all hover:border-[hsl(var(--primary))]/40 hover:bg-[hsl(var(--surface-2))]",
     "focus-visible:border-[hsl(var(--primary))] focus-visible:ring-4 focus-visible:ring-[hsl(var(--primary))]/15",

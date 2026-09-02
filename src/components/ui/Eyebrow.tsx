@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { cn } from "@/src/lib/utils";
+import { SmallCaps } from "@/src/components/ui/SmallCaps";
 
 /**
  * Small letterspaced label above a heading, optionally numbered.
@@ -27,9 +28,7 @@ export function Eyebrow({
                     {String(index).padStart(2, "0")}
                 </span>
             )}
-            <span className="text-[0.6875rem] font-medium uppercase tracking-[0.18em] text-[hsl(var(--muted-foreground))]">
-                {children}
-            </span>
+            <SmallCaps>{children}</SmallCaps>
             <span aria-hidden className="h-px flex-1 bg-[hsl(var(--border))]" />
         </div>
     );

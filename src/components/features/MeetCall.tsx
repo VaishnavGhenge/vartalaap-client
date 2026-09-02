@@ -558,9 +558,9 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
 
                         {/* Expanded list — shown for multiple requests only */}
                         {knockRequests.length > 1 && knockExpanded && (
-                            <div className="border-t border-[hsl(var(--border))]/50">
+                            <div className="border-t border-[hsl(var(--border))]">
                                 {knockRequests.map(({ peerId, name }) => (
-                                    <div key={peerId} className="flex items-center gap-3 px-4 py-2.5 border-b border-[hsl(var(--border))]/30 last:border-b-0">
+                                    <div key={peerId} className="flex items-center gap-3 px-4 py-2.5 border-b border-[hsl(var(--border))] last:border-b-0">
                                         <span className="flex-1 min-w-0 text-sm text-[hsl(var(--foreground))] truncate">
                                             {name || 'Someone'}
                                         </span>

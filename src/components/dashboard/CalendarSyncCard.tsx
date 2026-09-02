@@ -123,7 +123,7 @@ export function CalendarSyncCard({ refreshKey = 0, onChange }: Props) {
     const connected = status.connected;
 
     return (
-        <div className="rounded-xl border border-[hsl(var(--border))]/70 bg-[hsl(var(--surface-2))]/40 p-4">
+        <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--surface-2))]/40 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex items-start gap-3">
                     <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--primary))]/10">

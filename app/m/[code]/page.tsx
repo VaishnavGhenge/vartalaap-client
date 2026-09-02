@@ -122,7 +122,7 @@ export default async function ConfirmationPage({ params, searchParams }: PagePro
                                     Use the same confirmation link if you need to return later.
                                 </p>
                                 {cancelToken && (
-                                    <div className="mt-2 border-t border-[hsl(var(--border))]/60 pt-3">
+                                    <div className="mt-2 border-t border-[hsl(var(--border))] pt-3">
                                         <CancelBookingButton meetCode={booking.meetCode} cancelToken={cancelToken} />
                                     </div>
                                 )}

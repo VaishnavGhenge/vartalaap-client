@@ -16,7 +16,7 @@ const LINKS: ReadonlyArray<{ href: string; label: string }> = [
  */
 export function SiteFooter() {
     return (
-        <footer className="border-t border-[hsl(var(--border))]/60 px-5 py-10 sm:px-6">
+        <footer className="border-t border-[hsl(var(--border))] px-5 py-10 sm:px-6">
             <div className="mx-auto flex max-w-5xl flex-col items-center gap-5 sm:flex-row sm:justify-between">
                 <Link href="/" aria-label="Sessionly home">
                     <SessionlyWordmark />
