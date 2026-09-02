@@ -53,6 +53,41 @@ export interface PeerStats {
   framesPerSecond?: number
 }
 
+/**
+ * Our own uplink, which under the SFU is ONE stream to the edge shared by every
+ * remote peer. Kept separate from PeerStats so the diagnostics panel can say so
+ * rather than repeating the same outbound number under each participant.
+ */
+export interface LocalStats {
+  outboundBitrateKbps: number
+  roundTripTimeMs: number   // -1 = not yet known
+  candidateType: PeerStats['candidateType']
+  timestamp: number
+}
+
+/**
+ * A media stream that stopped or resumed mid-call, as detected by the stats
+ * monitor. Kept as a short history so a participant can see "your camera
+ * dropped for 4s a minute ago" instead of only noticing the freeze.
+ */
+export interface MediaFlowEvent {
+  id: number
+  at: number
+  direction: 'publish' | 'subscribe'
+  kind: 'audio' | 'video'
+  outcome: 'stalled' | 'recovered'
+  /** Silence at detection for a stall; total outage for a recovery. */
+  durationMs: number
+  /** Absent for our own uplink. */
+  peerId?: string
+  peerName?: string
+}
+
+// Bounded so a long call with a flaky network cannot grow this without limit.
+// Twenty is roughly the last few minutes of trouble, which is as far back as
+// anyone reads while trying to explain a glitch that just happened.
+const MEDIA_FLOW_EVENT_LIMIT = 20
+
 interface PeerConnection {
   id: string
   stream?: MediaStream
@@ -78,6 +113,8 @@ interface PeerState {
   preferredAudioOutputId: string
   peerConnections: Map<string, PeerConnection>
   peerStats: Map<string, PeerStats>
+  localStats: LocalStats | null
+  mediaFlowEvents: MediaFlowEvent[]
   iceServers: IceServer[]
   noiseSuppressor: NoiseSuppressor | null
   rawMicTrack: MediaStreamTrack | null
@@ -97,6 +134,8 @@ interface PeerState {
   updatePeerMediaState: (id: string, audio: boolean, video: boolean, speaking?: boolean, screenSharing?: boolean, videoHeld?: boolean) => void
   updatePeerConnectionState: (id: string, state: RTCPeerConnectionState) => void
   updatePeerStats: (id: string, stats: PeerStats) => void
+  updateLocalStats: (stats: LocalStats) => void
+  recordMediaFlowEvent: (event: Omit<MediaFlowEvent, 'id' | 'at'>) => void
 
   enableMic: () => Promise<MediaStreamTrack | null>
   disableMic: () => void
@@ -253,6 +292,8 @@ export const usePeerStore = create<PeerState>()(
     preferredAudioOutputId: savedDevices.audioOutputId ?? '',
     peerConnections: new Map(),
     peerStats: new Map(),
+    localStats: null,
+    mediaFlowEvents: [],
     iceServers: [],
     noiseSuppressor: null,
     rawMicTrack: null,
@@ -339,6 +380,17 @@ export const usePeerStore = create<PeerState>()(
         const next = new Map(state.peerStats)
         next.set(id, stats)
         return { peerStats: next }
+      }),
+
+    updateLocalStats: (localStats) => set({ localStats }),
+
+    recordMediaFlowEvent: (event) =>
+      set((state) => {
+        // Newest first so the panel renders the list without reversing, and
+        // the oldest falls off the end once the cap is reached.
+        const id = (state.mediaFlowEvents[0]?.id ?? 0) + 1
+        const next = [{ ...event, id, at: Date.now() }, ...state.mediaFlowEvents]
+        return { mediaFlowEvents: next.slice(0, MEDIA_FLOW_EVENT_LIMIT) }
       }),
 
     updatePeerStream: (id, stream) =>
@@ -718,7 +770,13 @@ export const usePeerStore = create<PeerState>()(
     clearPeers: () => {
       const { sfuSession } = get()
       sfuSession?.close()
-      set({ peerConnections: new Map(), peerStats: new Map(), sfuSession: null })
+      set({
+        peerConnections: new Map(),
+        peerStats: new Map(),
+        localStats: null,
+        mediaFlowEvents: [],
+        sfuSession: null,
+      })
     },
 
     clearAll: () => {
@@ -741,6 +799,8 @@ export const usePeerStore = create<PeerState>()(
         backgroundImageDataUrl: backgroundPreference.imageDataUrl ?? null,
         peerConnections: new Map(),
         peerStats: new Map(),
+        localStats: null,
+        mediaFlowEvents: [],
         sfuSession: null,
       })
     },

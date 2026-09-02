@@ -6,22 +6,9 @@ import { AudioStream, VideoStream } from "@/src/components/ui/Video";
 import { useAudioLevel } from "@/src/hooks/use-audio-level";
 import { avatarColor, initialsOf } from "@/src/lib/avatar";
 import type { PeerStats } from "@/src/stores/peer";
+import { QUALITY_LABEL, QualityDot } from "@/src/components/ui/QualityDot";
 
 const REMOTE_HOLD_MS = 280
-
-const QUALITY_DOT_COLOR: Record<PeerStats['quality'], string> = {
-    good: 'bg-emerald-400',
-    medium: 'bg-amber-400',
-    poor: 'bg-red-500',
-    unknown: 'bg-zinc-400',
-}
-
-const QUALITY_LABEL: Record<PeerStats['quality'], string> = {
-    good: 'Good',
-    medium: 'Fair',
-    poor: 'Poor',
-    unknown: 'Measuring',
-}
 
 interface Participant {
     id: string;
@@ -156,7 +143,7 @@ export const VideoTile = ({
                                        border border-white/25 bg-zinc-950/75 text-white shadow-lg shadow-black/25 backdrop-blur-md
                                        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
                         >
-                            <span className={`block size-2 rounded-full ${QUALITY_DOT_COLOR[quality]}`} />
+                            <QualityDot quality={quality} />
                             <span
                                 role="tooltip"
                                 className="pointer-events-none absolute right-0 top-full mt-1 whitespace-nowrap rounded-md

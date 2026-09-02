@@ -12,6 +12,7 @@ import { useMediaDevices } from '@/src/hooks/use-media-devices'
 import { supportsAudioOutputSelection } from '@/src/lib/audio-context'
 import { Toggle } from '@/src/components/ui/Toggle'
 import { DeviceSelect } from '@/src/components/ui/DeviceSelect'
+import { ConnectionDiagnostics } from '@/src/components/ui/ConnectionDiagnostics'
 
 interface SettingsPanelProps {
   onClose: () => void
@@ -262,6 +263,14 @@ export function SettingsPanel({ onClose, isVideoOff }: SettingsPanelProps) {
               </div>
             </section>
           )}
+
+          {/* ── Connection ─────────────────────────────── */}
+          <section className="flex flex-col gap-3">
+            <h2 className="text-xs font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
+              Connection
+            </h2>
+            <ConnectionDiagnostics />
+          </section>
 
         </div>
     </aside>

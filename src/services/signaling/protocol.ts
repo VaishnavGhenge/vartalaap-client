@@ -18,6 +18,8 @@ export type MsgType =
   | 'knock-request'
   | 'knock-admit'
   | 'knock-granted'
+  | 'sync'
+  | 'room-snapshot'
 
 export interface Envelope<T = unknown> {
   type: MsgType
@@ -75,9 +77,29 @@ export interface StatsReportData {
 // histogram. The server is the sole owner of the histogram registry — the
 // browser only sends values. See vartalaap-server/internal/signaling/client.go
 // for the supported (name, phase, result) combinations.
-export type ClientMetricName = 'time_to_first_media' | 'call_setup_phase' | 'call_attempt' | 'call_setup_failure'
+export type ClientMetricName =
+  | 'time_to_first_media' | 'call_setup_phase' | 'call_attempt' | 'call_setup_failure'
+  | 'sfu_repair'
+
+// Which half of the media path a repair was fixing, and how far it escalated.
+// rung 1 = retry in place, rung 2 = rebuild that direction's CF session.
+export type RepairStage = 'publish' | 'subscribe'
+export type RepairOutcome = 'attempted' | 'recovered'
 export type CallSetupPhase    = 'ice_gather' | 'pub_connected' | 'sub_connected' | 'first_media'
-export type CallAttemptResult = 'success' | 'timeout' | 'error' | 'abandoned'
+/**
+ * How one call setup ended.
+ *
+ * `success` and `slow` both mean media arrived and the call worked; they differ
+ * only in whether it beat the SLO ceiling. Splitting them is what lets the
+ * ceiling be a latency observation rather than a verdict: nothing in the client
+ * gives up at 10s any more, so a call that connects at 14s is a slow success,
+ * not a failure.
+ *
+ * `failed` is the real failure: the call ended without media ever arriving,
+ * while a peer was present and publishing. `abandoned` is the same shape
+ * without the fault — nobody was publishing, so no media was owed.
+ */
+export type CallAttemptResult = 'success' | 'slow' | 'failed' | 'error' | 'abandoned'
 
 // Why a call-setup timeout happened, for the server-side errors-by-type
 // breakdown (vartalaap_call_setup_failures_total{reason}). Each value names a
@@ -99,6 +121,12 @@ export interface ClientMetricData {
   phase?: CallSetupPhase
   result?: CallAttemptResult
   reason?: CallFailureReason
+  // sfu_repair only. `outcome=attempted` counts a repair starting at `rung`;
+  // `outcome=recovered` counts media flowing again after `rung` attempts. The
+  // ratio between them is the honest measure of whether self-healing heals.
+  stage?: RepairStage
+  rung?: number
+  outcome?: RepairOutcome
 }
 
 export interface SfuTrackInfo {
@@ -113,6 +141,32 @@ export interface SfuTrackInfo {
 export interface SfuTracksData {
   sessionId: string
   tracks: SfuTrackInfo[]
+  /**
+   * Room version this broadcast was written at. Server-set on the outbound
+   * direction only; omitted on sfu-announce. Lets the client order a broadcast
+   * against a snapshot that may arrive out of sequence.
+   */
+  version?: number
+}
+
+export interface RoomSnapshotPeerTracks {
+  peerId: string
+  sessionId: string
+  tracks: SfuTrackInfo[]
+}
+
+/**
+ * The room's complete current state, pushed on a timer and on request.
+ *
+ * Every other message is an edge: "this peer joined", "this peer announced".
+ * A client that misses one has no way to notice it missed it. This is the
+ * level-triggered counterpart, so a lost broadcast heals itself rather than
+ * costing that peer someone's media for the rest of the call.
+ */
+export interface RoomSnapshotData {
+  version: number
+  peers: PeerInfo[]
+  tracks: RoomSnapshotPeerTracks[]
 }
 
 export interface KnockRequestData { peerId: string; name: string }

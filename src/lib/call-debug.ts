@@ -9,6 +9,7 @@
  * Filter console output:
  *   [sig]  — signaling WebSocket messages
  *   [sfu]  — SFU session lifecycle (publish, subscribe, tracks)
+ *   [rec]  — reconciler (desired vs applied subscriptions, snapshots)
  *   [call] — use-call lifecycle (join, ICE, TTFM)
  */
 
@@ -218,5 +219,56 @@ export const callDebug = {
   sfuClose() {
     if (!isDev) return
     push('[sfu]', 'SfuSession.close()')
+  },
+
+  // ── Reconciler ────────────────────────────────────────────────────────────
+  reconcileSubscribe(peerId: string, sessionId: string, trackNames: string[]) {
+    if (!isDev) return
+    push('[rec]', `subscribe peer:${peerId} session:${sessionId} tracks:[${trackNames.join(',')}]`)
+  },
+  reconcileDrop(peerId: string, sessionId: string, reason: string) {
+    if (!isDev) return
+    push('[rec]', `drop peer:${peerId} session:${sessionId} reason:${reason}`)
+  },
+  reconcileStale(kind: string, version: number, applied: number) {
+    if (!isDev) return
+    push('[rec]', `IGNORED stale ${kind} v${version} (applied v${applied})`)
+  },
+  reconcileSnapshot(version: number, peerCount: number, trackCount: number) {
+    if (!isDev) return
+    push('[rec]', `room-snapshot v${version} peers:${peerCount} publishing:${trackCount}`)
+  },
+
+  // ── Repair ladder ─────────────────────────────────────────────────────────
+  sfuRepair(stage: string, rung: number, attempt: number, target: string) {
+    if (!isDev) return
+    push('[sfu]', `REPAIR rung:${rung} attempt:${attempt} ${stage}/${target}`)
+  },
+  sfuRepaired(stage: string, attempts: number, target: string) {
+    if (!isDev) return
+    push('[sfu]', `repaired ✓ ${stage}/${target} after ${attempts} attempt(s)`)
+  },
+  sfuPubReset() {
+    if (!isDev) return
+    state.sfuPublishSessions = []
+    push('[sfu]', 'publish PartyTracks REBUILT (repair rung 2)')
+  },
+  sfuSubscribeRetryOnAnnounce(sessionId: string, trackName: string) {
+    if (!isDev) return
+    push('[sfu]', `pull RETRY on re-announce (was broken) session:${sessionId} track:${trackName}`)
+  },
+  sfuSubReset(sessionId: string, trackNames: string[]) {
+    if (!isDev) return
+    push('[sfu]', `subscribe PartyTracks REBUILT (repair rung 2) session:${sessionId} tracks:${trackNames.join(',')}`)
+  },
+
+  // ── Media flow (getStats poller) ──────────────────────────────────────────
+  statsFlowStalled(direction: string, kind: string, stalledForMs: number, sessionId?: string) {
+    if (!isDev) return
+    push('[stats]', `flow STALLED ⚠ ${direction}/${kind} silent:${Math.round(stalledForMs)}ms${sessionId ? ` session:${sessionId}` : ''}`)
+  },
+  statsFlowRecovered(direction: string, kind: string, sessionId?: string) {
+    if (!isDev) return
+    push('[stats]', `flow recovered ✓ ${direction}/${kind}${sessionId ? ` session:${sessionId}` : ''}`)
   },
 }

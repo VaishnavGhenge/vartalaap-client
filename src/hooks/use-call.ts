@@ -1,25 +1,46 @@
 import { useEffect, useRef } from 'react'
 import * as Sentry from '@sentry/nextjs'
 import type { SignalingClient } from '@/src/services/signaling/client'
-import { usePeerStore } from '@/src/stores/peer'
+import { usePeerStore, type PeerStats } from '@/src/stores/peer'
 import { fetchIceServers } from '@/src/services/api/ice'
 import type {
   CallAttemptResult,
   CallFailureReason,
   ClientMetricData,
   Envelope, ErrorData, JoinedData, KnockGrantedData, PeerJoinedData, PeerLeftData, PeerStateData, SfuTracksData,
+  RoomSnapshotData, StatsReportPeer,
 } from '@/src/services/signaling/protocol'
 import { SfuSession } from '@/src/services/webrtc/sfu-session'
+import { CallReconciler } from '@/src/services/webrtc/call-reconciler'
+import {
+  gradeNetworkPressure,
+  gradeQuality,
+  startStatsMonitor,
+  type StatsMonitor,
+} from '@/src/services/webrtc/stats-monitor'
 import { startSessionKeepalive } from '@/src/services/api/session-keepalive'
 import { playPeerJoined, playPeerLeft, playScreenShareStart, playScreenShareStop } from '@/src/lib/sounds'
 import { getAccessToken, getRoomToken, setRoomToken } from '@/src/services/api/token'
 import { useMeetStore } from '@/src/stores/meet'
 import { callDebug } from '@/src/lib/call-debug'
 
-// The CLAUDE.md SLO calls anything over 10s a failed connection attempt rather
-// than a slow success. If we don't see a remote frame within this window we
-// emit result=timeout so the call-success-rate SLO reflects the user's view.
-const TTFM_TIMEOUT_MS = 10_000
+// The SLO ceiling from CLAUDE.md, and nothing more. Crossing it changes no
+// behaviour: it records that this setup was slow and names which link was
+// stuck, then the call carries on trying.
+//
+// It used to end the attempt — media arriving at 11s was filed as a timeout
+// even though the user was in a working call. That made the success-rate SLO
+// disagree with what people actually experienced, and it meant the number we
+// watched got worse when a call was rescued rather than better. Now the two
+// questions are separate: did it connect (success rate) and how long did it
+// take (the TTFM histogram).
+const TTFM_SLO_CEILING_MS = 10_000
+
+// The tile quality dot updates on every stats poll (2s); the server only needs
+// a coarse view of each call, so the stats-report message goes out every fifth
+// poll. At 2s polls that is one small write per participant every 10s, which
+// keeps a modest box out of a per-2s write loop per participant.
+const STATS_REPORT_EVERY_N_POLLS = 5
 
 interface Args {
   client: SignalingClient | null
@@ -74,13 +95,15 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       },
     })
     const prevScreenSharing = new Map<string, boolean>()
-    // Maps CF remoteSessionId → signaling peerId so onRemoteTrack can route tracks.
-    const remoteSessionToPeer = new Map<string, string>()
-    // Reverse map: signaling peerId → CF remoteSessionId so handlePeerLeft can
-    // call sfuSession.unsubscribePeer with the right CF session ID.
-    const peerToRemoteSession = new Map<string, string>()
-    // sfu-tracks messages that arrive before sfuSession is ready are buffered here.
-    const pendingSfuTracks: Array<{ sessionId: string; trackNames: string[] }> = []
+
+    // Owns which remote tracks we should be pulling and which we actually are,
+    // plus the CF sessionId ↔ peerId mapping that used to live in two maps
+    // here. Announcements that arrive before the SFU session exists no longer
+    // need buffering: they are recorded as desired state and picked up by the
+    // reconcile() that runs once the session is created.
+    const reconciler = new CallReconciler({
+      getSession: () => store.getState().sfuSession,
+    })
 
     // ── Time-to-first-media instrumentation ────────────────────────────────
     // joinSentAt is captured when the TTFM window opens (see armTtfmTimeout).
@@ -93,6 +116,9 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
     let joinSentAt = 0
     let ttfmRecorded = false
     let ttfmTimeout: ReturnType<typeof setTimeout> | null = null
+    // Set when the SLO ceiling passes with no media. Media arriving afterwards
+    // is still a working call, just a slow one.
+    let ceilingPassed = false
 
     // ── Receive-chain diagnostics ──────────────────────────────────────────
     // A "call setup timeout" is opaque on its own — it just says "no media in
@@ -105,6 +131,9 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
     let pullErrors = 0                 // pulls that errored (SDP/ICE/CF 4xx)
     let pullTimeouts = 0               // pulls that never produced a track (dead-track)
 
+    // getStats poller. Started once the SFU session exists, stopped on unmount.
+    let statsMonitor: StatsMonitor | null = null
+
     const armTtfmTimeout = () => {
       if (ttfmTimeout) { clearTimeout(ttfmTimeout); ttfmTimeout = null }
       joinSentAt = performance.now()
@@ -112,11 +141,12 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
         ttfmTimeout = null
         if (ttfmRecorded) return
         // If no remote peers are present the user is still alone — no media is
-        // expected yet. Skip the emit so solo joins don't pollute the timeout
-        // counter; handlePeerJoined will re-arm when the first peer arrives.
+        // expected yet. Skip so solo joins don't pollute the counters;
+        // handlePeerJoined re-arms when the first peer arrives.
         if (store.getState().peerConnections.size === 0) return
-        ttfmRecorded = true
-        emitMetric({ name: 'call_attempt', value: 0, result: 'timeout' })
+        // Deliberately NOT latching ttfmRecorded: the outcome is decided when
+        // media arrives or the call ends, not here.
+        ceilingPassed = true
 
         const peers = [...store.getState().peerConnections.values()]
         const publishingPeers = peers.filter((p) => p.audio || p.video)
@@ -140,9 +170,12 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
           failureReason = 'unknown'
         }
 
-        // Feed the errors-by-type golden signal: a timeout-by-reason counter on
-        // the server, separate from the call_attempt outcome counter. Emitted
-        // exactly once per call (sibling to the result=timeout above).
+        // Errors-by-type, emitted once per call that crosses the ceiling. It
+        // says which link was stuck AT THIS MOMENT, which is the only moment
+        // the answer is accurate — by the time the call resolves the state has
+        // usually moved. It counts slow setups as well as failed ones, and
+        // that is the point: a link that stalls for 12s and then recovers is
+        // the same defect as one that never recovers.
         emitMetric({ name: 'call_setup_failure', value: 0, reason: failureReason })
         callDebug.callTtfmTimeout(failureReason, {
           peers: peers.length,
@@ -153,9 +186,9 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
           pullErrors,
           pullTimeouts,
         })
-        Sentry.captureMessage('call setup timeout', {
+        Sentry.captureMessage('call setup slow', {
           level: 'warning',
-          tags: { ttfm_outcome: 'timeout', failure_reason: failureReason },
+          tags: { ttfm_outcome: 'ceiling_passed', failure_reason: failureReason },
           contexts: {
             sfu_setup: {
               failure_reason: failureReason,
@@ -171,7 +204,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
             },
           },
         })
-      }, TTFM_TIMEOUT_MS)
+      }, TTFM_SLO_CEILING_MS)
     }
 
     const emitMetric = (data: ClientMetricData) => {
@@ -184,11 +217,14 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
     }
 
     const recordCallAttempt = (result: CallAttemptResult) => {
-      // call_attempt is the denominator for the connection-success-rate SLO.
-      // Idempotent on success: ttfmRecorded guards repeats; this guard is for
-      // timeout/error/abandoned races. We always emit exactly one outcome per
-      // call lifecycle.
-      if (ttfmRecorded && result !== 'success') return
+      // call_attempt is the denominator for the connection-success-rate SLO, so
+      // exactly one outcome per call lifecycle. The success path emits inline
+      // in onRemoteTrack (it needs the TTFM value in the same place), which is
+      // why this is a plain single-shot guard: it used to carve out an
+      // exception for 'success' so a late arrival could overwrite the verdict
+      // the ceiling had already recorded. The ceiling no longer records one,
+      // so that exception is gone and with it the chance of a double emit.
+      if (ttfmRecorded) return
       ttfmRecorded = true
       if (ttfmTimeout) {
         clearTimeout(ttfmTimeout)
@@ -266,15 +302,11 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       const remoteId = env.data?.peerId
       if (!remoteId) return
       prevScreenSharing.delete(remoteId)
-      // Release the per-session subscribe PC for this peer so the CF session
-      // is closed and billing stops. Must happen before removePeerConnection
-      // so the sfuSession reference is still valid.
-      const remoteSessionId = peerToRemoteSession.get(remoteId)
-      if (remoteSessionId) {
-        store.getState().sfuSession?.unsubscribePeer(remoteSessionId)
-        peerToRemoteSession.delete(remoteId)
-        remoteSessionToPeer.delete(remoteSessionId)
-      }
+      // Dropping the peer from desired state makes the next reconcile release
+      // their subscribe PC, which closes the CF session and stops its billing.
+      // Must happen before removePeerConnection so the sfuSession is still live.
+      reconciler.removePeer(remoteId)
+      reconciler.reconcile()
       store.getState().removePeerConnection(remoteId)
       playPeerLeft()
     }
@@ -308,21 +340,32 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
         level: 'info',
         data: { from: env.from, sessionId: env.data.sessionId, tracks: trackNames.join(','), buffered: !store.getState().sfuSession },
       })
-      // Record the CF sessionId → signaling peerId mapping so onRemoteTrack
-      // (fired by partytracks when a pull resolves) can attribute the track
-      // to the right participant. Also maintain the reverse map so we can
-      // call sfuSession.unsubscribePeer when that signaling peer leaves.
-      remoteSessionToPeer.set(env.data.sessionId, env.from)
-      peerToRemoteSession.set(env.from, env.data.sessionId)
-      const sfuSession = store.getState().sfuSession
-      if (!sfuSession) {
-        callDebug.callSfuTracksBuffered(env.data.sessionId, trackNames)
-        pendingSfuTracks.push({ sessionId: env.data.sessionId, trackNames })
-        return
+      // Recorded as desired state rather than acted on directly. If the SFU
+      // session does not exist yet the reconcile below is a no-op and the
+      // reconcile after session creation picks it up.
+      if (reconciler.setPeerTracks(env.from, env.data.sessionId, trackNames, env.data.version)) {
+        reconciler.reconcile()
       }
-      sfuSession.subscribe(env.data.sessionId, trackNames).catch((e) => {
-        console.error('[use-call] sfu subscribe failed', e)
-      })
+    }
+
+    // The room's full state, pushed every 15s and on request. This is the
+    // level-triggered half of the protocol: it heals a missed sfu-tracks
+    // without the client ever having to notice it missed one.
+    const handleRoomSnapshot = (env: Envelope<RoomSnapshotData>) => {
+      const d = env.data
+      if (!d) return
+      const myId = client.getPeerId()
+      const entries = d.tracks
+        .filter((t) => t.peerId !== myId)
+        .map((t) => ({
+          peerId: t.peerId,
+          sessionId: t.sessionId,
+          trackNames: t.tracks.map((x) => x.trackName),
+        }))
+      callDebug.reconcileSnapshot(d.version, d.peers.length, entries.length)
+      if (reconciler.applySnapshot(entries, d.version)) {
+        reconciler.reconcile()
+      }
     }
 
     const handleError = (env: Envelope<ErrorData>) => {
@@ -337,9 +380,10 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
 
     client.setReconnectedHandler(() => {
       if (disposed) return
-      remoteSessionToPeer.clear()
-      peerToRemoteSession.clear()
-      pendingSfuTracks.length = 0
+      // Everything we believed about the room is suspect across a reconnect:
+      // peers may have left and CF sessions may have been rebuilt while we
+      // were gone. Start from nothing and let the snapshot rebuild it.
+      reconciler.clear()
       store.getState().clearPeers()
       resetJoinedAck()
       const a = joinArgs.current
@@ -374,6 +418,10 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
           callDebug.callSfuAnnounce(announcement.sessionId, announcement.tracks.map((t) => t.trackName), 'reconnect')
           client.send('sfu-announce', announcement)
         }
+        // Rebuild our view of the room now rather than waiting up to 15s for
+        // the next pushed snapshot. reconciler.clear() emptied it, so until
+        // this lands we believe nobody is publishing anything.
+        client.send('sync', undefined)
       })()
     })
 
@@ -382,6 +430,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
     client.on('peer-left', handlePeerLeft as (env: Envelope) => void)
     client.on('peer-state', handlePeerState as (env: Envelope) => void)
     client.on('sfu-tracks', handleSfuTracks as (env: Envelope) => void)
+    client.on('room-snapshot', handleRoomSnapshot as (env: Envelope) => void)
     client.on('error', handleError as (env: Envelope) => void)
     client.on('knock-granted', handleKnockGranted as (env: Envelope) => void)
 
@@ -493,8 +542,14 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
                 clearTimeout(ttfmTimeout)
                 ttfmTimeout = null
               }
+              // Always observed, including past the ceiling — a 14s connect is
+              // exactly the data point the latency SLO needs, and dropping it
+              // would make the histogram flatter than reality.
               emitMetric({ name: 'time_to_first_media', value: ttfmSeconds })
-              emitMetric({ name: 'call_attempt', value: 0, result: 'success' })
+              emitMetric({
+                name: 'call_attempt', value: 0,
+                result: ceilingPassed ? 'slow' : 'success',
+              })
               // Sentry breadcrumb so a later error in the same call carries the
               // TTFM context — useful when investigating "call worked then froze".
               Sentry.addBreadcrumb({
@@ -504,7 +559,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
                 data: { ttfm_seconds: Number(ttfmSeconds.toFixed(2)) },
               })
             }
-            const remotePeerId = remoteSessionToPeer.get(remoteSessionId)
+            const remotePeerId = reconciler.peerForSession(remoteSessionId)
             const ttfmMsForLog = !ttfmRecorded && joinSentAt > 0 ? performance.now() - joinSentAt : undefined
             callDebug.callRemoteTrack(remotePeerId ?? '??', track.kind, ttfmMsForLog)
             if (!remotePeerId) {
@@ -568,7 +623,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
           onPullTimeout: (sessionId, trackName) => {
             if (disposed) return
             pullTimeouts++
-            const remotePeerId = remoteSessionToPeer.get(sessionId)
+            const remotePeerId = reconciler.peerForSession(sessionId)
             Sentry.addBreadcrumb({
               category: 'sfu', message: 'pull timeout (dead track)', level: 'warning',
               data: { sessionId, trackName, peerId: remotePeerId },
@@ -589,9 +644,43 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
             callDebug.callSfuAnnounce(announcement.sessionId, announcement.tracks.map((t) => t.trackName), 'change')
             client.send('sfu-announce', announcement)
           },
-          // A pushed track never got a CF ack. partytracks keeps retrying in
-          // the background, but the user's tile already shows their camera on
-          // — tell them the other side can't see them yet.
+          // A repair is running. Counted by rung, because "rung 1 fixed it"
+          // and "everything reaches rung 2" are very different systems and
+          // the counter is the only thing that tells them apart.
+          onRepair: (info) => {
+            if (disposed) return
+            emitMetric({
+              name: 'sfu_repair', value: 0,
+              stage: info.stage, rung: info.rung, outcome: 'attempted',
+            })
+            Sentry.addBreadcrumb({
+              category: 'sfu', message: 'repair attempt', level: 'warning',
+              data: {
+                stage: info.stage, rung: info.rung, attempt: info.attempt,
+                kind: info.kind, session_id: info.sessionId, track: info.trackName,
+              },
+            })
+          },
+          // Media is flowing again. This is the event that makes the repair
+          // counters readable: attempted without recovered is a ladder that
+          // spins without fixing anything.
+          onRepaired: (info) => {
+            if (disposed) return
+            emitMetric({
+              name: 'sfu_repair', value: 0,
+              stage: info.stage, rung: info.rung, outcome: 'recovered',
+            })
+            Sentry.addBreadcrumb({
+              category: 'sfu', message: 'repair succeeded', level: 'info',
+              data: {
+                stage: info.stage, rung: info.rung, attempts: info.attempt,
+                kind: info.kind, session_id: info.sessionId, track: info.trackName,
+              },
+            })
+          },
+          // A pushed track never got a CF ack. The repair ladder takes over
+          // from here; this exists to tell the user their camera is not
+          // reaching anyone yet.
           onPublishTimeout: (kind) => {
             if (disposed) return
             Sentry.captureMessage('sfu publish timeout', {
@@ -602,8 +691,8 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
             import('sonner').then(({ toast }) => {
               toast.error(
                 kind === 'video'
-                  ? 'Your camera is connected but not reaching others yet. Still retrying — check your network.'
-                  : 'Your microphone is connected but not reaching others yet. Still retrying — check your network.',
+                  ? 'Your camera is not reaching others yet. Reconnecting it now.'
+                  : 'Your microphone is not reaching others yet. Reconnecting it now.',
               )
             })
           },
@@ -614,15 +703,171 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
         }
         callDebug.callSfuSessionReady(peerId, sfuSession)
         store.getState().setSfuSession(sfuSession)
+
+        // ── Media-flow monitoring ──────────────────────────────────────────
+        // Fills the PeerStats / stats-report contract, which already had
+        // consumers (the per-tile quality dot, the server's quality store)
+        // but no producer: nothing in the client called getStats(), so
+        // "a track arrived once" was our only definition of a working call.
+        //
+        // Read-only on purpose. It reports; it does not repair. Repair is the
+        // next step and wants this data to aim at.
+        let pollsSinceReport = 0
+        statsMonitor = startStatsMonitor({
+          collect: () => store.getState().sfuSession?.collectStats() ?? Promise.resolve([]),
+          onPoll: (samples) => {
+            if (disposed) return
+            const pub = samples.find((s) => s.direction === 'publish')
+            if (pub) {
+              store.getState().updateLocalStats({
+                outboundBitrateKbps: pub.outboundKbps,
+                roundTripTimeMs: pub.roundTripTimeMs,
+                candidateType: pub.candidateType,
+                timestamp: Date.now(),
+              })
+            }
+            const report: StatsReportPeer[] = []
+            for (const s of samples) {
+              if (s.direction !== 'subscribe' || !s.sessionId) continue
+              const remotePeerId = reconciler.peerForSession(s.sessionId)
+              if (!remotePeerId) continue
+              // RTT and candidate type come from whichever leg measured them:
+              // this peer's subscribe PC when it has a nominated pair, else
+              // our uplink. Outbound bitrate is always the publish PC — under
+              // the SFU there is ONE upstream shared by every remote peer, so
+              // it is deliberately not a per-peer number.
+              const rttMs = s.roundTripTimeMs >= 0 ? s.roundTripTimeMs : (pub?.roundTripTimeMs ?? -1)
+              const candidateType = s.candidateType !== 'unknown' ? s.candidateType : (pub?.candidateType ?? 'unknown')
+              const stats: PeerStats = {
+                outboundBitrateKbps: pub?.outboundKbps ?? 0,
+                inboundBitrateKbps: s.inboundKbps,
+                packetLossPercent: s.packetLossPercent,
+                roundTripTimeMs: rttMs,
+                jitterMs: s.jitterMs,
+                candidateType,
+                quality: gradeQuality(rttMs, s.packetLossPercent),
+                networkPressure: gradeNetworkPressure(rttMs, s.packetLossPercent),
+                // No adaptive encoder exists yet, so nothing downgrades or
+                // holds outbound video. Constants until that controller lands.
+                encodingLevel: 2,
+                videoHeld: false,
+                timestamp: Date.now(),
+                frameWidth: s.frameWidth,
+                frameHeight: s.frameHeight,
+                framesPerSecond: s.framesPerSecond,
+              }
+              store.getState().updatePeerStats(remotePeerId, stats)
+              report.push({
+                peerId: remotePeerId,
+                quality: stats.quality,
+                networkPressure: stats.networkPressure,
+                roundTripTimeMs: stats.roundTripTimeMs,
+                packetLossPercent: stats.packetLossPercent,
+                outboundBitrateKbps: stats.outboundBitrateKbps,
+                inboundBitrateKbps: stats.inboundBitrateKbps,
+                candidateType: stats.candidateType,
+                jitterMs: stats.jitterMs,
+                encodingLevel: stats.encodingLevel,
+                videoHeld: stats.videoHeld,
+                frameWidth: stats.frameWidth,
+                frameHeight: stats.frameHeight,
+                framesPerSecond: stats.framesPerSecond,
+              })
+            }
+            pollsSinceReport++
+            if (report.length > 0 && pollsSinceReport >= STATS_REPORT_EVERY_N_POLLS) {
+              pollsSinceReport = 0
+              try {
+                client.send('stats-report', { peers: report })
+              } catch {}
+            }
+          },
+          // A stream that was flowing stopped. For our own uplink the monitor
+          // has already confirmed the sender is live and enabled, so any stall
+          // it reports is real. For a remote stream it cannot know intent:
+          // a peer muting produces byte counters identical to a broken pull,
+          // so the peer's declared media state is what separates them.
+          onStall: (stall) => {
+            if (disposed) return
+            const remotePeerId = stall.sessionId ? reconciler.peerForSession(stall.sessionId) : undefined
+            let expected = true
+            if (stall.direction === 'subscribe') {
+              const peer = remotePeerId ? store.getState().peerConnections.get(remotePeerId) : undefined
+              expected = stall.kind === 'audio' ? !!peer?.audio : !!peer?.video
+            }
+            Sentry.addBreadcrumb({
+              category: 'stats',
+              message: expected ? 'media flow stalled' : 'media flow stopped (peer not publishing this kind)',
+              level: expected ? 'warning' : 'info',
+              data: {
+                direction: stall.direction,
+                kind: stall.kind,
+                stalled_for_ms: stall.stalledForMs,
+                peer_id: remotePeerId,
+              },
+            })
+            store.getState().recordMediaFlowEvent({
+              direction: stall.direction,
+              kind: stall.kind,
+              outcome: 'stalled',
+              durationMs: stall.stalledForMs,
+              peerId: remotePeerId,
+              peerName: remotePeerId ? store.getState().peerConnections.get(remotePeerId)?.name : undefined,
+            })
+            if (!expected) return
+            Sentry.captureMessage('media flow stalled', {
+              level: 'warning',
+              tags: {
+                stage: 'media_flow',
+                failure_reason: 'flow_stalled',
+                flow_direction: stall.direction,
+                flow_kind: stall.kind,
+              },
+              contexts: {
+                media_flow: {
+                  direction: stall.direction,
+                  kind: stall.kind,
+                  ssrc: stall.ssrc,
+                  stalled_for_ms: stall.stalledForMs,
+                  session_id: stall.sessionId ?? 'pub',
+                  peer_id: remotePeerId ?? 'self',
+                },
+              },
+            })
+          },
+          // Breadcrumb only. Recovery is what separates a transient blip from
+          // a dead stream, and it matters most as context on a later error in
+          // the same call — not as its own alert.
+          onRecover: (stall) => {
+            if (disposed) return
+            const remotePeerId = stall.sessionId ? reconciler.peerForSession(stall.sessionId) : undefined
+            store.getState().recordMediaFlowEvent({
+              direction: stall.direction,
+              kind: stall.kind,
+              outcome: 'recovered',
+              durationMs: stall.stalledForMs,
+              peerId: remotePeerId,
+              peerName: remotePeerId ? store.getState().peerConnections.get(remotePeerId)?.name : undefined,
+            })
+            Sentry.addBreadcrumb({
+              category: 'stats',
+              message: 'media flow recovered',
+              level: 'info',
+              data: {
+                direction: stall.direction,
+                kind: stall.kind,
+                outage_ms: stall.stalledForMs,
+                peer_id: remotePeerId,
+              },
+            })
+          },
+        })
         if (willKnock) useMeetStore.getState().setIsKnocking(false)
 
-        // Drain sfu-tracks that arrived while the session was being constructed.
-        for (const { sessionId, trackNames } of pendingSfuTracks) {
-          sfuSession.subscribe(sessionId, trackNames).catch((e) => {
-            console.error('[use-call] sfu subscribe failed (buffered)', e)
-          })
-        }
-        pendingSfuTracks.length = 0
+        // Pick up anything announced while the session was being constructed.
+        // Previously this drained a buffer of raw messages; now it is just a
+        // reconcile against state that was already recorded.
+        reconciler.reconcile()
 
         const localStream = store.getState().localStream
         if (localStream) {
@@ -651,11 +896,17 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       client.send('leave', undefined, { room: roomId })
       disposed = true
       stopKeepalive()
-      // If the user navigated away before TTFM resolved, count it as abandoned —
-      // not as success or timeout. Distinguishes "user gave up" from "we failed
-      // to deliver" in the SLO breakdown.
+      statsMonitor?.stop()
+      // The call ended with no media. Which of the two failure shapes it was
+      // depends on whether anything was owed: a peer who was present and
+      // publishing means we failed to deliver, and that is the failure the
+      // success-rate SLO exists to count. Nobody publishing means there was
+      // nothing to receive, which is not our fault and must not drag the SLO
+      // down — a user sitting alone in a room and leaving is not a failed call.
       if (!ttfmRecorded && joinSentAt > 0) {
-        recordCallAttempt('abandoned')
+        const peers = [...store.getState().peerConnections.values()]
+        const owed = peers.some((p) => p.audio || p.video)
+        recordCallAttempt(owed ? 'failed' : 'abandoned')
       }
       if (ttfmTimeout) {
         clearTimeout(ttfmTimeout)
@@ -671,6 +922,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       client.off('peer-left', handlePeerLeft as (env: Envelope) => void)
       client.off('peer-state', handlePeerState as (env: Envelope) => void)
       client.off('sfu-tracks', handleSfuTracks as (env: Envelope) => void)
+      client.off('room-snapshot', handleRoomSnapshot as (env: Envelope) => void)
       client.off('error', handleError as (env: Envelope) => void)
       client.off('knock-granted', handleKnockGranted as (env: Envelope) => void)
       useMeetStore.getState().setIsKnocking(false)

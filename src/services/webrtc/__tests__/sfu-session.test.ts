@@ -1,54 +1,15 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-// ─── PartyTracks mock ─────────────────────────────────────────────────────────
-// We mock the external partytracks library because its behaviour (real
-// RTCPeerConnection, CF Realtime API calls) is not what SfuSession's
-// architectural invariants depend on. Tests below pin those invariants:
-// per-session subscribe isolation, idempotency, cleanup. They do NOT pin the
-// SDP/ICE plumbing — that belongs in the e2e suite where real partytracks runs.
+// The partytracks stand-in lives in support/fake-partytracks.ts so the repair
+// and recovery suites can drive the same failure injection. See that file for
+// what it does and does not model.
 //
-// Each `new PartyTracks(...)` constructor call is recorded so tests can assert
-// "this design creates exactly N CF subscribe sessions for N remote peers".
-//
-// vi.hoisted is required because vi.mock factories run BEFORE the file body
-// is evaluated. The shared `instances` array therefore has to be created in
-// the hoisted block so it exists when the mock factory runs.
-interface FakePushSubject {
-    next: (meta: { sessionId: string; trackName: string }) => void
-    error: (err: unknown) => void
-}
-
-const { instances } = vi.hoisted(() => ({ instances: [] as Array<{
-    config: unknown
-    pushCalls: unknown[]
-    // One subject per push() call, in call order — tests emit on these to
-    // simulate CF acking (or terminally failing) a pushed track.
-    pushSubjects: FakePushSubject[]
-    pullCalls: unknown[]
-}> }))
-
+// The factory is hoisted above imports, so it loads the module dynamically;
+// the top-level import below resolves to the same instance, which is why
+// `instances` here is the array the fake writes to.
 vi.mock('partytracks/client', async () => {
-    const { BehaviorSubject, Subject } = await import('rxjs')
-    class FakePartyTracks {
-        public peerConnectionState$ = new BehaviorSubject<RTCPeerConnectionState>('new')
-        public pullSubject$ = new Subject<MediaStreamTrack>()
-        private inst: { config: unknown; pushCalls: unknown[]; pushSubjects: FakePushSubject[]; pullCalls: unknown[] }
-        constructor(config: unknown) {
-            this.inst = { config, pushCalls: [], pushSubjects: [], pullCalls: [] }
-            instances.push(this.inst)
-        }
-        push(track$: unknown) {
-            this.inst.pushCalls.push(track$)
-            const subject = new Subject<{ sessionId: string; trackName: string }>()
-            this.inst.pushSubjects.push(subject)
-            return subject.asObservable()
-        }
-        pull(meta$: unknown) {
-            this.inst.pullCalls.push(meta$)
-            return this.pullSubject$.asObservable()
-        }
-    }
-    return { PartyTracks: FakePartyTracks }
+    const mod = await import('./support/fake-partytracks')
+    return { PartyTracks: mod.FakePartyTracks }
 })
 
 vi.mock('@/src/services/api/config', () => ({ httpServerUri: 'http://test' }))
@@ -62,24 +23,28 @@ vi.mock('@/src/services/api/fetch', () => ({
 }))
 
 import { SfuSession } from '../sfu-session'
+import { sfuFake } from './support/fake-partytracks'
+
+const instances = sfuFake.instances
 import { setAccessToken } from '@/src/services/api/token'
 
 beforeEach(() => {
-    instances.length = 0
+    sfuFake.reset()
     authState.token = 'test-token'
 })
 
 function makeTrack(kind: 'audio' | 'video' = 'video'): MediaStreamTrack {
-    return { kind, stop: vi.fn() } as unknown as MediaStreamTrack
+    return { kind, stop: vi.fn(), enabled: true, readyState: 'live' } as unknown as MediaStreamTrack
 }
 
-function makeSession() {
+function makeSession(over: Partial<ConstructorParameters<typeof SfuSession>[0]> = {}) {
     return new SfuSession({
         roomId: 'room-1',
         peerId: 'peer-alice',
         iceServers: [],
         onRemoteTrack: vi.fn(),
         onConnectionStateChange: vi.fn(),
+        ...over,
     })
 }
 
@@ -266,7 +231,8 @@ it('a re-ack under a new sessionId supersedes the old announcement', async () =>
 
 // A push that gets no CF ack within the window must surface via
 // onPublishTimeout — partytracks retries silently forever, so this is the
-// only signal behind "I turned my camera on but nobody sees me".
+// only signal behind "I turned my camera on but nobody sees me". The kind that
+// DID ack must stay quiet.
 it('a push with no ack fires onPublishTimeout; an acked push does not', async () => {
     vi.useFakeTimers()
     try {
@@ -281,12 +247,44 @@ it('a push with no ack fires onPublishTimeout; an acked push does not', async ()
 
         // Audio acks in time; video never does.
         instances[0].pushSubjects[0].next({ sessionId: 'cf-pub-1', trackName: 'tn-audio' })
-        vi.advanceTimersByTime(9_000)
+        // Just past the 4s repair trigger and no further: detection now re-arms
+        // after each repair attempt, so a longer window would legitimately
+        // report the same unacked video push again.
+        vi.advanceTimersByTime(4_500)
 
         expect(onPublishTimeout).toHaveBeenCalledTimes(1)
         expect(onPublishTimeout).toHaveBeenCalledWith('video')
     } finally {
         vi.useRealTimers()
+    }
+})
+
+// The detection window is a repair trigger, not a verdict, so it re-arms after
+// every attempt. A push that stays unacked keeps reporting rather than going
+// quiet after the first detection — the user's camera is still not reaching
+// anyone, and one stale warning would not say so.
+it('keeps reporting a push that stays unacked', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    try {
+        const onPublishTimeout = vi.fn()
+        const session = new SfuSession({
+            roomId: 'room-1', peerId: 'peer-alice', iceServers: [],
+            onPublishTimeout,
+        })
+        await session.publish({
+            getTracks: () => [makeTrack('video')],
+        } as unknown as MediaStream)
+
+        await vi.advanceTimersByTimeAsync(4_000)
+        expect(onPublishTimeout).toHaveBeenCalledTimes(1)
+        await vi.advanceTimersByTimeAsync(501)   // repair attempt 1 re-pushes
+        await vi.advanceTimersByTimeAsync(4_000) // and the new push stalls too
+        expect(onPublishTimeout).toHaveBeenCalledTimes(2)
+        session.close()
+    } finally {
+        vi.useRealTimers()
+        vi.restoreAllMocks()
     }
 })
 
@@ -338,4 +336,334 @@ it('a terminal push error allows the next publish of that kind to retry', async 
 
     await session.replaceTrack('video', makeTrack('video'))
     expect(instances[0].pushCalls).toHaveLength(2)
+})
+
+// ─── collectStats ─────────────────────────────────────────────────────────────
+// The stats poller must never receive an RTCPeerConnection (client CLAUDE.md
+// keeps PC access inside SfuSession), so these pin the shape of what it does
+// get: one source per live PC, tagged by direction and CF session.
+
+it('collectStats reports nothing until something is published or subscribed', async () => {
+    const session = makeSession()
+    // The publish PartyTracks exists, but peerConnection$ is subscribed lazily
+    // in publishTrack — subscribing eagerly would allocate a CF session that
+    // CF then expires, breaking every later tracks/new.
+    expect(await session.collectStats()).toEqual([])
+    session.close()
+})
+
+it('collectStats returns one source per live peer connection', async () => {
+    const session = makeSession()
+    await session.publish({ getTracks: () => [makeTrack('audio')] } as unknown as MediaStream)
+    await session.subscribe('cf-sess-bob', ['track-1'])
+
+    const sources = await session.collectStats()
+    expect(sources.map((s) => [s.id, s.direction, s.sessionId])).toEqual([
+        ['pub', 'publish', undefined],
+        ['sub:cf-sess-bob', 'subscribe', 'cf-sess-bob'],
+    ])
+    // Live sender kinds are read for the publish leg only — a subscribe PC has
+    // no senders of ours, so an empty list there is correct, not a gap.
+    expect(sources[0].liveOutboundKinds).toEqual(['audio'])
+    expect(sources[1].liveOutboundKinds).toEqual([])
+    session.close()
+})
+
+it('collectStats skips a closed peer connection instead of throwing', async () => {
+    const session = makeSession()
+    await session.publish({ getTracks: () => [makeTrack('audio')] } as unknown as MediaStream)
+    await session.subscribe('cf-sess-bob', ['track-1'])
+
+    instances[1].pc.connectionState = 'closed'
+    const sources = await session.collectStats()
+    expect(sources.map((s) => s.id)).toEqual(['pub'])
+    // getStats must not even be attempted on a closed PC — it rejects.
+    expect(instances[1].pc.getStatsCalls).toBe(0)
+    session.close()
+})
+
+// The stats subscription holds a reference to the subscribe PartyTracks, and
+// partytracks closes the underlying PC (and the billed CF session) by refCount.
+// Forgetting to unsubscribe it on peer-left would keep paying for a session
+// nobody is pulling from.
+it('unsubscribePeer drops the peer stats source', async () => {
+    const session = makeSession()
+    await session.publish({ getTracks: () => [makeTrack('audio')] } as unknown as MediaStream)
+    await session.subscribe('cf-sess-bob', ['track-1'])
+    expect(await session.collectStats()).toHaveLength(2)
+
+    session.unsubscribePeer('cf-sess-bob')
+    expect((await session.collectStats()).map((s) => s.id)).toEqual(['pub'])
+    session.close()
+})
+
+it('collectStats returns nothing after close', async () => {
+    const session = makeSession()
+    await session.publish({ getTracks: () => [makeTrack('audio')] } as unknown as MediaStream)
+    session.close()
+    expect(await session.collectStats()).toEqual([])
+})
+
+// ─── Regression: the 2026-09-01 dead-track incident ───────────────────────────
+// A Firefox guest unmuted (audio push acked), then turned the camera on. CF
+// returned 200 to the video tracks/new, the server announced from that 200,
+// Chrome pulled the video track, and the push never acked — so Chrome sat on a
+// track nobody was sending until the pull timed out. Two Sentry issues, one
+// cause. The announce is now the publisher's alone, which makes this test the
+// guard: a track CF accepted but the browser never confirmed must stay out of
+// the announcement entirely.
+it('a second track whose push never acks stays out of the announcement', async () => {
+    const onLocalTracksChanged = vi.fn()
+    const session = new SfuSession({
+        roomId: 'room-1', peerId: 'peer-firefox', iceServers: [],
+        onLocalTracksChanged,
+    })
+
+    // Unmute: audio pushes and acks.
+    await session.replaceTrack('audio', makeTrack('audio'))
+    instances[0].pushSubjects[0].next({ sessionId: 'cf-pub-1', trackName: 'tn-audio' })
+    expect(onLocalTracksChanged).toHaveBeenCalledTimes(1)
+
+    // Camera on: video pushes on the same session and never acks.
+    await session.replaceTrack('video', makeTrack('video'))
+    expect(instances[0].pushCalls).toHaveLength(2)
+
+    // No further announcement, and the set peers would receive names audio only.
+    expect(onLocalTracksChanged).toHaveBeenCalledTimes(1)
+    expect(session.getLocalTracksAnnouncement()).toEqual({
+        sessionId: 'cf-pub-1', tracks: [{ trackName: 'tn-audio' }],
+    })
+
+    // When the ack finally lands, the video track joins the announced set —
+    // late is fine, wrong is not.
+    instances[0].pushSubjects[1].next({ sessionId: 'cf-pub-1', trackName: 'tn-video' })
+    expect(onLocalTracksChanged).toHaveBeenLastCalledWith({
+        sessionId: 'cf-pub-1', tracks: [{ trackName: 'tn-audio' }, { trackName: 'tn-video' }],
+    })
+    session.close()
+})
+
+// ─── Repair ladder ────────────────────────────────────────────────────────────
+// Step 3 of the reliability work: detection ends in a repair, never in "report
+// and stop". Before this a dead pull was permanent for the rest of the call —
+// the timeout fired once, sent a Sentry message, and left the subscription key
+// in place so even a re-announce was skipped as a duplicate.
+//
+// Rung 1 retries in place. Rung 2 rebuilds that direction's PartyTracks, which
+// means a fresh CF session. Attempts are unbounded on purpose: the call is the
+// deadline, because connecting slowly beats not connecting.
+
+// Runs exactly N repair cycles: each is the 8s detection window followed by
+// that attempt's backoff. Precise rather than generous, because over-advancing
+// silently runs extra cycles and turns "one repair happened" into "several
+// did". Math.random is pinned to 0 in these suites, which fixes the jitter
+// factor at 0.5 and makes each attempt's delay exactly 500ms * 2^(attempt-1).
+async function runRepairCycles(count: number) {
+    for (let attempt = 1; attempt <= count; attempt++) {
+        await vi.advanceTimersByTimeAsync(8_000)
+        await vi.advanceTimersByTimeAsync(500 * 2 ** (attempt - 1) + 1)
+    }
+}
+
+function useDeterministicRepairTimers() {
+    vi.useFakeTimers()
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+}
+
+describe('pull repair', () => {
+    beforeEach(() => { useDeterministicRepairTimers() })
+    afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
+
+    it('re-pulls a dead track instead of leaving it dead forever', async () => {
+        const onPullTimeout = vi.fn()
+        const session = makeSession({ onPullTimeout })
+        await session.subscribe('cf-bob', ['tn-video'])
+        expect(instances[1].pullCalls).toHaveLength(1)
+
+        await runRepairCycles(1)
+
+        expect(onPullTimeout).toHaveBeenCalled()
+        // The repair re-issued the pull on the same subscribe session.
+        expect(instances[1].pullCalls).toHaveLength(2)
+        // No new PartyTracks yet — rung 1 is the cheap retry.
+        expect(instances).toHaveLength(2)
+        session.close()
+    })
+
+    it('escalates to a fresh subscribe session when retrying in place keeps failing', async () => {
+        const onRepair = vi.fn()
+        const session = makeSession({ onRepair })
+        await session.subscribe('cf-bob', ['tn-video'])
+
+        await runRepairCycles(3)
+
+        const rungs = onRepair.mock.calls.map(([info]) => info.rung)
+        expect(rungs.slice(0, 3)).toEqual([1, 1, 2])
+        // Rung 2 built a new subscribe PartyTracks for that peer.
+        expect(instances.length).toBeGreaterThan(2)
+        expect((instances.at(-1)!.config as { apiExtraParams: string }).apiExtraParams).toContain('kind=subscribe')
+        session.close()
+    })
+
+    it('repairs a pull that errored, not just one that timed out', async () => {
+        // An errored observable is terminal: without a repair the track can
+        // never arrive no matter how often the publisher re-announces.
+        const session = makeSession()
+        await session.subscribe('cf-bob', ['tn-video'])
+        instances[1].pullSubject$.error(new Error('SDP rejected'))
+
+        await runRepairCycles(1)
+        expect(instances[1].pullCalls.length).toBeGreaterThan(1)
+        session.close()
+    })
+
+    it('reports which rung got media flowing again', async () => {
+        const onRepaired = vi.fn()
+        const session = makeSession({ onRepaired })
+        await session.subscribe('cf-bob', ['tn-video'])
+
+        await runRepairCycles(1)
+        expect(onRepaired).not.toHaveBeenCalled()
+
+        instances[1].pullSubject$.next({ kind: 'video' } as MediaStreamTrack)
+        expect(onRepaired).toHaveBeenCalledTimes(1)
+        expect(onRepaired.mock.calls[0][0]).toMatchObject({
+            stage: 'subscribe', sessionId: 'cf-bob', trackName: 'tn-video', attempt: 1,
+        })
+        session.close()
+    })
+
+    it('retries immediately when the publisher re-announces a broken track', async () => {
+        // The publisher re-announcing usually means their side just came back,
+        // so it is a better signal than waiting out the backoff. This branch
+        // used to return unconditionally, which is what made dead permanent.
+        const session = makeSession()
+        await session.subscribe('cf-bob', ['tn-video'])
+        await runRepairCycles(1)
+        const afterFirstRepair = instances[1].pullCalls.length
+
+        await session.subscribe('cf-bob', ['tn-video'])
+        expect(instances[1].pullCalls.length).toBe(afterFirstRepair + 1)
+        session.close()
+    })
+
+    it('still skips a re-announce for a track that is working', async () => {
+        const session = makeSession()
+        await session.subscribe('cf-bob', ['tn-video'])
+        instances[1].pullSubject$.next({ kind: 'video' } as MediaStreamTrack)
+
+        await session.subscribe('cf-bob', ['tn-video'])
+        expect(instances[1].pullCalls).toHaveLength(1)
+        session.close()
+    })
+
+    it('stops repairing when the peer leaves', async () => {
+        // Repairs are unbounded, so peer-left is what has to stop them.
+        // Otherwise we keep rebuilding — and paying for — CF subscribe sessions
+        // to pull media from someone who is gone.
+        const onRepair = vi.fn()
+        const session = makeSession({ onRepair })
+        await session.subscribe('cf-bob', ['tn-video'])
+        await runRepairCycles(1)
+        expect(onRepair).toHaveBeenCalledTimes(1)
+
+        session.unsubscribePeer('cf-bob')
+        await runRepairCycles(3)
+        expect(onRepair).toHaveBeenCalledTimes(1)
+        session.close()
+    })
+
+    it('stops repairing when the call ends', async () => {
+        const onRepair = vi.fn()
+        const session = makeSession({ onRepair })
+        await session.subscribe('cf-bob', ['tn-video'])
+        session.close()
+
+        await runRepairCycles(3)
+        expect(onRepair).not.toHaveBeenCalled()
+    })
+})
+
+describe('push repair', () => {
+    beforeEach(() => { useDeterministicRepairTimers() })
+    afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
+
+    it('re-pushes a track whose ack never arrived', async () => {
+        // The 2026-09-01 Firefox shape: CF accepted the push, the browser never
+        // confirmed it. Previously the only response was a toast.
+        const onPublishTimeout = vi.fn()
+        const session = makeSession({ onPublishTimeout })
+        await session.publish({ getTracks: () => [makeTrack('video')] } as unknown as MediaStream)
+        expect(instances[0].pushCalls).toHaveLength(1)
+
+        await runRepairCycles(1)
+        expect(onPublishTimeout).toHaveBeenCalledWith('video')
+        expect(instances[0].pushCalls).toHaveLength(2)
+        session.close()
+    })
+
+    it('rebuilds the publish session when re-pushing keeps failing', async () => {
+        const onRepair = vi.fn()
+        const session = makeSession({ onRepair })
+        await session.publish({ getTracks: () => [makeTrack('video')] } as unknown as MediaStream)
+
+        await runRepairCycles(3)
+        const rungs = onRepair.mock.calls.map(([info]) => info.rung)
+        expect(rungs.slice(0, 3)).toEqual([1, 1, 2])
+        // A new publish PartyTracks, which means a fresh CF session.
+        const publishInstances = instances.filter(
+            (i) => (i.config as { apiExtraParams: string }).apiExtraParams.includes('kind=publish'),
+        )
+        expect(publishInstances.length).toBeGreaterThan(1)
+        session.close()
+    })
+
+    it('drops the stale announcement when the publish session is rebuilt', async () => {
+        // Track names from the old CF session are unpullable. Continuing to
+        // advertise them would hand every peer a guaranteed dead track.
+        const onLocalTracksChanged = vi.fn()
+        const session = makeSession({ onLocalTracksChanged })
+        await session.publish({ getTracks: () => [makeTrack('audio')] } as unknown as MediaStream)
+        instances[0].pushSubjects[0].next({ sessionId: 'cf-pub-1', trackName: 'tn-audio' })
+        expect(session.getLocalTracksAnnouncement()).toEqual({
+            sessionId: 'cf-pub-1', tracks: [{ trackName: 'tn-audio' }],
+        })
+
+        // Force rung 2 by failing the video push repeatedly.
+        await session.replaceTrack('video', makeTrack('video'))
+        await runRepairCycles(3)
+
+        expect(session.getLocalTracksAnnouncement()).toBeNull()
+        session.close()
+    })
+
+    it('gives up repairing a kind the user switched off', async () => {
+        // A stopped track is the desired state, not a fault to heal.
+        const onRepair = vi.fn()
+        const session = makeSession({ onRepair })
+        const track = makeTrack('video')
+        await session.publish({ getTracks: () => [track] } as unknown as MediaStream)
+
+        ;(track as unknown as { readyState: string }).readyState = 'ended'
+        await runRepairCycles(3)
+
+        // The first attempt runs and finds nothing worth repairing; it must not
+        // then escalate to rebuilding the whole publish session.
+        const rungs = onRepair.mock.calls.map(([info]) => info.rung)
+        expect(rungs.every((r: number) => r === 1)).toBe(true)
+        session.close()
+    })
+
+    it('reports recovery when a re-pushed track finally acks', async () => {
+        const onRepaired = vi.fn()
+        const session = makeSession({ onRepaired })
+        await session.publish({ getTracks: () => [makeTrack('audio')] } as unknown as MediaStream)
+
+        await runRepairCycles(1)
+        instances[0].pushSubjects[1].next({ sessionId: 'cf-pub-2', trackName: 'tn-audio' })
+
+        expect(onRepaired).toHaveBeenCalledTimes(1)
+        expect(onRepaired.mock.calls[0][0]).toMatchObject({ stage: 'publish', kind: 'audio', attempt: 1 })
+        session.close()
+    })
 })
