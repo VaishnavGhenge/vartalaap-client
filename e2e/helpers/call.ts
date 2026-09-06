@@ -2,11 +2,12 @@ import { expect, request, type Browser, type BrowserContext, type BrowserContext
 import { E2E_EMAIL, E2E_PASSWORD } from '../global-setup'
 import { installPeerConnectionTracker } from './webrtc'
 
-const SERVER = `http://${process.env.NEXT_PUBLIC_SERVER_DOMAIN ?? 'localhost:8080'}`
+const SERVER_PROTOCOL = process.env.NEXT_PUBLIC_SERVER_SECURE === 'true' ? 'https' : 'http'
+const SERVER = `${SERVER_PROTOCOL}://${process.env.NEXT_PUBLIC_SERVER_DOMAIN ?? 'localhost:8080'}`
 
 const CONTEXT_BASE = {
   permissions: ['camera', 'microphone'] as string[],
-  baseURL: 'http://localhost:3000',
+  baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:3000',
 }
 
 // Shared context options for tests that only use a single browser context.
@@ -38,6 +39,11 @@ async function loginOnce(): Promise<{ state: BrowserContextOptions['storageState
       if (res.ok()) {
         const body = await res.json() as { accessToken: string }
         const state = await reqCtx.storageState()
+        const webOrigin = new URL(process.env.E2E_BASE_URL ?? 'http://localhost:3000').origin
+        state.origins = [
+          ...(state.origins ?? []).filter((entry) => entry.origin !== webOrigin),
+          { origin: webOrigin, localStorage: [{ name: 'sessionly_access_token', value: body.accessToken }] },
+        ]
         return { state, accessToken: body.accessToken }
       }
       lastStatus = res.status()
@@ -119,21 +125,16 @@ export async function fillName(page: Page, name: string) {
   const joinButton = page.getByRole('button', { name: /join now/i })
   await expect(joinButton).toBeVisible({ timeout: 5_000 })
 
-  const input = page.getByPlaceholder(/your name/i)
+  const input = page.getByRole('textbox', { name: /your name/i })
   const hasNameInput = await input.isVisible().catch(() => false)
-  if (!hasNameInput) {
-    await expect(joinButton).toBeEnabled()
+  if (hasNameInput) {
+    await input.fill(name)
+    await expect(input).toHaveValue(name)
+    await expect(joinButton).toBeEnabled({ timeout: 5_000 })
     return
   }
 
-  for (let attempt = 0; attempt < 20; attempt++) {
-    await input.fill(name)
-    if (await joinButton.isEnabled()) return
-    await page.waitForTimeout(100)
-  }
-
-  await expect(input).toHaveValue(name)
-  await expect(joinButton).toBeEnabled()
+  await expect(joinButton).toBeEnabled({ timeout: 5_000 })
 }
 
 export async function joinRoom(page: Page, roomCode: string, name: string) {

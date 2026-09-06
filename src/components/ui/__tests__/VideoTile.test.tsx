@@ -76,7 +76,7 @@ describe('VideoTile', () => {
   })
 
   it('shows Audio only badge when videoHeld is true', () => {
-    render(
+    const { container } = render(
       <VideoTile
         participant={{ id: 'peer-1', name: 'Frank' }}
         stream={makeStream()}
@@ -84,6 +84,8 @@ describe('VideoTile', () => {
       />,
     )
     expect(screen.getByText('Audio only')).toBeInTheDocument()
+    expect(container.querySelector('video')).not.toBeInTheDocument()
+    expect(container.querySelector('audio')).toBeInTheDocument()
   })
 
   it('labels the quality dot for hover and focus tooltip', () => {

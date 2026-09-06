@@ -453,6 +453,12 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       void (async () => {
         await joinedAck
         if (disposed) return
+        const media = useMeetStore.getState()
+        client.send('peer-state', {
+          audio: !media.isMuted, video: !media.isVideoOff,
+          screenSharing: media.isScreenSharing,
+          videoHeld: store.getState().localVideoQuality.videoHeld,
+        }, { room: roomId })
         const sfuSession = store.getState().sfuSession
         if (sfuSession) {
           await ensureLocalMedia()
@@ -582,6 +588,19 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
         // same peer surface as one MediaStream to the UI.
         const remoteStreams = new Map<string, MediaStream>()
         const sfuSession = new SfuSession({
+          onVideoQualityChange: (quality) => {
+            if (disposed) return
+            store.getState().setLocalVideoQuality(quality)
+            const media = useMeetStore.getState()
+            client.send('peer-state', {
+              audio: !media.isMuted, video: !media.isVideoOff,
+              screenSharing: media.isScreenSharing, videoHeld: quality.videoHeld,
+            })
+            Sentry.addBreadcrumb({ category: 'video-quality', message: 'Outbound video quality changed', data: { ...quality } })
+          },
+          onVideoQualityError: (error) => {
+            if (!disposed) Sentry.captureException(error, { tags: { stage: 'video_encoding' } })
+          },
           roomId,
           peerId,
           iceServers,
@@ -769,7 +788,12 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
         // next step and wants this data to aim at.
         let pollsSinceReport = 0
         statsMonitor = startStatsMonitor({
-          collect: () => store.getState().sfuSession?.collectStats() ?? Promise.resolve([]),
+          collect: () => {
+            const media = useMeetStore.getState()
+            return store.getState().sfuSession?.collectStats({
+              video: !media.isVideoOff || media.isScreenSharing, audio: !media.isMuted,
+            }) ?? Promise.resolve([])
+          },
           onPoll: (samples) => {
             if (disposed) return
             const pub = samples.find((s) => s.direction === 'publish')
@@ -802,10 +826,8 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
                 candidateType,
                 quality: gradeQuality(rttMs, s.packetLossPercent),
                 networkPressure: gradeNetworkPressure(rttMs, s.packetLossPercent),
-                // No adaptive encoder exists yet, so nothing downgrades or
-                // holds outbound video. Constants until that controller lands.
-                encodingLevel: 2,
-                videoHeld: false,
+                encodingLevel: store.getState().localVideoQuality.encodingLevel,
+                videoHeld: store.getState().localVideoQuality.videoHeld,
                 timestamp: Date.now(),
                 frameWidth: s.frameWidth,
                 frameHeight: s.frameHeight,
@@ -844,12 +866,14 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
           // so the peer's declared media state is what separates them.
           onStall: (stall) => {
             if (disposed) return
+            if (stall.direction === 'publish' && stall.kind === 'video' && store.getState().localVideoQuality.videoHeld) return
             const remotePeerId = stall.sessionId ? reconciler.peerForSession(stall.sessionId) : undefined
             let expected = true
             if (stall.direction === 'subscribe') {
               const peer = remotePeerId ? store.getState().peerConnections.get(remotePeerId) : undefined
-              expected = stall.kind === 'audio' ? !!peer?.audio : !!peer?.video
+              expected = stall.kind === 'audio' ? !!peer?.audio : !!(peer?.video || peer?.screenSharing) && !peer?.videoHeld
             }
+            if (!expected) return
             Sentry.addBreadcrumb({
               category: 'stats',
               message: expected ? 'media flow stalled' : 'media flow stopped (peer not publishing this kind)',
@@ -869,7 +893,6 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
               peerId: remotePeerId,
               peerName: remotePeerId ? store.getState().peerConnections.get(remotePeerId)?.name : undefined,
             })
-            if (!expected) return
             // Detection has to end in a repair. This path reported to Sentry
             // and stopped, so a stream that froze mid-call stayed frozen for
             // the rest of it — the "video suddenly stuck" report.

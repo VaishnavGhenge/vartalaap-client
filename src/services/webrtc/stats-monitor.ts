@@ -263,6 +263,10 @@ export function startStatsMonitor(opts: StatsMonitorOptions): StatsMonitor {
     // recorded for a call whose video had stopped first.
     for (const record of streams.values()) {
       if (record.lastSeenAt === t || record.stalled || !record.everFlowed) continue
+      if (record.direction === 'publish' && !sources.find((s) => s.id === record.sourceId)?.liveOutboundKinds.includes(record.kind)) {
+        record.lastFlowAt = t
+        continue
+      }
       const silentForMs = t - record.lastFlowAt
       if (silentForMs < stallAfterMs) continue
       record.stalled = true

@@ -59,7 +59,7 @@ export const VideoTile = ({
     // never hide it based on camera state.
     const videoOff = isLocal
         ? !!isVideoOff
-        : (isScreenSharing ? false : !!participant?.isVideoOff);
+        : (videoHeld || (isScreenSharing ? false : !!participant?.isVideoOff));
     const muted = isLocal ? !!isMuted : !!participant?.isMuted;
     const label = isLocal ? `${name} (you)` : name;
 

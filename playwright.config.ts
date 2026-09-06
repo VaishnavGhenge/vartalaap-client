@@ -8,7 +8,7 @@ export default defineConfig({
   fullyParallel: false,
   retries: 0,
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:3000',
     permissions: ['camera', 'microphone'],
     // Provide fake camera/mic streams in headless mode (no hardware needed).
     // The autoplay-policy flag lets remote audio's AudioContext start running
@@ -27,7 +27,7 @@ export default defineConfig({
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
   ],
-  webServer: [
+  webServer: process.env.E2E_BASE_URL ? undefined : [
     {
       name: 'signaling',
       command: 'sh ./run.sh',

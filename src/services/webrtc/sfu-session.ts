@@ -1,6 +1,7 @@
 'use client'
 
-import { BehaviorSubject, Subscription } from 'rxjs'
+import { BehaviorSubject, Subscription, of } from 'rxjs'
+import { VideoQualityController, videoEncoding, type VideoQuality, type MediaIntent } from './video-quality'
 import { PartyTracks, type TrackMetadata } from 'partytracks/client'
 import { httpServerUri } from '@/src/services/api/config'
 import { apiBearerHeaders } from '@/src/services/api/fetch'
@@ -11,6 +12,8 @@ import { RepairLoop } from '@/src/services/webrtc/repair-loop'
 import { callDebug } from '@/src/lib/call-debug'
 
 export interface SfuSessionOptions {
+  onVideoQualityChange?: (quality: VideoQuality) => void
+  onVideoQualityError?: (error: unknown) => void
   roomId: string
   peerId: string
   iceServers: RTCIceServer[]
@@ -98,6 +101,11 @@ const MAX_REPAIR_RUNG = 2
  * correct trade-off at this scale.
  */
 export class SfuSession {
+  private readonly videoController = new VideoQualityController()
+  private videoQuality: VideoQuality = { encodingLevel: 2, videoHeld: false }
+  private encodingBusy = false
+  private encodingRetryAt = 0
+  private encodingFailures = 0
   // Publish-only — all transceivers are sendonly. Owns the CF session whose
   // ID is broadcast to other peers so they can pull our tracks. Not readonly:
   // repair rung 2 replaces the instance to get a fresh CF session.
@@ -268,6 +276,7 @@ export class SfuSession {
       })
       // Re-emits on every PC recreation, so this always holds the live one.
       this.pubPcSub = this.pubTracks.peerConnection$.subscribe((pc) => {
+        if (pc !== this.pubPc) this.videoController.reset()
         this.pubPc = pc
       })
     }
@@ -289,7 +298,9 @@ export class SfuSession {
 
     const subject = new BehaviorSubject<MediaStreamTrack>(track)
     this.localSubjects.set(kind, subject)
-    const sub = this.pubTracks.push(subject.asObservable()).subscribe({
+    const sub = this.pubTracks.push(subject.asObservable(), kind === 'video'
+      ? { sendEncodings$: of([videoEncoding(this.videoQuality)]) }
+      : undefined).subscribe({
       // CF acked the push (also re-fires when partytracks re-pushes after a
       // PC recreation, with a new sessionId). Record it and re-announce.
       next: (meta) => {
@@ -742,7 +753,7 @@ export class SfuSession {
    * this class. A PC that is closed or rejects getStats() is omitted: that is
    * the reconnect path's problem, not the monitor's.
    */
-  async collectStats(): Promise<StatsSource[]> {
+  async collectStats(intent?: MediaIntent): Promise<StatsSource[]> {
     if (this.destroyed) return []
     const targets: Array<{ id: string; direction: 'publish' | 'subscribe'; sessionId?: string; pc: RTCPeerConnection }> = []
     if (this.pubPc) targets.push({ id: 'pub', direction: 'publish', pc: this.pubPc })
@@ -753,18 +764,50 @@ export class SfuSession {
     const settled = await Promise.all(targets.map(async (t): Promise<StatsSource | null> => {
       if (t.pc.connectionState === 'closed') return null
       try {
+        const report = await t.pc.getStats()
+        if (intent && t.direction === 'publish') await this.adaptVideo(t.pc, report, intent)
         return {
           id: t.id,
           direction: t.direction,
           sessionId: t.sessionId,
-          report: await t.pc.getStats(),
-          liveOutboundKinds: t.direction === 'publish' ? liveSenderKinds(t.pc) : [],
+          report,
+          liveOutboundKinds: t.direction === 'publish'
+            ? liveSenderKinds(t.pc).filter((kind) => kind !== 'video' || !this.videoQuality.videoHeld) : [],
         }
       } catch {
         return null
       }
     }))
     return settled.filter((s): s is StatsSource => s !== null)
+  }
+
+  private async adaptVideo(pc: RTCPeerConnection, report: RTCStatsReport, intent: MediaIntent): Promise<void> {
+    if (this.destroyed || pc !== this.pubPc || this.encodingBusy || Date.now() < this.encodingRetryAt) return
+    const sender = pc.getSenders().find((s) => s.track?.kind === 'video' && s.track.readyState === 'live')
+    if (!sender || pc.connectionState !== 'connected') { this.videoController.reset(); return }
+    const next = this.videoController.next(report, this.videoQuality, intent)
+    this.encodingBusy = true
+    try {
+      const params = sender.getParameters()
+      if (!params.encodings?.length) return
+      const encoding = videoEncoding(next)
+      if (!params.encodings.every((e) => Object.entries(encoding).every(([key, value]) => e[key as keyof RTCRtpEncodingParameters] === value))) {
+        params.encodings = params.encodings.map((e) => ({ ...e, ...encoding }))
+        await sender.setParameters(params)
+      }
+      if (this.destroyed || pc !== this.pubPc) return
+      this.encodingFailures = 0
+      this.encodingRetryAt = 0
+      const changed = next.encodingLevel !== this.videoQuality.encodingLevel || next.videoHeld !== this.videoQuality.videoHeld
+      this.videoQuality = next
+      if (changed) this.opts.onVideoQualityChange?.(next)
+    } catch (error) {
+      if (this.destroyed || pc !== this.pubPc) return
+      this.encodingRetryAt = Date.now() + Math.min(30_000, 1_000 * 2 ** this.encodingFailures++) * (0.5 + Math.random() * 0.5)
+      this.opts.onVideoQualityError?.(error)
+    } finally {
+      this.encodingBusy = false
+    }
   }
 
   close(): void {

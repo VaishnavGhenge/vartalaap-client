@@ -21,6 +21,7 @@ import type { SignalingClient, ConnState } from "@/src/services/signaling/client
 import type { Envelope, KnockRequestData, PeerLeftData } from "@/src/services/signaling/protocol";
 import { getAccessToken } from "@/src/services/api/token";
 import { UNRELEASED } from '@/src/lib/feature-flags';
+import { InlineNotice } from '@/src/components/ui/InlineNotice';
 
 const LOCAL_TILE_ID = 'local'
 
@@ -33,6 +34,7 @@ interface MeetCallProps {
 }
 
 export default function MeetCall({ client, connState, reconnectAttempt, routeMeetCode, onLeave }: MeetCallProps) {
+    const localVideoQuality = usePeerStore((s) => s.localVideoQuality);
     const { isMuted, isVideoOff, isScreenSharing, roomClosesAt, toggleMute, toggleVideo, toggleScreenShare, clearMeet } = useMeetStore();
     const { localStream, screenTrack, enableMic, disableMic, enableCamera, disableCamera, switchCamera, startScreenShare, stopScreenShare, peerConnections, peerStats } = usePeerStore();
     const hasMultipleCameras = useHasMultipleCameras();
@@ -156,6 +158,7 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                     audio: !fresh.isMuted,
                     video: !fresh.isVideoOff,
                     screenSharing: fresh.isScreenSharing,
+                    videoHeld: usePeerStore.getState().localVideoQuality.videoHeld,
                 })
             }
         }
@@ -206,7 +209,7 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
     useEffect(() => {
         const count = peerConnections.size;
         if (count > prevPeerCount.current && client) {
-            client.send('peer-state', { audio: !isMuted, video: !isVideoOff, screenSharing: isScreenSharing });
+            client.send('peer-state', { audio: !isMuted, video: !isVideoOff, screenSharing: isScreenSharing, videoHeld: usePeerStore.getState().localVideoQuality.videoHeld });
         }
         prevPeerCount.current = count;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -224,7 +227,7 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
     useEffect(() => { isScreenSharingRef.current = isScreenSharing; }, [isScreenSharing]);
 
     const broadcastState = useCallback((audio: boolean, video: boolean, speaking?: boolean, screenSharing?: boolean) => {
-        client?.send('peer-state', { audio, video, speaking, screenSharing: screenSharing ?? isScreenSharingRef.current });
+        client?.send('peer-state', { audio, video, speaking, screenSharing: screenSharing ?? isScreenSharingRef.current, videoHeld: usePeerStore.getState().localVideoQuality.videoHeld });
     }, [client]);
 
     const { speaking: localSpeaking } = useAudioLevel(localStream, !isMuted);
@@ -444,6 +447,13 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                 reconnectAttempt={reconnectAttempt}
                 onLeave={handleEndCall}
             />
+            {!isVideoOff && localVideoQuality.encodingLevel < 2 && (
+                <div role="status" className="shrink-0 px-4 pt-3">
+                    <InlineNotice title={localVideoQuality.videoHeld ? 'Video paused to protect your audio' : 'Video quality reduced for your connection'}>
+                        Your camera stays selected. Video quality will recover automatically when your connection improves.
+                    </InlineNotice>
+                </div>
+            )}
 
             {/* Session expired overlay — auto-leave countdown */}
             {autoLeaveCountdown !== null && (

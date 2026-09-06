@@ -28,6 +28,55 @@ import { sfuFake } from './support/fake-partytracks'
 const instances = sfuFake.instances
 import { setAccessToken } from '@/src/services/api/token'
 
+describe('adaptive outbound video', () => {
+    it('changes only the video sender, reports applied quality and suppresses intentional stalls', async () => {
+        const onVideoQualityChange = vi.fn()
+        const session = makeSession({ onVideoQualityChange })
+        await session.replaceTrack('video', makeTrack())
+        const pc = instances[0].pc
+        let parameters = { encodings: [{ active: true, maxBitrate: 900_000, scaleResolutionDownBy: 1, maxFramerate: 24 }] } as RTCRtpSendParameters
+        const setParameters = vi.fn(async (p: RTCRtpSendParameters) => { parameters = p })
+        const audioSet = vi.fn()
+        pc.getSenders = () => [
+            { track: makeTrack(), getParameters: () => structuredClone(parameters), setParameters },
+            { track: makeTrack('audio'), setParameters: audioSet },
+        ] as unknown as RTCRtpSender[]
+        for (let timestamp = 2_000; timestamp <= 24_000; timestamp += 2_000) {
+            pc.statsEntries = [{ type: 'candidate-pair', timestamp, nominated: true, state: 'succeeded', currentRoundTripTime: 1.2, availableOutgoingBitrate: 100_000 }]
+            await session.collectStats({ video: true, audio: true })
+        }
+        expect(parameters.encodings[0]).toMatchObject({ active: false, maxBitrate: 200_000, scaleResolutionDownBy: 2 })
+        expect(audioSet).not.toHaveBeenCalled()
+        expect(onVideoQualityChange.mock.calls.map(([q]) => q)).toEqual([
+            { encodingLevel: 1, videoHeld: false },
+            { encodingLevel: 0, videoHeld: false },
+            { encodingLevel: 0, videoHeld: true },
+        ])
+        const sources = await session.collectStats({ video: true, audio: true })
+        expect(sources[0].liveOutboundKinds).toEqual(['audio'])
+        await session.collectStats({ video: true, audio: false })
+        expect(parameters.encodings[0].active).toBe(true)
+        session.close()
+    })
+
+    it('keeps the last applied quality when the browser rejects encoding changes', async () => {
+        const onVideoQualityChange = vi.fn()
+        const onVideoQualityError = vi.fn()
+        const session = makeSession({ onVideoQualityChange, onVideoQualityError })
+        await session.replaceTrack('video', makeTrack())
+        const pc = instances[0].pc
+        const setParameters = vi.fn().mockRejectedValue(new DOMException('negotiation in flight', 'InvalidStateError'))
+        pc.getSenders = () => [{ track: makeTrack(), getParameters: () => ({ encodings: [{}] }), setParameters }] as unknown as RTCRtpSender[]
+        const samples = await session.collectStats({ video: true, audio: true })
+        expect(samples).toHaveLength(1)
+        expect(onVideoQualityError).toHaveBeenCalledOnce()
+        expect(onVideoQualityChange).not.toHaveBeenCalled()
+        await session.collectStats({ video: true, audio: true })
+        expect(setParameters).toHaveBeenCalledOnce()
+        session.close()
+    })
+})
+
 beforeEach(() => {
     sfuFake.reset()
     authState.token = 'test-token'

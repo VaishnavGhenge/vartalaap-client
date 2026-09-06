@@ -181,6 +181,33 @@ describe('flow detection', () => {
         monitor.stop()
     })
 
+    it('does not repair an intentionally held outbound stream that disappears from stats', async () => {
+        const stalls: FlowStall[] = []
+        let clock = 0
+        let held = false
+        const monitor = startStatsMonitor({
+            collect: async () => [{
+                id: 'pub', direction: 'publish',
+                report: statsReport(held ? [] : [{
+                    type: 'outbound-rtp', id: 'out-v', kind: 'video', ssrc: 333,
+                    timestamp: clock + 1_000, bytesSent: clock + 500,
+                }]),
+                liveOutboundKinds: held ? [] : ['video'],
+            }],
+            onStall: (s) => stalls.push(s),
+            stallAfterMs: 6_000,
+            now: () => clock,
+        })
+        await monitor.poll()
+        clock = 2_000
+        await monitor.poll()
+        held = true
+        clock = 22_000
+        await monitor.poll()
+        expect(stalls).toEqual([])
+        monitor.stop()
+    })
+
     it('reports inbound silence even when the peer may have muted', async () => {
         // The monitor cannot see remote intent, so it reports and use-call
         // filters against the peer's declared media state. Reporting here and

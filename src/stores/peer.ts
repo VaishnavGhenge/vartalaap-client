@@ -15,6 +15,8 @@ import {
   type BackgroundEffectPreference,
 } from '@/src/lib/background-effects'
 import { getDevicePreferences, setDevicePreference } from '@/src/lib/device-preferences'
+import type { VideoQuality, EncodingLevel } from '@/src/services/webrtc/video-quality'
+export type { EncodingLevel } from '@/src/services/webrtc/video-quality'
 
 const NOISE_SUPPRESSION_KEY = 'suppress-noise'
 
@@ -28,13 +30,11 @@ function saveNoiseSuppression(enabled: boolean): void {
 const VIDEO_WIDTH_IDEAL = 960
 const VIDEO_HEIGHT_IDEAL = 540
 const VIDEO_FRAME_RATE_IDEAL = 24
-const VIDEO_MAX_BITRATE_BPS = 900_000
 
 // Encoding level set by the adaptive controller.
 // 2 = full quality (900 kbps, 960×540, 24 fps) — default
 // 1 = medium      (500 kbps, 640×360, 20 fps)
 // 0 = reduced     (200 kbps, 480×270, 15 fps)
-export type EncodingLevel = 0 | 1 | 2
 
 export interface PeerStats {
   outboundBitrateKbps: number
@@ -102,6 +102,8 @@ interface PeerConnection {
 }
 
 interface PeerState {
+  localVideoQuality: VideoQuality
+  setLocalVideoQuality: (quality: VideoQuality) => void
   localStream: MediaStream | null
   screenTrack: MediaStreamTrack | null
   blurProcessor: BackgroundBlurProcessor | null
@@ -327,6 +329,8 @@ export const usePeerStore = create<PeerState>()(
     const savedDevices = getDevicePreferences()
     return {
     localStream: null,
+    localVideoQuality: { encodingLevel: 2, videoHeld: false },
+    setLocalVideoQuality: (localVideoQuality) => set({ localVideoQuality }),
     callActive: false,
     screenTrack: null,
     blurProcessor: null,
@@ -821,6 +825,7 @@ export const usePeerStore = create<PeerState>()(
       sfuSession?.close()
       set({
         localStream: null,
+        localVideoQuality: { encodingLevel: 2, videoHeld: false },
         screenTrack: null,
         blurProcessor: null,
         rawCameraTrack: null,

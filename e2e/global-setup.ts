@@ -1,6 +1,7 @@
 import { request } from '@playwright/test'
 
-const SERVER = `http://${process.env.NEXT_PUBLIC_SERVER_DOMAIN ?? 'localhost:8080'}`
+const SERVER_PROTOCOL = process.env.NEXT_PUBLIC_SERVER_SECURE === 'true' ? 'https' : 'http'
+const SERVER = `${SERVER_PROTOCOL}://${process.env.NEXT_PUBLIC_SERVER_DOMAIN ?? 'localhost:8080'}`
 export const E2E_EMAIL = 'e2e@sessionly.test'
 export const E2E_PASSWORD = 'e2e-password-123!'
 export const AUTH_STATE_PATH = 'e2e/.auth-state.json'
