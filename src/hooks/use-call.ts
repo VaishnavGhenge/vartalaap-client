@@ -212,6 +212,14 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       }, TTFM_SLO_CEILING_MS)
     }
 
+    const pauseTtfmUntilMediaExpected = () => {
+      if (ttfmTimeout) {
+        clearTimeout(ttfmTimeout)
+        ttfmTimeout = null
+      }
+      joinSentAt = 0
+    }
+
     // localStream never holds the screen track, so publishing it alone drops an
     // active share.
     const republishLocalMedia = async (session: SfuSession) => {
@@ -304,6 +312,12 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
           screenSharing: p.screenSharing ?? false, videoHeld: p.videoHeld ?? false,
         })
       }
+      // Close a timer opened for a solo/muted join synchronously with the
+      // snapshot. A later peer event can then open a clean measurement window
+      // from the point at which remote media is actually expected.
+      const mediaAlreadyExpected = peers.some((peer) =>
+        peer.id !== myId && (peer.audio || peer.video))
+      if (!mediaAlreadyExpected) pauseTtfmUntilMediaExpected()
       resolveJoinedAck?.()
     }
 
@@ -453,6 +467,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       void (async () => {
         await joinedAck
         if (disposed) return
+
         const media = useMeetStore.getState()
         client.send('peer-state', {
           audio: !media.isMuted, video: !media.isVideoOff,
@@ -621,6 +636,9 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
               // would make the histogram flatter than reality.
               emitMetric({ name: 'time_to_first_media', value: ttfmSeconds })
               emitMetric({
+                name: 'call_setup_phase', value: ttfmSeconds, phase: 'first_media',
+              })
+              emitMetric({
                 name: 'call_attempt', value: 0,
                 result: ceilingPassed ? 'slow' : 'success',
               })
@@ -634,6 +652,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
               })
             }
             const remotePeerId = reconciler.peerForSession(remoteSessionId)
+            if (remotePeerId) store.getState().updatePeerConnectionState(remotePeerId, 'connected')
             const ttfmMsForLog = !ttfmRecorded && joinSentAt > 0 ? performance.now() - joinSentAt : undefined
             callDebug.callRemoteTrack(remotePeerId ?? '??', track.kind, ttfmMsForLog)
             if (!remotePeerId) {
@@ -670,8 +689,10 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
               },
             })
           },
-          onConnectionStateChange: (state) => {
+          onConnectionStateChange: (state, sessionId) => {
             if (disposed) return
+            const remotePeerId = sessionId ? reconciler.peerForSession(sessionId) : undefined
+            if (remotePeerId) store.getState().updatePeerConnectionState(remotePeerId, state)
             if (state === 'failed') {
               console.warn('[use-call] SFU connection failed')
               Sentry.addBreadcrumb({
@@ -684,6 +705,8 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
           // events, and so a subsequent timeout classifies as 'pull_errored'.
           onPullError: (sessionId, trackName, err) => {
             if (disposed) return
+            const peerId = reconciler.peerForSession(sessionId)
+            if (peerId) store.getState().updatePeerConnectionState(peerId, 'disconnected')
             pullErrors++
             Sentry.addBreadcrumb({
               category: 'sfu', message: 'pull errored', level: 'error',
@@ -698,6 +721,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
             if (disposed) return
             pullTimeouts++
             const remotePeerId = reconciler.peerForSession(sessionId)
+            if (remotePeerId) store.getState().updatePeerConnectionState(remotePeerId, 'disconnected')
             Sentry.addBreadcrumb({
               category: 'sfu', message: 'pull timeout (dead track)', level: 'warning',
               data: { sessionId, trackName, peerId: remotePeerId },
@@ -824,7 +848,10 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
                 roundTripTimeMs: rttMs,
                 jitterMs: s.jitterMs,
                 candidateType,
-                quality: gradeQuality(rttMs, s.packetLossPercent),
+                quality: gradeQuality(rttMs, s.packetLossPercent,
+                  store.getState().peerConnections.get(remotePeerId)?.video &&
+                  !store.getState().peerConnections.get(remotePeerId)?.videoHeld &&
+                  !store.getState().peerConnections.get(remotePeerId)?.screenSharing ? s.framesPerSecond : undefined),
                 networkPressure: gradeNetworkPressure(rttMs, s.packetLossPercent),
                 encodingLevel: store.getState().localVideoQuality.encodingLevel,
                 videoHeld: store.getState().localVideoQuality.videoHeld,
@@ -874,6 +901,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
               expected = stall.kind === 'audio' ? !!peer?.audio : !!(peer?.video || peer?.screenSharing) && !peer?.videoHeld
             }
             if (!expected) return
+            if (remotePeerId) store.getState().updatePeerConnectionState(remotePeerId, 'disconnected')
             Sentry.addBreadcrumb({
               category: 'stats',
               message: expected ? 'media flow stalled' : 'media flow stopped (peer not publishing this kind)',
@@ -969,6 +997,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
             if (disposed) return
             store.getState().sfuSession?.settleStalledFlow(stall.direction, stall.sessionId)
             const remotePeerId = stall.sessionId ? reconciler.peerForSession(stall.sessionId) : undefined
+            if (remotePeerId) store.getState().updatePeerConnectionState(remotePeerId, 'connected')
             store.getState().recordMediaFlowEvent({
               direction: stall.direction,
               kind: stall.kind,

@@ -50,7 +50,7 @@ function harness(): Harness {
 /** One detection window plus that attempt's backoff, with jitter pinned. */
 async function repairCycles(count: number) {
     for (let attempt = 1; attempt <= count; attempt++) {
-        await vi.advanceTimersByTimeAsync(4_000)
+        await vi.advanceTimersByTimeAsync(15_000)
         await vi.advanceTimersByTimeAsync(500 * 2 ** (attempt - 1) + 1)
     }
 }

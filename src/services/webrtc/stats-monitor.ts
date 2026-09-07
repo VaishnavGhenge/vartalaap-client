@@ -518,7 +518,8 @@ function round(n: number): number {
  * Coarse grade for the per-tile quality dot. Kept next to the collector so the
  * thresholds and the numbers they judge stay in one file.
  */
-export function gradeQuality(rttMs: number, lossPercent: number): 'good' | 'medium' | 'poor' | 'unknown' {
+export function gradeQuality(rttMs: number, lossPercent: number, videoFps?: number): 'good' | 'medium' | 'poor' | 'unknown' {
+  if (videoFps !== undefined && videoFps <= 0) return 'poor'
   if (rttMs < 0) return 'unknown'
   if (rttMs < RTT_GOOD_MS && lossPercent < LOSS_GOOD_PCT) return 'good'
   if (rttMs < RTT_MEDIUM_MS && lossPercent < LOSS_MEDIUM_PCT) return 'medium'

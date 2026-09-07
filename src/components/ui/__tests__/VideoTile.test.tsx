@@ -13,6 +13,13 @@ function makeStream(): MediaStream {
 }
 
 describe('VideoTile', () => {
+  it('keeps audio playing and explains missing video when only an audio track arrived', () => {
+    const { container } = render(<VideoTile participant={{ id: 'p', name: 'Alice', isVideoOff: false }} stream={makeStream()} />)
+    expect(screen.getByText('A')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Waiting for video')
+    expect(container.querySelector('video')).not.toBeInTheDocument()
+    expect(container.querySelector('audio')).toBeInTheDocument()
+  })
   beforeEach(() => {
     Object.defineProperty(HTMLMediaElement.prototype, 'play', {
       configurable: true,

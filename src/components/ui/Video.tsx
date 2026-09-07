@@ -6,6 +6,8 @@ interface VideoProps {
     stream: MediaStream | null;
     isLocal: boolean;
     objectFit?: 'cover' | 'contain';
+    onPlaying?: () => void;
+    visible?: boolean;
 }
 
 
@@ -59,13 +61,15 @@ function useAttachTracks<T extends HTMLMediaElement>(
 }
 
 
-export const VideoStream = ({stream, isLocal, objectFit = 'cover'}: VideoProps) => {
+export const VideoStream = ({stream, isLocal, objectFit = 'cover', onPlaying, visible = true}: VideoProps) => {
     const ref = useRef<HTMLVideoElement>(null);
 
     useAttachTracks(ref, stream, 'video');
 
     return <video
         ref={ref}
+        onPlaying={onPlaying}
+        style={{ visibility: visible ? 'visible' : 'hidden' }}
         className={`absolute inset-0 w-full h-full pointer-events-none ${objectFit === 'contain' ? 'object-contain' : 'object-cover'}`}
         autoPlay
         muted={isLocal}

@@ -299,7 +299,7 @@ it('a push with no ack fires onPublishTimeout; an acked push does not', async ()
         // Just past the 4s repair trigger and no further: detection now re-arms
         // after each repair attempt, so a longer window would legitimately
         // report the same unacked video push again.
-        vi.advanceTimersByTime(4_500)
+        vi.advanceTimersByTime(15_000)
 
         expect(onPublishTimeout).toHaveBeenCalledTimes(1)
         expect(onPublishTimeout).toHaveBeenCalledWith('video')
@@ -325,10 +325,10 @@ it('keeps reporting a push that stays unacked', async () => {
             getTracks: () => [makeTrack('video')],
         } as unknown as MediaStream)
 
-        await vi.advanceTimersByTimeAsync(4_000)
+        await vi.advanceTimersByTimeAsync(15_000)
         expect(onPublishTimeout).toHaveBeenCalledTimes(1)
         await vi.advanceTimersByTimeAsync(501)   // repair attempt 1 re-pushes
-        await vi.advanceTimersByTimeAsync(4_000) // and the new push stalls too
+        await vi.advanceTimersByTimeAsync(15_000) // and the new push stalls too
         expect(onPublishTimeout).toHaveBeenCalledTimes(2)
         session.close()
     } finally {
@@ -509,7 +509,7 @@ it('a second track whose push never acks stays out of the announcement', async (
 // factor at 0.5 and makes each attempt's delay exactly 500ms * 2^(attempt-1).
 async function runRepairCycles(count: number) {
     for (let attempt = 1; attempt <= count; attempt++) {
-        await vi.advanceTimersByTimeAsync(8_000)
+        await vi.advanceTimersByTimeAsync(15_000)
         await vi.advanceTimersByTimeAsync(500 * 2 ** (attempt - 1) + 1)
     }
 }
@@ -582,7 +582,7 @@ describe('pull repair', () => {
         session.close()
     })
 
-    it('retries immediately when the publisher re-announces a broken track', async () => {
+    it('does not interrupt an in-flight repair when the publisher re-announces', async () => {
         // The publisher re-announcing usually means their side just came back,
         // so it is a better signal than waiting out the backoff. This branch
         // used to return unconditionally, which is what made dead permanent.
@@ -592,7 +592,9 @@ describe('pull repair', () => {
         const afterFirstRepair = instances[1].pullCalls.length
 
         await session.subscribe('cf-bob', ['tn-video'])
-        expect(instances[1].pullCalls.length).toBe(afterFirstRepair + 1)
+        expect(instances[1].pullCalls.length).toBe(afterFirstRepair)
+        await vi.advanceTimersByTimeAsync(10_000)
+        expect(instances[1].pullCalls.length).toBe(afterFirstRepair)
         session.close()
     })
 
@@ -634,6 +636,32 @@ describe('pull repair', () => {
 })
 
 describe('push repair', () => {
+    it('allows a slow healthy publish to finish without any repair or session replacement', async () => {
+        const onRepair = vi.fn()
+        const session = makeSession({ onRepair })
+        await session.replaceTrack('video', makeTrack())
+        await vi.advanceTimersByTimeAsync(7_000)
+        instances[0].pushSubjects[0].next({ sessionId: 'slow-publish', trackName: 'video' })
+        await vi.advanceTimersByTimeAsync(60_000)
+        expect(onRepair).not.toHaveBeenCalled()
+        expect(instances).toHaveLength(1)
+        expect(session.getLocalTracksAnnouncement()?.sessionId).toBe('slow-publish')
+        session.close()
+    })
+
+    it('coalesces simultaneous stalled-flow rebuilds and cancels delayed rebuild on close', async () => {
+        const session = makeSession()
+        await session.replaceTrack('video', makeTrack())
+        session.repairStalledFlow('publish')
+        await vi.advanceTimersByTimeAsync(501)
+        expect(instances).toHaveLength(2)
+        session.repairStalledFlow('publish')
+        await vi.advanceTimersByTimeAsync(1_001)
+        expect(instances).toHaveLength(2)
+        session.close()
+        await vi.advanceTimersByTimeAsync(60_000)
+        expect(instances).toHaveLength(2)
+    })
     beforeEach(() => { useDeterministicRepairTimers() })
     afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
 

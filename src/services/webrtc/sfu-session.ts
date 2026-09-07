@@ -20,7 +20,7 @@ export interface SfuSessionOptions {
   // Called whenever a subscribed remote track produces a fresh MediaStreamTrack.
   // partytracks re-emits the track if the underlying PC is recreated.
   onRemoteTrack?: (track: MediaStreamTrack, sessionId: string, trackName: string) => void
-  onConnectionStateChange?: (state: RTCPeerConnectionState) => void
+  onConnectionStateChange?: (state: RTCPeerConnectionState, sessionId?: string) => void
   // A pull that errored (SDP/ICE/CF 4xx). The track will never arrive — caller
   // should surface this, not just log it.
   onPullError?: (sessionId: string, trackName: string, err: unknown) => void
@@ -58,21 +58,10 @@ export interface RepairInfo {
   trackName?: string
 }
 
-// These two are REPAIR TRIGGERS, not verdicts, and they are deliberately
-// decoupled from the SLO numbers in CLAUDE.md.
-//
-// They used to sit at 8s "just under the 10s TTFM ceiling", which tied how long
-// we wait before fixing something to how long we consider a call fast. Those
-// are different questions. The only thing that matters here is how long a
-// track can plausibly be in flight before retrying is worth the cost, and the
-// answer is a few seconds: a pull or push that has not produced anything in
-// four is not about to.
-//
-// Making them shorter is now safe precisely because they no longer end
-// anything. A premature trigger costs one cheap retry (repair rung 1), where
-// before it would have burned the call's only detection.
-const SFU_PULL_REPAIR_AFTER_MS = 4_000
-const SFU_PUSH_REPAIR_AFTER_MS = 4_000
+// The observed control path takes up to ~2.2s per HTTP hop, plus ICE and
+// negotiation. Start conservatively, then learn whole-operation durations.
+const SFU_PULL_REPAIR_AFTER_MS = 15_000
+const SFU_PUSH_REPAIR_AFTER_MS = 15_000
 
 // Highest repair rung either direction escalates to:
 //   1 — retry the push/pull in place, against the same CF session
@@ -101,6 +90,42 @@ const MAX_REPAIR_RUNG = 2
  * correct trade-off at this scale.
  */
 export class SfuSession {
+  private readonly setupDurations: number[] = []
+  private readonly rebuildAt = new Map<string, number>()
+  private readonly deferredRebuilds = new Map<string, ReturnType<typeof setTimeout>>()
+
+  private repairWindow(fallback: number): number {
+    const sorted = [...this.setupDurations].sort((a, b) => a - b)
+    const p95 = sorted[Math.max(0, Math.ceil(sorted.length * 0.95) - 1)] ?? 0
+    return Math.min(60_000, Math.max(fallback, p95 * 2))
+  }
+
+  private observeSetup(startedAt: number): void {
+    this.setupDurations.push(Date.now() - startedAt)
+    if (this.setupDurations.length > 40) this.setupDurations.shift()
+  }
+
+  private deferRebuild(key: string, rebuild: () => void): boolean {
+    const remaining = (this.rebuildAt.get(key) ?? -Infinity) + 30_000 - Date.now()
+    if (remaining <= 0) {
+      this.cancelDeferredRebuild(key)
+      this.rebuildAt.set(key, Date.now())
+      return false
+    }
+    if (!this.deferredRebuilds.has(key)) {
+      this.deferredRebuilds.set(key, setTimeout(() => {
+        this.deferredRebuilds.delete(key)
+        if (!this.destroyed) rebuild()
+      }, remaining))
+    }
+    return true
+  }
+
+  private cancelDeferredRebuild(key: string): void {
+    const timer = this.deferredRebuilds.get(key)
+    if (timer !== undefined) clearTimeout(timer)
+    this.deferredRebuilds.delete(key)
+  }
   private readonly videoController = new VideoQualityController()
   private videoQuality: VideoQuality = { encodingLevel: 2, videoHeld: false }
   private encodingBusy = false
@@ -267,6 +292,8 @@ export class SfuSession {
    */
   private startPush(kind: string, track: MediaStreamTrack): void {
     if (this.destroyed) return
+    const startedAt = Date.now()
+    let observed = false
     // First track of any kind: subscribe to the publish PC state now. This is
     // the moment that triggers CF session creation, so it happens right before
     // the first tracks/new — not up to minutes earlier in the constructor.
@@ -293,7 +320,7 @@ export class SfuSession {
       // only response was a toast saying "still retrying" while nothing in our
       // layer actually retried.
       this.pushRepair(kind).schedule()
-    }, SFU_PUSH_REPAIR_AFTER_MS)
+    }, this.repairWindow(SFU_PUSH_REPAIR_AFTER_MS))
     this.pushAckTimers.set(kind, ackTimer)
 
     const subject = new BehaviorSubject<MediaStreamTrack>(track)
@@ -308,6 +335,7 @@ export class SfuSession {
         // TrackMetadata types these as optional, but a push ack always
         // carries both — guard rather than store an unusable entry.
         if (!meta.sessionId || !meta.trackName) return
+        if (!observed) { this.observeSetup(startedAt); observed = true }
         callDebug.sfuPushAcked(kind, meta.sessionId, meta.trackName)
         this.publishedMeta.set(kind, { sessionId: meta.sessionId, trackName: meta.trackName })
         this.lastPubSessionId = meta.sessionId
@@ -355,7 +383,8 @@ export class SfuSession {
     if (!loop?.repairing) return
     this.opts.onRepaired?.({ stage: 'publish', rung: loop.nextRung, attempt: loop.attempts, kind })
     callDebug.sfuRepaired('publish', loop.attempts, kind)
-    loop.reset()
+    loop.settle()
+    if (this.pushAckTimers.size === 0) this.cancelDeferredRebuild('pub')
   }
 
   /** Rung 1: tear the push down and re-push the same track, same CF session. */
@@ -382,6 +411,7 @@ export class SfuSession {
    */
   private resetPubTracks(): void {
     if (this.destroyed) return
+    if (this.deferRebuild('pub', () => this.resetPubTracks())) return
     callDebug.sfuPubReset()
     const kinds = [...this.localSubjects.keys()]
     for (const kind of kinds) this.teardownPush(kind)
@@ -465,17 +495,8 @@ export class SfuSession {
     names.add(trackName)
 
     if (this.remotePullSubs.has(key)) {
-      // Already pulling. If it is currently broken, a fresh announcement for
-      // the same track is a reason to try again NOW rather than wait out the
-      // backoff: the publisher re-announcing usually means their side just
-      // came back. Previously this branch returned unconditionally, which is
-      // what made a dead track permanent for the rest of the call.
-      const loop = this.pullRepairs.get(key)
-      if (loop?.repairing) {
-        callDebug.sfuSubscribeRetryOnAnnounce(sessionId, trackName)
-        this.repull(sessionId, trackName)
-        return
-      }
+      // Replayed announcements cannot preempt an in-flight negotiation.
+      // Its timeout/error owns retry timing even while repairs are active.
       callDebug.sfuSubscribeSkipped(sessionId, trackName)
       return
     }
@@ -486,6 +507,8 @@ export class SfuSession {
   /** Wires one pull and arms dead-track detection. Re-run by repair rung 1. */
   private startPull(sessionId: string, trackName: string): void {
     if (this.destroyed) return
+    const startedAt = Date.now()
+    let observed = false
     const key = `${sessionId}/${trackName}`
 
     // Get or create the subscribe-only PartyTracks for this remote session.
@@ -524,12 +547,13 @@ export class SfuSession {
       callDebug.sfuPullTimeout(sessionId, trackName)
       this.opts.onPullTimeout?.(sessionId, trackName)
       this.pullRepair(sessionId, trackName).schedule()
-    }, SFU_PULL_REPAIR_AFTER_MS)
+    }, this.repairWindow(SFU_PULL_REPAIR_AFTER_MS))
     this.pullTimers.set(key, deadTrackTimer)
 
     const track$ = subTracks.pull(meta$.asObservable())
     const sub = track$.subscribe({
       next: (track) => {
+        if (!observed) { this.observeSetup(startedAt); observed = true }
         this.clearPullTimer(key)
         callDebug.sfuTrackArrived(sessionId, trackName, track.kind)
         this.settlePullRepair(sessionId, trackName)
@@ -556,13 +580,14 @@ export class SfuSession {
     rebuild: () => void,
   ): void {
     callDebug.sfuConnState(label, state)
-    this.opts.onConnectionStateChange?.(state)
+    this.opts.onConnectionStateChange?.(state, stage === 'subscribe' ? key.slice(4) : undefined)
     const loop = this.pcRepairs.get(key)
     if (state === 'connected') {
       if (loop?.repairing) {
         this.opts.onRepaired?.({ stage, rung: 2, attempt: loop.attempts })
         callDebug.sfuRepaired(stage, loop.attempts, label)
-        loop.reset()
+        loop.settle()
+        this.cancelDeferredRebuild(key)
       }
       return
     }
@@ -620,7 +645,10 @@ export class SfuSession {
     if (!loop?.repairing) return
     this.opts.onRepaired?.({ stage: 'subscribe', rung: loop.nextRung, attempt: loop.attempts, sessionId, trackName })
     callDebug.sfuRepaired('subscribe', loop.attempts, `${sessionId}/${trackName}`)
-    loop.reset()
+    loop.settle()
+    if (![...this.pullTimers.keys()].some(key => key.startsWith(`${sessionId}/`))) {
+      this.cancelDeferredRebuild(`sub:${sessionId}`)
+    }
   }
 
   /** Rung 1: re-issue the pull on the existing subscribe session. */
@@ -640,6 +668,7 @@ export class SfuSession {
    */
   private resetSubSession(sessionId: string): void {
     if (this.destroyed) return
+    if (this.deferRebuild(`sub:${sessionId}`, () => this.resetSubSession(sessionId))) return
     const names = [...(this.subSessionTracks.get(sessionId) ?? [])]
     callDebug.sfuSubReset(sessionId, names)
     for (const trackName of names) {
@@ -700,7 +729,8 @@ export class SfuSession {
     if (!loop?.repairing) return
     this.opts.onRepaired?.({ stage: direction, rung: 2, attempt: loop.attempts, sessionId })
     callDebug.sfuRepaired(direction, loop.attempts, key)
-    loop.reset()
+    loop.settle()
+    this.cancelDeferredRebuild(key)
   }
 
   // Stops pulling one track, leaving the rest of that peer's session alone.
@@ -719,6 +749,8 @@ export class SfuSession {
   // Stops pulling every track from a remote session and closes that session's
   // subscribe PC. Called when a peer leaves so idle CF sessions are released.
   unsubscribePeer(sessionId: string): void {
+    this.cancelDeferredRebuild(`sub:${sessionId}`)
+    this.rebuildAt.delete(`sub:${sessionId}`)
     callDebug.sfuUnsubscribePeer(sessionId)
     for (const [key, sub] of this.remotePullSubs) {
       if (key.startsWith(`${sessionId}/`)) {
@@ -814,6 +846,8 @@ export class SfuSession {
     if (this.destroyed) return
     callDebug.sfuClose()
     this.destroyed = true
+    for (const key of this.deferredRebuilds.keys()) this.cancelDeferredRebuild(key)
+    this.rebuildAt.clear()
     for (const sub of this.localPushSubs.values()) sub.unsubscribe()
     for (const sub of this.remotePullSubs.values()) sub.unsubscribe()
     for (const sub of this.subConnStateMap.values()) sub.unsubscribe()

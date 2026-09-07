@@ -552,6 +552,36 @@ describe('useCall — the time-to-first-media window', () => {
     expect(failures).toHaveLength(1)
     expect((failures[0].data as { reason?: string }).reason).not.toBe('peers_present_none_publishing')
   })
+
+  it('starts from the first publishing peer, not from an earlier solo join', async () => {
+    const client = makeClient()
+    await act(async () => {
+      renderHook(() => useCall({
+        client, roomId: 'room-1', enabled: true,
+        userName: 'Alice', initialAudio: false, initialVideo: false,
+      }))
+    })
+    await act(async () => {
+      client.emit('joined', { data: { peers: [] } })
+    })
+    // Let the joinedAck continuation observe the empty snapshot and pause the
+    // initial timer before simulated wall-clock time moves forward.
+    await act(async () => {})
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8_000)
+      client.emit('peer-joined', {
+        data: { peerId: 'peer-bob', name: 'Bob', audio: true, video: true },
+      })
+      await vi.advanceTimersByTimeAsync(3_000)
+    })
+
+    // Eleven seconds have passed since our own join, but only three since
+    // remote media became expected. The old timer emitted a false alert here.
+    expect(metrics(client, 'call_setup_failure')).toHaveLength(0)
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(8_000) })
+    expect(metrics(client, 'call_setup_failure')).toHaveLength(1)
+  })
 })
 
 // A re-mount leaves the device flags saying "camera on" while the previous

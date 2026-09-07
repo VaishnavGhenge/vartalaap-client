@@ -43,6 +43,7 @@ export class RepairLoop {
   private timer: ReturnType<typeof setTimeout> | null = null
   private attemptCount = 0
   private cancelled = false
+  private settledAt: number | null = null
   private readonly opts: Required<RepairLoopOptions>
 
   constructor(opts: RepairLoopOptions) {
@@ -62,7 +63,7 @@ export class RepairLoop {
 
   /** True once at least one repair has been scheduled without a reset since. */
   get repairing(): boolean {
-    return this.attemptCount > 0 || this.timer !== null
+    return this.settledAt === null && (this.attemptCount > 0 || this.timer !== null)
   }
 
   /** The rung the NEXT attempt will run at. */
@@ -77,6 +78,10 @@ export class RepairLoop {
    */
   schedule(): void {
     if (this.cancelled || this.timer !== null) return
+    if (this.settledAt !== null) {
+      if (Date.now() - this.settledAt >= 60_000) this.attemptCount = 0
+      this.settledAt = null
+    }
     const attempt = this.attemptCount + 1
     const delay = this.delayFor(attempt)
     this.timer = setTimeout(() => {
@@ -100,6 +105,15 @@ export class RepairLoop {
       this.timer = null
     }
     this.attemptCount = 0
+    this.settledAt = null
+  }
+
+  // Cancel pending destruction on late success, but retain backoff until a
+  // full minute of stability. A briefly successful retry is not a new call.
+  settle(): void {
+    if (this.timer !== null) clearTimeout(this.timer)
+    this.timer = null
+    this.settledAt ??= Date.now()
   }
 
   /** Permanent teardown: the peer left, or the call ended. */

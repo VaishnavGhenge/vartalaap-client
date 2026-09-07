@@ -62,6 +62,22 @@ export const VideoTile = ({
         : (videoHeld || (isScreenSharing ? false : !!participant?.isVideoOff));
     const muted = isLocal ? !!isMuted : !!participant?.isMuted;
     const label = isLocal ? `${name} (you)` : name;
+    const [liveVideo, setLiveVideo] = useState(() => !!stream?.getVideoTracks().some(track => track.readyState === 'live'));
+    const [playingStream, setPlayingStream] = useState<MediaStream | null>(null);
+    const showingVideo = liveVideo && playingStream === stream;
+    useEffect(() => {
+        const sync = () => setLiveVideo(!!stream?.getVideoTracks().some(track => track.readyState === 'live'));
+        const tracks = stream?.getVideoTracks() ?? [];
+        sync();
+        tracks.forEach(track => track.addEventListener?.('ended', sync));
+        stream?.addEventListener?.('addtrack', sync);
+        stream?.addEventListener?.('removetrack', sync);
+        return () => {
+            tracks.forEach(track => track.removeEventListener?.('ended', sync));
+            stream?.removeEventListener?.('addtrack', sync);
+            stream?.removeEventListener?.('removetrack', sync);
+        };
+    }, [stream]);
 
     // Skip internal audio analysis when the caller provides speaking state directly
     // (e.g. local tile in MeetCall, where audio is already analysed for broadcasting).
@@ -98,7 +114,7 @@ export const VideoTile = ({
         >
 
             {/* Avatar (camera off or no stream yet) */}
-            {(videoOff || !stream) && (
+            {(videoOff || !showingVideo) && (
                 <div aria-hidden="true" className="absolute inset-0 flex items-center justify-center">
                     {compact ? (
                         // Fixed 32 px circle for thumbnail strip tiles
@@ -119,9 +135,11 @@ export const VideoTile = ({
             )}
 
             {!isLocal && stream && <AudioStream stream={stream} />}
-            {!videoOff && stream && (
+            {!videoOff && liveVideo && stream && (
                 <VideoStream
                     stream={stream}
+                    onPlaying={() => setPlayingStream(stream)}
+                    visible={showingVideo}
                     isLocal={isLocal}
                     objectFit={isScreenSharing ? 'contain' : 'cover'}
                 />
@@ -196,6 +214,11 @@ export const VideoTile = ({
             )}
 
             {/* Connection state overlays — remote tiles only */}
+            {!isLocal && !videoOff && !showingVideo && connectionState !== 'failed' && connectionState !== 'disconnected' && (
+                <span role="status" className="absolute bottom-10 inset-x-0 text-center text-xs text-[hsl(var(--muted-foreground))]">
+                    Waiting for video…
+                </span>
+            )}
             {!isLocal && connectionState === 'disconnected' && (
                 <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2
                                 bg-[hsl(var(--background))]/60 backdrop-blur-sm">
