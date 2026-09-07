@@ -42,6 +42,7 @@ export interface SessionKeepaliveOptions {
 export function startSessionKeepalive(opts: SessionKeepaliveOptions): () => void {
   let stopped = false
   let deadNotified = false
+  let failures = 0
   let timer: ReturnType<typeof setTimeout> | null = null
 
   const clear = () => {
@@ -58,7 +59,18 @@ export function startSessionKeepalive(opts: SessionKeepaliveOptions): () => void
     const delay = Math.max(0, expMs - Date.now() - REFRESH_LEAD_MS)
     timer = setTimeout(() => {
       void (async () => {
-        const resp = await refreshSession()
+        let resp
+        try {
+          resp = await refreshSession()
+          failures = 0
+        } catch {
+          if (!stopped) {
+            const delay = Math.min(30_000, 1_000 * 2 ** Math.min(failures++, 5)) * (0.5 + Math.random() * 0.5)
+            clear()
+            timer = setTimeout(schedule, delay)
+          }
+          return
+        }
         if (stopped) return
         if (!resp && !deadNotified) {
           deadNotified = true

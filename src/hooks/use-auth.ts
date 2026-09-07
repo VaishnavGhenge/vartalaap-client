@@ -80,10 +80,13 @@ export const useAuth = () => {
 export async function restoreSession() {
     const { login: storeLogin, logout: storeLogout, setLoading } = useAuthStore.getState()
     setLoading(true)
-    const resp = await restoreAuthSession()
-    if (resp) {
-        storeLogin(resp.user)
-    } else {
-        storeLogout()
+    try {
+        const resp = await restoreAuthSession()
+        if (resp) storeLogin(resp.user)
+        else storeLogout()
+    } catch {
+        toast.error('Could not reconnect to your account. Please retry when your connection is back.')
+    } finally {
+        setLoading(false)
     }
 }

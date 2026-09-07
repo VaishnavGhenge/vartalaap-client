@@ -20,6 +20,15 @@ let _roomToken: string | null = null
 type TokenListener = () => void
 const tokenListeners = new Set<TokenListener>()
 
+if (typeof window !== 'undefined') {
+    window.addEventListener('storage', (event) => {
+        if (event.key !== ACCESS_TOKEN_STORAGE_KEY && event.key !== null) return
+        _token = readStoredAccessToken()
+        _loaded = true
+        notifyTokenChange()
+    })
+}
+
 export function subscribeTokenChange(listener: TokenListener): () => void {
     tokenListeners.add(listener)
     return () => tokenListeners.delete(listener)

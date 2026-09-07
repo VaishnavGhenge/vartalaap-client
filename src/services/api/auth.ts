@@ -1,7 +1,9 @@
-import { httpServerUri } from '@/src/services/api/config'
+import { httpServerUri, authServerUri } from '@/src/services/api/config'
 import { apiFetch, parseApiError } from '@/src/services/api/fetch'
 import { getAccessToken, setAccessToken } from '@/src/services/api/token'
 import type { AuthResponse, RegisterCredentials, User, UserCredentials } from '@/src/types/auth'
+import { refreshSession } from './refresh'
+export { refreshSession } from './refresh'
 
 const authSessionCookieName = 'sessionly_session'
 
@@ -16,7 +18,7 @@ async function authPost<T>(path: string, body?: unknown, requiresAuth = false): 
         const token = getAccessToken()
         if (token) headers['Authorization'] = `Bearer ${token}`
     }
-    const res = await fetch(`${httpServerUri}${path}`, {
+    const res = await fetch(`${authServerUri}${path}`, {
         method: 'POST',
         credentials: 'include',
         headers,
@@ -41,26 +43,14 @@ export async function login(creds: UserCredentials): Promise<AuthResponse> {
     return resp
 }
 
-export async function refreshSession(): Promise<AuthResponse | null> {
-    try {
-        const resp = await authPost<AuthResponse>('/auth/refresh')
-        setAccessToken(resp.accessToken)
-        return resp
-    } catch {
-        setAccessToken(null)
-        clearSessionMarker()
-        return null
-    }
-}
-
 export async function restoreAuthSession(): Promise<AuthResponse | null> {
     const existingToken = getAccessToken()
     if (existingToken) {
         try {
             const user = await getMe()
             return { accessToken: getAccessToken() ?? existingToken, user }
-        } catch {
-            setAccessToken(null)
+        } catch (error) {
+            if (getAccessToken()) throw error
         }
     }
     return refreshSession()

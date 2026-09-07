@@ -40,6 +40,19 @@ describe('jwtExpiryMs', () => {
 })
 
 describe('startSessionKeepalive', () => {
+    it('retries transient refresh failures without declaring the session dead', async () => {
+        setAccessToken(fakeJwt(30))
+        refreshMock.mockRejectedValueOnce(new Error('offline')).mockImplementation(async () => {
+            setAccessToken(fakeJwt(900))
+            return { accessToken: 'new', user: {} }
+        })
+        const dead = vi.fn()
+        const stop = startSessionKeepalive({ onSessionDead: dead })
+        await vi.advanceTimersByTimeAsync(5_000)
+        expect(refreshMock).toHaveBeenCalledTimes(2)
+        expect(dead).not.toHaveBeenCalled()
+        stop()
+    })
     it('refreshes shortly before the token expires and reschedules on the new token', async () => {
         setAccessToken(fakeJwt(900)) // 15 min
         // Successful refresh: the real auth.ts sets the new token, which is

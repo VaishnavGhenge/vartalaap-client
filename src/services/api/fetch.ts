@@ -6,10 +6,8 @@
  * the /auth/refresh endpoint uses the HttpOnly cookie, no token required.
  */
 
-import { httpServerUri } from '@/src/services/api/config'
-import { getAccessToken, getRoomToken, setAccessToken } from '@/src/services/api/token'
-
-let refreshInFlight: Promise<boolean> | null = null
+import { getAccessToken, getRoomToken } from '@/src/services/api/token'
+import { refreshSession } from './refresh'
 
 export class ApiError extends Error {
     constructor(
@@ -50,30 +48,7 @@ export function apiBearerHeaders(): Record<string, string> {
 }
 
 async function attemptRefresh(): Promise<boolean> {
-    if (refreshInFlight) return refreshInFlight
-    refreshInFlight = doRefresh().finally(() => {
-        refreshInFlight = null
-    })
-    return refreshInFlight
-}
-
-async function doRefresh(): Promise<boolean> {
-    try {
-        const res = await fetch(`${httpServerUri}/auth/refresh`, {
-            method: 'POST',
-            credentials: 'include',
-        })
-        if (!res.ok) {
-            setAccessToken(null)
-            return false
-        }
-        const data = await res.json() as { accessToken: string }
-        setAccessToken(data.accessToken)
-        return true
-    } catch {
-        setAccessToken(null)
-        return false
-    }
+    return !!(await refreshSession())
 }
 
 /**
