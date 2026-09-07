@@ -125,6 +125,32 @@ test.describe('SFU track publishing and subscription', () => {
     ])
   })
 
+  test('connected call emits periodic network-quality telemetry', async () => {
+    const room = await createRoom()
+    const alice = await ctx1.newPage()
+    const bob = await ctx2.newPage()
+    const reports: Array<{ peers: Array<{ roundTripTimeMs: number; packetLossPercent: number; jitterMs: number }> }> = []
+    alice.on('websocket', (socket) => {
+      socket.on('framesent', ({ payload }) => {
+        try {
+          const message = JSON.parse(payload.toString())
+          if (message.type === 'stats-report') reports.push(message.data)
+        } catch {}
+      })
+    })
+    await joinWithCamera(alice, room, 'Alice')
+    await joinWithCamera(bob, room, 'Bob')
+    await expectBothSeeEachOther(alice, bob)
+    await expectInboundMediaFlowing(alice, 'video')
+    await expect.poll(() => reports.length, { timeout: 30_000 }).toBeGreaterThanOrEqual(2)
+    const samples = reports.flatMap((report) => report.peers)
+    expect(samples.some((sample) => Number.isFinite(sample.roundTripTimeMs) && sample.roundTripTimeMs >= 0)).toBe(true)
+    for (const sample of samples) {
+      expect(Number.isFinite(sample.packetLossPercent)).toBe(true)
+      expect(Number.isFinite(sample.jitterMs)).toBe(true)
+    }
+  })
+
   // ── Bug 2 regression — THE late-joiner path ───────────────────────────────
   // The user-reported bug: "video streaming to peers joined earlier than you
   // not working". Server replays each existing peer's published SFU tracks to

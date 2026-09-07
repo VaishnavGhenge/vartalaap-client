@@ -1,0 +1,10 @@
+.git
+node_modules
+.next
+.vercel
+.env*
+**/.env*
+e2e/.auth-state*.json
+test-results
+playwright-report
+*.pem

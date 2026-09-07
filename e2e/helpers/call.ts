@@ -29,7 +29,8 @@ export const CALL_CONTEXT_OPTIONS = {
 // Server-side /auth/login is rate-limited at 10/min (auth_handler.go).
 // Retries with linear backoff so back-to-back tests don't fail spuriously.
 async function loginOnce(): Promise<{ state: BrowserContextOptions['storageState']; accessToken: string }> {
-  const reqCtx = await request.newContext({ baseURL: SERVER })
+  const cookieAuth = process.env.E2E_COOKIE_AUTH === 'true'
+  const reqCtx = await request.newContext({ baseURL: cookieAuth ? process.env.E2E_BASE_URL : SERVER })
   try {
     let lastStatus = 0
     for (let attempt = 0; attempt < 8; attempt++) {
@@ -40,7 +41,7 @@ async function loginOnce(): Promise<{ state: BrowserContextOptions['storageState
         const body = await res.json() as { accessToken: string }
         const state = await reqCtx.storageState()
         const webOrigin = new URL(process.env.E2E_BASE_URL ?? 'http://localhost:3000').origin
-        state.origins = [
+        state.origins = cookieAuth ? [] : [
           ...(state.origins ?? []).filter((entry) => entry.origin !== webOrigin),
           { origin: webOrigin, localStorage: [{ name: 'sessionly_access_token', value: body.accessToken }] },
         ]
