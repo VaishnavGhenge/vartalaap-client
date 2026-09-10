@@ -29,11 +29,10 @@ export interface SfuSessionOptions {
   // broadcast sfu-tracks), the pull did not error, yet CF never forwarded media.
   // This is the "host enabled camera, guest never saw it" failure made explicit.
   onPullTimeout?: (sessionId: string, trackName: string) => void
-  // Fired whenever the set of locally published tracks changes: first CF ack
-  // of a pushed kind, or partytracks re-pushing after a PC recreation under a
-  // new CF sessionId. Payload is the FULL current set — the caller forwards it
-  // to the signaling server (sfu-announce) so the room's stored track set
-  // stays in sync even when the original tracks/new broadcast was lost.
+  // Fired whenever the set of locally published tracks changes: first CF ack,
+  // withdrawal while rebuilding, or re-push under a new CF sessionId. Payload
+  // is the FULL current set; an empty set withdraws the named session before
+  // anybody can join and pull tracks that no longer exist.
   onLocalTracksChanged?: (announcement: SfuTracksData) => void
   // A pushed track got no CF acknowledgment within SFU_PUSH_REPAIR_AFTER_MS.
   // Fires once per detection, before the repair ladder starts. The user-facing
@@ -62,6 +61,10 @@ export interface RepairInfo {
 // negotiation. Start conservatively, then learn whole-operation durations.
 const SFU_PULL_REPAIR_AFTER_MS = 15_000
 const SFU_PUSH_REPAIR_AFTER_MS = 15_000
+// Stats marks a flow stalled after 6s without bytes. Give a connected mobile
+// transport another full recovery window before replacing its session: a
+// scheduler pause or network handoff is degradation, not proof of failure.
+const MEDIA_STALL_REPAIR_GRACE_MS = 20_000
 
 // Highest repair rung either direction escalates to:
 //   1 — retry the push/pull in place, against the same CF session
@@ -147,6 +150,9 @@ export class SfuSession {
   // Calling .next() on it makes partytracks replaceTrack the existing sender.
   private readonly localSubjects = new Map<string, BehaviorSubject<MediaStreamTrack>>()
   private readonly localPushSubs = new Map<string, Subscription>()
+  // Incremented before every full publish rebuild. Async callbacks capture the
+  // generation they belong to and cannot mutate the replacement session.
+  private publishGeneration = 0
   // kind → the track currently meant to be going out. Held separately from the
   // subject because a repair tears the subject down and needs to know what to
   // push again.
@@ -177,10 +183,15 @@ export class SfuSession {
   // fails later — the network-switch case, where the tab and signaling are
   // fine and only media is dead.
   private readonly pcRepairs = new Map<string, RepairLoop>()
+  // A connected PC with temporarily silent bytes is weaker evidence than an
+  // explicit `failed` state, so it owns a separate, slower recovery transition.
+  private readonly mediaFlowRepairs = new Map<string, RepairLoop>()
   // remote sessionId → the track names we are meant to be pulling from it.
   // Repair rung 2 throws away the subscribe PartyTracks for a session, and
   // this is what tells it which pulls to re-establish on the new one.
   private readonly subSessionTracks = new Map<string, Set<string>>()
+  private readonly subGenerations = new Map<string, number>()
+  private subGenerationCounter = 0
   // Subscribed lazily on the first publishTrack() call so that the underlying
   // PartyTracks session$ (and therefore the CF session POST /sessions/new) is
   // not created until there is actual media to push. Eagerly subscribing here
@@ -292,6 +303,7 @@ export class SfuSession {
    */
   private startPush(kind: string, track: MediaStreamTrack): void {
     if (this.destroyed) return
+    const generation = this.publishGeneration
     const startedAt = Date.now()
     let observed = false
     // First track of any kind: subscribe to the publish PC state now. This is
@@ -313,6 +325,7 @@ export class SfuSession {
     // identical to one that's about to succeed — only the missing ack tells
     // them apart.
     const ackTimer = setTimeout(() => {
+      if (generation !== this.publishGeneration) return
       this.pushAckTimers.delete(kind)
       callDebug.sfuPushTimeout(kind)
       this.opts.onPublishTimeout?.(kind)
@@ -331,6 +344,7 @@ export class SfuSession {
       // CF acked the push (also re-fires when partytracks re-pushes after a
       // PC recreation, with a new sessionId). Record it and re-announce.
       next: (meta) => {
+        if (generation !== this.publishGeneration) return
         this.clearPushAckTimer(kind)
         // TrackMetadata types these as optional, but a push ack always
         // carries both — guard rather than store an unusable entry.
@@ -343,6 +357,7 @@ export class SfuSession {
         this.emitLocalTracksChanged()
       },
       error: (err) => {
+        if (generation !== this.publishGeneration) return
         this.clearPushAckTimer(kind)
         console.error(`[sfu] push(${kind}) errored`, err)
         callDebug.sfuPushError(kind, err)
@@ -413,6 +428,8 @@ export class SfuSession {
     if (this.destroyed) return
     if (this.deferRebuild('pub', () => this.resetPubTracks())) return
     callDebug.sfuPubReset()
+    this.withdrawLocalTracks()
+    this.publishGeneration++
     const kinds = [...this.localSubjects.keys()]
     for (const kind of kinds) this.teardownPush(kind)
     // Dropping every subscription releases the old PartyTracks, which closes
@@ -431,6 +448,15 @@ export class SfuSession {
     for (const [kind, track] of this.localTracks) {
       if (track.readyState === 'live') this.startPush(kind, track)
     }
+  }
+
+  private withdrawLocalTracks(): void {
+    if (!this.lastPubSessionId) return
+    const withdrawal: SfuTracksData = { sessionId: this.lastPubSessionId, tracks: [] }
+    const json = JSON.stringify(withdrawal)
+    if (json === this.lastAnnouncedJson) return
+    this.lastAnnouncedJson = json
+    this.opts.onLocalTracksChanged?.(withdrawal)
   }
 
   /** Drops one kind's push wiring without forgetting what should be sent. */
@@ -507,6 +533,11 @@ export class SfuSession {
   /** Wires one pull and arms dead-track detection. Re-run by repair rung 1. */
   private startPull(sessionId: string, trackName: string): void {
     if (this.destroyed) return
+    let generation = this.subGenerations.get(sessionId)
+    if (generation === undefined) {
+      generation = ++this.subGenerationCounter
+      this.subGenerations.set(sessionId, generation)
+    }
     const startedAt = Date.now()
     let observed = false
     const key = `${sessionId}/${trackName}`
@@ -543,6 +574,7 @@ export class SfuSession {
     // emits. Without this timer that case hangs silently, which is precisely
     // how "host enabled camera, guest never saw it" goes uninstrumented.
     const deadTrackTimer = setTimeout(() => {
+      if (this.subGenerations.get(sessionId) !== generation) return
       this.pullTimers.delete(key)
       callDebug.sfuPullTimeout(sessionId, trackName)
       this.opts.onPullTimeout?.(sessionId, trackName)
@@ -553,6 +585,7 @@ export class SfuSession {
     const track$ = subTracks.pull(meta$.asObservable())
     const sub = track$.subscribe({
       next: (track) => {
+        if (this.subGenerations.get(sessionId) !== generation) return
         if (!observed) { this.observeSetup(startedAt); observed = true }
         this.clearPullTimer(key)
         callDebug.sfuTrackArrived(sessionId, trackName, track.kind)
@@ -560,6 +593,7 @@ export class SfuSession {
         this.opts.onRemoteTrack?.(track, sessionId, trackName)
       },
       error: (err) => {
+        if (this.subGenerations.get(sessionId) !== generation) return
         this.clearPullTimer(key)
         console.error(`[sfu] pull(${sessionId}/${trackName}) errored`, err)
         callDebug.sfuPullError(sessionId, trackName, err)
@@ -671,6 +705,7 @@ export class SfuSession {
     if (this.deferRebuild(`sub:${sessionId}`, () => this.resetSubSession(sessionId))) return
     const names = [...(this.subSessionTracks.get(sessionId) ?? [])]
     callDebug.sfuSubReset(sessionId, names)
+    this.subGenerations.set(sessionId, ++this.subGenerationCounter)
     for (const trackName of names) {
       const key = `${sessionId}/${trackName}`
       this.clearPullTimer(key)
@@ -703,21 +738,45 @@ export class SfuSession {
   /**
    * A stream that was flowing went silent. Nothing else catches this: the
    * dead-track timer only covers a track that never arrived, and an already
-   * acked push never re-arms its ack timer. Rebuilding the affected direction
-   * is the only repair available, so this reuses the PC ladder.
+   * acked push never re-arms its ack timer. This arms a grace transition; media
+   * recovery cancels it, while continued silence rebuilds only the affected
+   * direction.
    */
   repairStalledFlow(direction: 'publish' | 'subscribe', sessionId?: string): void {
     if (this.destroyed) return
     if (direction === 'publish') {
       if (!this.pubConnStateSub) return
-      this.pcRepair('pub', 'pub', 'publish', () => this.resetPubTracks()).schedule()
+      this.mediaFlowRepair('pub', 'publish', () => this.resetPubTracks()).schedule()
       return
     }
     if (!sessionId || !this.subTracksMap.has(sessionId)) return
-    this.pcRepair(
-      `sub:${sessionId}`, `sub:${sessionId.slice(0, 8)}`, 'subscribe',
+    this.mediaFlowRepair(
+      `sub:${sessionId}`, 'subscribe',
       () => this.resetSubSession(sessionId),
     ).schedule()
+  }
+
+  private mediaFlowRepair(
+    key: string,
+    stage: 'publish' | 'subscribe',
+    rebuild: () => void,
+  ): RepairLoop {
+    let loop = this.mediaFlowRepairs.get(key)
+    if (!loop) {
+      loop = new RepairLoop({
+        maxRung: 1,
+        attemptsPerRung: 1,
+        baseDelayMs: MEDIA_STALL_REPAIR_GRACE_MS,
+        maxDelayMs: MEDIA_STALL_REPAIR_GRACE_MS,
+        repair: (_rung, attempt) => {
+          if (this.destroyed) return
+          this.opts.onRepair?.({ stage, rung: 2, attempt, sessionId: stage === 'subscribe' ? key.slice(4) : undefined })
+          rebuild()
+        },
+      })
+      this.mediaFlowRepairs.set(key, loop)
+    }
+    return loop
   }
 
   /** Bytes are moving again. Pairs with repairStalledFlow so the repair
@@ -725,10 +784,12 @@ export class SfuSession {
   settleStalledFlow(direction: 'publish' | 'subscribe', sessionId?: string): void {
     const key = direction === 'publish' ? 'pub' : sessionId ? `sub:${sessionId}` : null
     if (!key) return
-    const loop = this.pcRepairs.get(key)
+    const loop = this.mediaFlowRepairs.get(key)
     if (!loop?.repairing) return
-    this.opts.onRepaired?.({ stage: direction, rung: 2, attempt: loop.attempts, sessionId })
-    callDebug.sfuRepaired(direction, loop.attempts, key)
+    if (loop.attempts > 0) {
+      this.opts.onRepaired?.({ stage: direction, rung: 2, attempt: loop.attempts, sessionId })
+      callDebug.sfuRepaired(direction, loop.attempts, key)
+    }
     loop.settle()
     this.cancelDeferredRebuild(key)
   }
@@ -772,6 +833,9 @@ export class SfuSession {
     this.subSessionTracks.delete(sessionId)
     this.pcRepairs.get(`sub:${sessionId}`)?.cancel()
     this.pcRepairs.delete(`sub:${sessionId}`)
+    this.mediaFlowRepairs.get(`sub:${sessionId}`)?.cancel()
+    this.mediaFlowRepairs.delete(`sub:${sessionId}`)
+    this.subGenerations.delete(sessionId)
     // Unsubscribing every reference drops the last one to this session's
     // PartyTracks, which closes its underlying PC via refCount. The stats
     // subscription counts too — leaving it subscribed would keep the CF
@@ -859,6 +923,7 @@ export class SfuSession {
     for (const loop of this.pushRepairs.values()) loop.cancel()
     for (const loop of this.pullRepairs.values()) loop.cancel()
     for (const loop of this.pcRepairs.values()) loop.cancel()
+    for (const loop of this.mediaFlowRepairs.values()) loop.cancel()
     this.pubConnStateSub?.unsubscribe()
     this.pubPcSub?.unsubscribe()
     this.pubPc = null
@@ -877,7 +942,9 @@ export class SfuSession {
     this.pushRepairs.clear()
     this.pullRepairs.clear()
     this.pcRepairs.clear()
+    this.mediaFlowRepairs.clear()
     this.subSessionTracks.clear()
+    this.subGenerations.clear()
   }
 }
 

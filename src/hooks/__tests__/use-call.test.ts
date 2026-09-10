@@ -99,7 +99,10 @@ beforeEach(() => {
     }
     return origCreateElement(tag)
   })
-  usePeerStore.setState({ peerConnections: new Map(), peerStats: new Map(), localStream: null, iceServers: [] })
+  usePeerStore.setState({
+    peerConnections: new Map(), peerStats: new Map(), localStream: null,
+    iceServers: [], sfuSession: null,
+  })
 })
 
 afterEach(() => {
@@ -365,6 +368,28 @@ describe('useCall — peer-state', () => {
 })
 
 describe('useCall — reconnect', () => {
+  it('finishes startup when reconnect happens before the first joined ack', async () => {
+    const client = makeClient()
+
+    await act(async () => {
+      renderHook(() => useCall({
+        client, roomId: 'room-1', enabled: true,
+        userName: 'Alice', initialAudio: true, initialVideo: true,
+      }))
+    })
+
+    expect(usePeerStore.getState().sfuSession).toBeNull()
+
+    await act(async () => {
+      (client as unknown as SignalingClient).onReconnected?.()
+      client.emit('joined', { data: { peers: [] } })
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+    expect(client.sent.filter(m => m.type === 'join')).toHaveLength(2)
+    expect(usePeerStore.getState().sfuSession).not.toBeNull()
+  })
+
   it('re-sends join and asks for a snapshot', async () => {
     const client = makeClient()
 

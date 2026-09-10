@@ -278,6 +278,34 @@ it('a re-ack under a new sessionId supersedes the old announcement', async () =>
     })
 })
 
+it('withdraws the old session before a publish rebuild announces its replacement', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    try {
+        const onLocalTracksChanged = vi.fn()
+        const session = makeSession({ onLocalTracksChanged })
+        await session.publish({ getTracks: () => [makeTrack('video')] } as unknown as MediaStream)
+        sfuFake.latestPublish().ackPush(0, { sessionId: 'cf-pub-old', trackName: 'video-old' })
+
+        session.repairStalledFlow('publish')
+        await vi.advanceTimersByTimeAsync(10_001)
+
+        expect(onLocalTracksChanged.mock.calls.map(([value]) => value)).toEqual([
+            { sessionId: 'cf-pub-old', tracks: [{ trackName: 'video-old' }] },
+            { sessionId: 'cf-pub-old', tracks: [] },
+        ])
+
+        sfuFake.latestPublish().ackPush(0, { sessionId: 'cf-pub-new', trackName: 'video-new' })
+        expect(onLocalTracksChanged).toHaveBeenLastCalledWith({
+            sessionId: 'cf-pub-new', tracks: [{ trackName: 'video-new' }],
+        })
+        session.close()
+    } finally {
+        vi.useRealTimers()
+        vi.restoreAllMocks()
+    }
+})
+
 // A push that gets no CF ack within the window must surface via
 // onPublishTimeout — partytracks retries silently forever, so this is the
 // only signal behind "I turned my camera on but nobody sees me". The kind that
@@ -653,7 +681,7 @@ describe('push repair', () => {
         const session = makeSession()
         await session.replaceTrack('video', makeTrack())
         session.repairStalledFlow('publish')
-        await vi.advanceTimersByTimeAsync(501)
+        await vi.advanceTimersByTimeAsync(10_001)
         expect(instances).toHaveLength(2)
         session.repairStalledFlow('publish')
         await vi.advanceTimersByTimeAsync(1_001)

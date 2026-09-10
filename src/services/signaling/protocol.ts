@@ -137,7 +137,8 @@ export interface SfuTrackInfo {
 // Payload of both server→client 'sfu-tracks' (subscribe to these) and
 // client→server 'sfu-announce' (the FULL set of tracks I currently publish —
 // re-sent after every signaling reconnect so the server's stored set survives
-// WS blips; the server replaces, not merges, on announce).
+// WS blips; the server replaces, not merges, on announce). An empty track set
+// withdraws the named session while its publisher rebuilds.
 export interface SfuTracksData {
   sessionId: string
   tracks: SfuTrackInfo[]

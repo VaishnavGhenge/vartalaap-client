@@ -315,7 +315,7 @@ describe('a stream that flowed and then went quiet', () => {
         const before = sfuFake.subscribe().length
 
         h.session.repairStalledFlow('subscribe', 'cf-a')
-        await vi.advanceTimersByTimeAsync(1_000)
+        await vi.advanceTimersByTimeAsync(10_001)
 
         expect(sfuFake.subscribe().length).toBe(before + 1)
         expect(sfuFake.allPulled().filter((t) => t.trackName === 't-video').length).toBeGreaterThan(1)
@@ -331,7 +331,7 @@ describe('a stream that flowed and then went quiet', () => {
         const before = sfuFake.publish().length
 
         h.session.repairStalledFlow('publish')
-        await vi.advanceTimersByTimeAsync(1_000)
+        await vi.advanceTimersByTimeAsync(10_001)
 
         expect(sfuFake.publish().length).toBe(before + 1)
         h.close()
@@ -360,7 +360,7 @@ describe('a stream that flowed and then went quiet', () => {
         h.session.repairStalledFlow('subscribe', 'cf-a')
         h.session.repairStalledFlow('subscribe', 'cf-a')
         h.session.repairStalledFlow('subscribe', 'cf-a')
-        await vi.advanceTimersByTimeAsync(1_000)
+        await vi.advanceTimersByTimeAsync(10_001)
 
         expect(sfuFake.subscribe().length).toBe(before + 1)
         h.close()
@@ -379,10 +379,26 @@ describe('a stream that flowed and then went quiet', () => {
         await vi.advanceTimersByTimeAsync(0)
 
         session.repairStalledFlow('subscribe', 'cf-a')
-        await vi.advanceTimersByTimeAsync(1_000)
+        await vi.advanceTimersByTimeAsync(10_001)
         session.settleStalledFlow('subscribe', 'cf-a')
 
         expect(repaired).toContain('subscribe:2')
         session.close()
+    })
+
+    it('keeps the current session when media resumes during the recovery grace', async () => {
+        const h = harness()
+        h.reconciler.setPeerTracks('alice', 'cf-a', ['t-video'], 1)
+        h.reconciler.reconcile()
+        await vi.advanceTimersByTimeAsync(0)
+        const before = sfuFake.subscribe().length
+
+        h.session.repairStalledFlow('subscribe', 'cf-a')
+        await vi.advanceTimersByTimeAsync(5_000)
+        h.session.settleStalledFlow('subscribe', 'cf-a')
+        await vi.advanceTimersByTimeAsync(30_000)
+
+        expect(sfuFake.subscribe()).toHaveLength(before)
+        h.close()
     })
 })

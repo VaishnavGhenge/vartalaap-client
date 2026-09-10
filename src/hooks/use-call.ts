@@ -267,16 +267,38 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       emitMetric({ name: 'call_attempt', value: 0, result })
     }
 
-    // Resolves when the server sends `joined` after our `join`. We must not call
-    // sfuSession.publish() before the server has added us to the room — otherwise
-    // hub.BroadcastSfuTracks finds room == nil and silently skips storeSfuTracks,
-    // so late joiners never get our tracks replayed. See
-    // vartalaap-server/internal/signaling/hub.go:136 (BroadcastSfuTracks).
-    let resolveJoinedAck: (() => void) | null = null
-    let joinedAck = new Promise<void>((resolve) => { resolveJoinedAck = resolve })
-    const resetJoinedAck = () => {
-      joinedAck = new Promise<void>((resolve) => { resolveJoinedAck = resolve })
+    // `joined` is an event in the room lifecycle, not a replaceable one-shot
+    // promise. A reconnect can happen after the initial join leaves the browser
+    // but before its ack returns. Replacing the promise in that window strands
+    // the startup task forever: the later valid `joined` resolves a different
+    // promise and no SFU session is ever created.
+    //
+    // Sequence the event instead. Every join attempt waits for a `joined` newer
+    // than the sequence it observed before sending, so a late valid ack always
+    // advances startup. Reconnect generations below ensure that only the latest
+    // reconnect attempt applies post-join state.
+    let joinedSequence = 0
+    type JoinedWaiter = { after: number; resolve: () => void }
+    const joinedWaiters = new Set<JoinedWaiter>()
+    const waitForJoinedAfter = (after: number) => {
+      if (joinedSequence > after) return Promise.resolve()
+      return new Promise<void>((resolve) => {
+        joinedWaiters.add({ after, resolve })
+      })
     }
+    const acknowledgeJoined = () => {
+      joinedSequence++
+      for (const waiter of [...joinedWaiters]) {
+        if (joinedSequence <= waiter.after) continue
+        joinedWaiters.delete(waiter)
+        waiter.resolve()
+      }
+    }
+    const releaseJoinedWaiters = () => {
+      for (const waiter of joinedWaiters) waiter.resolve()
+      joinedWaiters.clear()
+    }
+    let reconnectGeneration = 0
 
     // ── Knock/admit — guest SFU auth ─────────────────────────────────────
     // When a guest has no access token (no ?gt= exchange succeeded), they
@@ -318,7 +340,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       const mediaAlreadyExpected = peers.some((peer) =>
         peer.id !== myId && (peer.audio || peer.video))
       if (!mediaAlreadyExpected) pauseTtfmUntilMediaExpected()
-      resolveJoinedAck?.()
+      acknowledgeJoined()
     }
 
     const handlePeerJoined = (env: Envelope<PeerJoinedData>) => {
@@ -445,6 +467,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
 
     client.setReconnectedHandler(() => {
       if (disposed) return
+      const generation = ++reconnectGeneration
       // What the room wants is suspect; the SFU session is not. It used to be
       // torn down here (the old clearPeers closed and nulled it) and nothing recreates
       // it — SfuSession is constructed once, in the IIFE below, keyed on
@@ -453,8 +476,8 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       // subscribe: peers listed in the roster, no media either way, and every
       // later camera or screen-share toggle a silent no-op.
       reconciler.resetDesired()
-      resetJoinedAck()
       const a = joinArgs.current
+      const joinSequence = joinedSequence
       client.send('join', {
         name: a.userName,
         audio: a.initialAudio,
@@ -465,8 +488,8 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       // Wait for the server to re-add us to the room before re-publishing.
       // Same race as the initial join: publish before join → tracks not stored.
       void (async () => {
-        await joinedAck
-        if (disposed) return
+        await waitForJoinedAfter(joinSequence)
+        if (disposed || generation !== reconnectGeneration) return
 
         const media = useMeetStore.getState()
         client.send('peer-state', {
@@ -477,7 +500,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
         const sfuSession = store.getState().sfuSession
         if (sfuSession) {
           await ensureLocalMedia()
-          if (disposed) return
+          if (disposed || generation !== reconnectGeneration) return
           republishLocalMedia(sfuSession).catch((e) => {
             console.error('[use-call] sfu re-publish failed after reconnect', e)
           })
@@ -524,6 +547,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
         armTtfmTimeout()
 
         callDebug.callJoinSent(roomId)
+        const joinSequence = joinedSequence
         client.send('join', {
           name: a.userName,
           audio: a.initialAudio,
@@ -532,7 +556,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
           needsAdmit: !getAccessToken() && !getRoomToken(),
         }, { room: roomId })
 
-        await joinedAck
+        await waitForJoinedAfter(joinSequence)
         if (disposed) return
 
         // If no token is present (guest via knock/admit, not email link),
@@ -732,11 +756,9 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
               contexts: { sfu_pull: { sessionId, trackName, peerId: remotePeerId ?? 'unknown' } },
             })
           },
-          // CF acked our published track set (or re-acked it under a new
-          // sessionId after a PC recreation). Mirror it to the signaling
-          // server so its stored copy — the source of the join replay — is
-          // level-triggered rather than depending on the one-shot tracks/new
-          // interception.
+          // Mirror acknowledged publications and rebuild withdrawals to the
+          // signaling server. Empty tracks remove an obsolete session before
+          // a late joiner can receive it from the room replay.
           onLocalTracksChanged: (announcement) => {
             if (disposed) return
             callDebug.callSfuAnnounce(announcement.sessionId, announcement.tracks.map((t) => t.trackName), 'change')
@@ -1055,6 +1077,8 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
     return () => {
       client.send('leave', undefined, { room: roomId })
       disposed = true
+      reconnectGeneration++
+      releaseJoinedWaiters()
       stopKeepalive()
       statsMonitor?.stop()
       // The call ended with no media. Which of the two failure shapes it was
