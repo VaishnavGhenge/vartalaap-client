@@ -5,8 +5,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 // ─── Mocks (all hoisted before hook imports) ─────────────────────────────────
 const pushMock = vi.fn()
+const routerMock = { push: pushMock, replace: pushMock }
 vi.mock('next/navigation', () => ({
-    useRouter: () => ({ push: pushMock }),
+    useRouter: () => routerMock,
 }))
 
 const toastErrorMock = vi.fn()
@@ -22,7 +23,7 @@ vi.mock('@/src/services/api/auth', () => ({
     getMe: vi.fn(),
 }))
 
-import { useLogin, useRegister, useLogout, useAuth, restoreSession } from '../use-auth'
+import { useLogin, useRegister, useLogout, useAuth, restoreSession, useAuthRedirect } from '../use-auth'
 import * as authApi from '@/src/services/api/auth'
 import { useAuthStore } from '@/src/stores/auth'
 import type { User } from '@/src/types/auth'
@@ -48,6 +49,7 @@ function wrapper({ children }: { children: ReactNode }) {
 }
 
 beforeEach(() => {
+    window.history.replaceState({}, '', '/')
     pushMock.mockReset()
     toastErrorMock.mockReset()
     mocked.login.mockReset()
@@ -68,7 +70,7 @@ beforeEach(() => {
 it('useLogin success with onboarded user routes to /dashboard and updates the store', async () => {
     mocked.login.mockResolvedValue({ accessToken: 't', user: onboardedUser })
 
-    const { result } = renderHook(() => useLogin(), { wrapper })
+    const { result } = renderHook(() => { useAuthRedirect(); return useLogin() }, { wrapper })
     act(() => {
         result.current.mutate({ email: 'a@b.com', password: 'pw' })
     })
@@ -77,12 +79,13 @@ it('useLogin success with onboarded user routes to /dashboard and updates the st
     })
     expect(useAuthStore.getState().user).toEqual(onboardedUser)
     expect(useAuthStore.getState().isAuthenticated).toBe(true)
+    expect(pushMock).toHaveBeenCalledTimes(1)
 })
 
 it('useLogin success with mid-onboarding user routes back to /onboarding', async () => {
     mocked.login.mockResolvedValue({ accessToken: 't', user: onboardingUser })
 
-    const { result } = renderHook(() => useLogin(), { wrapper })
+    const { result } = renderHook(() => { useAuthRedirect(); return useLogin() }, { wrapper })
     act(() => {
         result.current.mutate({ email: 'a@b.com', password: 'pw' })
     })
@@ -114,7 +117,7 @@ it('useLogin failure shows a toast and does not authenticate', async () => {
 it('useRegister success authenticates and routes to /onboarding', async () => {
     mocked.register.mockResolvedValue({ accessToken: 't', user: onboardingUser })
 
-    const { result } = renderHook(() => useRegister(), { wrapper })
+    const { result } = renderHook(() => { useAuthRedirect(); return useRegister() }, { wrapper })
     act(() => {
         result.current.mutate({ name: 'Alice', email: 'a@b.com', password: 'pw' })
     })
@@ -135,6 +138,29 @@ it('useRegister failure shows toast and does not authenticate', async () => {
         expect(toastErrorMock).toHaveBeenCalledWith('email taken')
     })
     expect(useAuthStore.getState().isAuthenticated).toBe(false)
+})
+
+describe('auth return paths', () => {
+    it('preserves a call destination through unfinished onboarding', async () => {
+        window.history.replaceState({}, '', '/login?next=%2Froom%2Fabc-defg-hjk')
+        useAuthStore.getState().login(onboardingUser)
+        renderHook(() => useAuthRedirect())
+        await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/onboarding?next=%2Froom%2Fabc-defg-hjk'))
+    })
+
+    it('keeps an existing onboarding return path without nesting it', async () => {
+        window.history.replaceState({}, '', '/login?next=%2Fonboarding%3Fnext%3D%252Froom%252Fabc-defg-hjk')
+        useAuthStore.getState().login(onboardingUser)
+        renderHook(() => useAuthRedirect())
+        await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/onboarding?next=%2Froom%2Fabc-defg-hjk'))
+    })
+
+    it.each(['https://example.com', '//example.com', '/login', '/register?next=/login'])('ignores unsafe or looping return path %s', async next => {
+        window.history.replaceState({}, '', `/login?next=${encodeURIComponent(next)}`)
+        useAuthStore.getState().login(onboardedUser)
+        renderHook(() => useAuthRedirect())
+        await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/dashboard'))
+    })
 })
 
 // ─── useLogout ───────────────────────────────────────────────────────────────

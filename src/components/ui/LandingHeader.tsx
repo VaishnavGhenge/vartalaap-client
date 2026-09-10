@@ -11,8 +11,8 @@ import { useAuth } from "@/src/hooks/use-auth";
 
 const NAV = [
     { label: "Features",   href: "/#features" },
+    { label: "How it works", href: "/#how-it-works" },
     { label: "Pricing",    href: "/pricing" },
-    { label: "Changelog",  href: "/changelog" },
 ];
 
 export function LandingHeader() {
@@ -31,9 +31,21 @@ export function LandingHeader() {
         return () => { document.body.style.overflow = prev; };
     }, [open]);
 
+    useEffect(() => {
+        if (!open) return;
+        const closeOnEscape = (event: KeyboardEvent) => {
+            if (event.key === "Escape") {
+                setOpen(false);
+                document.querySelector<HTMLButtonElement>('[aria-controls="landing-mobile-nav"]')?.focus();
+            }
+        };
+        window.addEventListener("keydown", closeOnEscape);
+        return () => window.removeEventListener("keydown", closeOnEscape);
+    }, [open]);
+
     return (
         <header className="sticky top-0 z-50 w-full px-3 pt-3">
-            <div className="mx-auto flex h-14 max-w-6xl items-center justify-between rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--background))]/82 px-4 shadow-xl backdrop-blur-xl
+            <div className="mx-auto flex h-16 max-w-6xl items-center justify-between rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--background))]/95 px-4 shadow-sm backdrop-blur-xl
                             md:grid md:grid-cols-[1fr_auto_1fr]">
 
                 <Link href="/" className="flex items-center select-none" onClick={() => setOpen(false)}>
@@ -96,10 +108,9 @@ export function LandingHeader() {
             {/* Mobile nav sheet */}
             <div
                 id="landing-mobile-nav"
-                role="dialog"
-                aria-modal="true"
+                inert={!open}
                 aria-hidden={!open}
-                className={`md:hidden fixed inset-x-0 top-[4.25rem] bottom-0 z-40 transition-opacity duration-200 ${
+                className={`md:hidden fixed inset-x-0 top-[4.75rem] bottom-0 z-40 transition-opacity duration-200 ${
                     open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
                 }`}
             >

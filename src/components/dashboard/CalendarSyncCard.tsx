@@ -1,5 +1,7 @@
 "use client";
 
+import { LoadingContent } from "@/src/components/ui/PageLoading";
+
 import { useCallback, useEffect, useState } from "react";
 import { CalendarSync, Check, ExternalLink, Unplug } from "lucide-react";
 
@@ -92,7 +94,7 @@ export function CalendarSyncCard({ refreshKey = 0, onChange }: Props) {
 
     // Still asking. A spinner here would flash on every panel open for no
     // information gain.
-    if (loading) return null;
+    if (loading) return <LoadingContent layout="calendar" label="Checking your calendar connection…" />;
 
     // We could not ask. Say so, with a way to retry. Rendering nothing here is
     // what made a stale DNS entry look like a missing feature.

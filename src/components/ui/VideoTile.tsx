@@ -9,7 +9,7 @@ import { initialsOf } from "@/src/lib/avatar";
 import type { PeerStats } from "@/src/stores/peer";
 import { QUALITY_LABEL, QualityDot } from "@/src/components/ui/QualityDot";
 
-const REMOTE_HOLD_MS = 280
+const REMOTE_HOLD_MS = 280;
 
 interface Participant {
     id: string;
@@ -26,7 +26,7 @@ interface VideoTileProps {
     isVideoOff?: boolean;
     isMuted?: boolean;
     stream: MediaStream | null;
-    quality?: PeerStats['quality'];
+    quality?: PeerStats["quality"];
     isScreenSharing?: boolean;
     onPin?: () => void;
     isPinned?: boolean;
@@ -54,28 +54,28 @@ export const VideoTile = ({
     videoHeld = false,
     speaking: speakingProp,
 }: VideoTileProps) => {
-    const name = isLocal ? (userName || 'You') : (participant?.name || 'Participant');
+    const name = isLocal ? userName || "You" : participant?.name || "Participant";
     // When a remote peer is screen sharing their video track IS the screen —
     // never hide it based on camera state.
-    const videoOff = isLocal
-        ? !!isVideoOff
-        : (videoHeld || (isScreenSharing ? false : !!participant?.isVideoOff));
+    const videoOff = isLocal ? !!isVideoOff : videoHeld || (isScreenSharing ? false : !!participant?.isVideoOff);
     const muted = isLocal ? !!isMuted : !!participant?.isMuted;
     const label = isLocal ? `${name} (you)` : name;
-    const [liveVideo, setLiveVideo] = useState(() => !!stream?.getVideoTracks().some(track => track.readyState === 'live'));
+    const [liveVideo, setLiveVideo] = useState(
+        () => !!stream?.getVideoTracks().some((track) => track.readyState === "live"),
+    );
     const [playingStream, setPlayingStream] = useState<MediaStream | null>(null);
     const showingVideo = liveVideo && playingStream === stream;
     useEffect(() => {
-        const sync = () => setLiveVideo(!!stream?.getVideoTracks().some(track => track.readyState === 'live'));
+        const sync = () => setLiveVideo(!!stream?.getVideoTracks().some((track) => track.readyState === "live"));
         const tracks = stream?.getVideoTracks() ?? [];
         sync();
-        tracks.forEach(track => track.addEventListener?.('ended', sync));
-        stream?.addEventListener?.('addtrack', sync);
-        stream?.addEventListener?.('removetrack', sync);
+        tracks.forEach((track) => track.addEventListener?.("ended", sync));
+        stream?.addEventListener?.("addtrack", sync);
+        stream?.addEventListener?.("removetrack", sync);
         return () => {
-            tracks.forEach(track => track.removeEventListener?.('ended', sync));
-            stream?.removeEventListener?.('addtrack', sync);
-            stream?.removeEventListener?.('removetrack', sync);
+            tracks.forEach((track) => track.removeEventListener?.("ended", sync));
+            stream?.removeEventListener?.("addtrack", sync);
+            stream?.removeEventListener?.("removetrack", sync);
         };
     }, [stream]);
 
@@ -97,8 +97,7 @@ export const VideoTile = ({
         }
         return () => clearTimeout(holdTimer.current);
     }, [isLocal, participant?.speaking]);
-    const speaking = speakingProp !== undefined ? speakingProp : (isLocal ? localSpeaking : remoteSpeaking);
-
+    const speaking = speakingProp !== undefined ? speakingProp : isLocal ? localSpeaking : remoteSpeaking;
 
     return (
         <div
@@ -106,13 +105,13 @@ export const VideoTile = ({
             className={`group tile-in relative h-full w-full overflow-hidden rounded-2xl
                          bg-[linear-gradient(160deg,hsl(var(--surface-2)),hsl(var(--surface-3)))]
                          transition-[border-color,box-shadow] duration-150
-                         ${speaking
-                             ? 'border-2 border-white/70 shadow-[0_0_0_2px_hsl(var(--primary)/0.5)]'
-                             : 'border border-[hsl(var(--border))]'
+                         ${
+                             speaking
+                                 ? "border border-[hsl(var(--primary))] shadow-[inset_0_0_0_1px_hsl(var(--primary))]"
+                                 : "border border-[hsl(var(--border))]"
                          }
-                         ${isPinned && !speaking ? 'ring-2 ring-[hsl(var(--primary))]/60' : ''}`}
+                         ${isPinned && !speaking ? "ring-2 ring-[hsl(var(--primary))]/60" : ""}`}
         >
-
             {/* Avatar (camera off or no stream yet) */}
             {(videoOff || !showingVideo) && (
                 <div aria-hidden="true" className="absolute inset-0 flex items-center justify-center">
@@ -123,11 +122,13 @@ export const VideoTile = ({
                         <Avatar
                             name={name}
                             style={{
-                                width: '22%',
-                                aspectRatio: '1/1',
-                                minWidth: 44, minHeight: 44,
-                                maxWidth: 108, maxHeight: 108,
-                                fontSize: 'clamp(16px, 3.8vw, 38px)',
+                                width: "22%",
+                                aspectRatio: "1/1",
+                                minWidth: 44,
+                                minHeight: 44,
+                                maxWidth: 108,
+                                maxHeight: 108,
+                                fontSize: "clamp(16px, 3.8vw, 38px)",
                             }}
                         />
                     )}
@@ -141,7 +142,7 @@ export const VideoTile = ({
                     onPlaying={() => setPlayingStream(stream)}
                     visible={showingVideo}
                     isLocal={isLocal}
-                    objectFit={isScreenSharing ? 'contain' : 'cover'}
+                    objectFit={isScreenSharing ? "contain" : "cover"}
                 />
             )}
 
@@ -154,7 +155,7 @@ export const VideoTile = ({
                         people to stop looking at the corner where the warning goes.
                         Good and Measuring render nothing; the diagnostics panel still
                         reports every state for someone who goes looking. */}
-                    {!isLocal && (quality === 'medium' || quality === 'poor') && (
+                    {!isLocal && (quality === "medium" || quality === "poor") && (
                         <button
                             type="button"
                             aria-label={`Connection quality: ${QUALITY_LABEL[quality]}`}
@@ -177,17 +178,19 @@ export const VideoTile = ({
                     {/* Mic badge */}
                     <div
                         role="img"
-                        aria-label={muted ? 'Microphone muted' : 'Microphone on'}
+                        aria-label={muted ? "Microphone muted" : "Microphone on"}
                         className={`flex size-7 items-center justify-center rounded-full border shadow-lg shadow-black/25 backdrop-blur-md
-                                    ${muted
-                                        ? 'border-red-300/35 bg-red-600/85 text-white'
-                                        : 'border-white/25 bg-zinc-950/75 text-white'
+                                    ${
+                                        muted
+                                            ? "border-red-300/35 bg-red-600/85 text-white"
+                                            : "border-white/25 bg-zinc-950/75 text-white"
                                     }`}
                     >
-                        {muted
-                            ? <MicOff className="size-3.5" strokeWidth={2.4} />
-                            : <Mic className="size-3.5" strokeWidth={2.4} />
-                        }
+                        {muted ? (
+                            <MicOff className="size-3.5" strokeWidth={2.4} />
+                        ) : (
+                            <Mic className="size-3.5" strokeWidth={2.4} />
+                        )}
                     </div>
                 </div>
             )}
@@ -197,31 +200,41 @@ export const VideoTile = ({
             {onPin && (
                 <button
                     type="button"
-                    onClick={(e) => { e.stopPropagation(); onPin(); }}
-                    aria-label={isPinned ? 'Unpin' : 'Pin'}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onPin();
+                    }}
+                    aria-label={isPinned ? "Unpin" : "Pin"}
                     className={`absolute bottom-2.5 right-2.5 z-10 flex items-center justify-center
                                 w-7 h-7 rounded-full glass-pill transition-opacity cursor-pointer
-                                ${isPinned
-                                    ? 'opacity-100 text-[hsl(var(--primary))]'
-                                    : 'opacity-0 group-hover:opacity-100 text-[hsl(var(--foreground))]'
+                                ${
+                                    isPinned
+                                        ? "opacity-100 text-[hsl(var(--primary))]"
+                                        : "opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 text-[hsl(var(--foreground))]"
                                 }`}
                 >
-                    {isPinned
-                        ? <PinOff className="w-3.5 h-3.5" />
-                        : <Pin className="w-3.5 h-3.5" />
-                    }
+                    {isPinned ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />}
                 </button>
             )}
 
             {/* Connection state overlays — remote tiles only */}
-            {!isLocal && !videoOff && !showingVideo && connectionState !== 'failed' && connectionState !== 'disconnected' && (
-                <span role="status" className="absolute bottom-10 inset-x-0 text-center text-xs text-[hsl(var(--muted-foreground))]">
-                    Waiting for video…
-                </span>
-            )}
-            {!isLocal && connectionState === 'disconnected' && (
-                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2
-                                bg-[hsl(var(--background))]/60 backdrop-blur-sm">
+            {!isLocal &&
+                !videoOff &&
+                !showingVideo &&
+                connectionState !== "failed" &&
+                connectionState !== "disconnected" && (
+                    <span
+                        role="status"
+                        className="absolute bottom-10 inset-x-0 text-center text-xs text-[hsl(var(--muted-foreground))]"
+                    >
+                        Waiting for video…
+                    </span>
+                )}
+            {!isLocal && connectionState === "disconnected" && (
+                <div
+                    className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2
+                                bg-[hsl(var(--background))]/60 backdrop-blur-sm"
+                >
                     <Loader2 className="w-5 h-5 text-[hsl(var(--muted-foreground))] animate-spin" />
                     {!compact && (
                         <span className="text-[11px] font-medium text-[hsl(var(--muted-foreground))]">
@@ -230,31 +243,35 @@ export const VideoTile = ({
                     )}
                 </div>
             )}
-            {!isLocal && connectionState === 'failed' && (
-                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2
-                                bg-[hsl(var(--background))]/60 backdrop-blur-sm">
+            {!isLocal && connectionState === "failed" && (
+                <div
+                    className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2
+                                bg-[hsl(var(--background))]/60 backdrop-blur-sm"
+                >
                     <WifiOff className="w-5 h-5 text-[hsl(var(--destructive))]" />
                     {!compact && (
-                        <span className="text-[11px] font-medium text-[hsl(var(--destructive))]">
-                            Connection lost
-                        </span>
+                        <span className="text-[11px] font-medium text-[hsl(var(--destructive))]">Connection lost</span>
                     )}
                 </div>
             )}
 
             {/* Video held badge — shown when outbound video is paused for bandwidth */}
-            {!isLocal && videoHeld && !compact && connectionState !== 'failed' && (
+            {!isLocal && videoHeld && !compact && connectionState !== "failed" && (
                 <div className="absolute top-2.5 left-2.5 z-10">
-                    <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full leading-none
-                                     bg-[hsl(var(--destructive))]/15 text-[hsl(var(--destructive))]">
+                    <span
+                        className="text-[9px] font-medium px-1.5 py-0.5 rounded-full leading-none
+                                     bg-[hsl(var(--destructive))]/15 text-[hsl(var(--destructive))]"
+                    >
                         Audio only
                     </span>
                 </div>
             )}
 
             {/* Name pill — compact tiles show initials so the pill never overflows. */}
-            <div aria-hidden="true"
-                 className={`glass-pill absolute bottom-2 left-2 gap-1 px-2 py-0.5 ${compact ? 'text-[10px]' : 'text-[12px] overflow-hidden max-w-[calc(100%-1rem)]'}`}>
+            <div
+                aria-hidden="true"
+                className={`glass-pill absolute bottom-2 left-2 gap-1 px-2 py-0.5 ${compact ? "text-[10px]" : "text-[12px] overflow-hidden max-w-[calc(100%-1rem)]"}`}
+            >
                 {speaking && !muted && !compact && (
                     <span className="flex items-end gap-[2px] h-3 shrink-0" style={{ height: 12 }}>
                         <span className="audio-bar" style={{ height: 8 }} />
@@ -262,10 +279,11 @@ export const VideoTile = ({
                         <span className="audio-bar" style={{ height: 7 }} />
                     </span>
                 )}
-                {compact
-                    ? <span>{initialsOf(name)}</span>
-                    : <span className="truncate min-w-0">{isScreenSharing ? `${label} • Screen` : label}</span>
-                }
+                {compact ? (
+                    <span>{initialsOf(name)}</span>
+                ) : (
+                    <span className="truncate min-w-0">{isScreenSharing ? `${label} • Screen` : label}</span>
+                )}
             </div>
         </div>
     );

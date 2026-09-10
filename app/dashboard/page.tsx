@@ -1,5 +1,7 @@
 "use client";
 
+import { PageLoading } from "@/src/components/ui/PageLoading";
+
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
@@ -86,8 +88,8 @@ const PANEL_COPY: Record<PanelKey, { eyebrow: string; title: string; body: strin
     },
     availability: {
         eyebrow: "Availability",
-        title: "Weekly availability",
-        body: "Set the recurring weekly windows guests can book. Existing bookings are shown under Bookings.",
+        title: "Working hours",
+        body: "Choose your usual weekly hours. Bookings and connected calendar conflicts reduce the times guests can book.",
     },
     "booking-types": {
         eyebrow: "Event types",
@@ -126,7 +128,7 @@ export default function DashboardPage() {
     // dashboard is fine inside Suspense because its first render is interactive
     // anyway.
     return (
-        <Suspense fallback={<div className="min-h-dvh" />}>
+        <Suspense fallback={<PageLoading layout="dashboard" label="Getting your workspace ready…" />}>
             <DashboardInner />
         </Suspense>
     );
@@ -185,7 +187,7 @@ function DashboardInner() {
     }, [isAuthenticated, refreshSetup, refreshKey]);
 
     useEffect(() => {
-        if (!isLoading && !isAuthenticated) router.replace("/login");
+        if (!isLoading && !isAuthenticated) router.replace(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
     }, [isAuthenticated, isLoading, router]);
 
     // After returning from Google, show the host the panel the connection
@@ -197,8 +199,7 @@ function DashboardInner() {
         router.replace("/dashboard?panel=availability", { scroll: false });
     }, [calendarNotice, router]);
 
-    if (isLoading) return <div className="min-h-dvh" />;
-    if (!isAuthenticated || !user) return null;
+    if (isLoading || !isAuthenticated || !user) return <PageLoading layout="dashboard" label={isLoading ? "Getting your workspace ready…" : "Taking you to sign in…"} />;
 
     const bookingHost = process.env.NEXT_PUBLIC_BOOKING_HOST ?? "getsessionly.com";
     const bookingPath = user.slug ? `${bookingHost}/u/${user.slug}` : `${bookingHost}/u/your-slug`;

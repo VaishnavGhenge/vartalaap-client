@@ -154,7 +154,7 @@ export function SearchableSelect({
                 className={cn(
                     selectVariants({ selectSize }),
                     "text-left",
-                    open && "border-[hsl(var(--primary))] ring-4 ring-[hsl(var(--primary))]/15",
+                    open && "field-control-open",
                     className,
                 )}
             >

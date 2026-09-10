@@ -2,14 +2,14 @@
 
 import { BufferingButtonLabel } from "@/src/components/ui/BufferingButtonLabel";
 import Link from "next/link";
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { Input } from "@/src/components/ui/input";
 import { Button } from "@/src/components/ui/button";
-import { StandaloneHeader } from "@/src/components/ui/StandaloneHeader";
-import { useRegister } from "@/src/hooks/use-auth";
+import { AuthShell } from "@/src/components/ui/AuthShell";
+import { PageLoading } from "@/src/components/ui/PageLoading";
+import { FormError } from "@/src/components/ui/FormError";
+import { useRegister, safeNextPath, useAuthRedirect } from "@/src/hooks/use-auth";
 import { useAuthStore } from "@/src/stores/auth";
-import { toast } from "sonner";
 
 export default function Register() {
     const [firstName, setFirstName] = useState("");
@@ -17,20 +17,16 @@ export default function Register() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
-    const { mutate: registerUser, isPending } = useRegister();
-    const { isAuthenticated, isLoading, user } = useAuthStore();
-    const router = useRouter();
-
-    useEffect(() => {
-        if (!isLoading && isAuthenticated && user) {
-            router.replace(user.onboardingStep < 5 ? "/onboarding" : "/dashboard");
-        }
-    }, [isLoading, isAuthenticated, user, router]);
+    const { mutate: registerUser, isPending, error } = useRegister();
+    const [validationError, setValidationError] = useState<string | null>(null);
+    const { isAuthenticated, isLoading } = useAuthStore();
+    useAuthRedirect();
 
     function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
+        setValidationError(null);
         if (password !== confirmPassword) {
-            toast.error("Passwords don't match");
+            setValidationError("Your passwords don’t match. Enter the same password in both fields.");
             return;
         }
         registerUser({
@@ -40,112 +36,115 @@ export default function Register() {
         });
     }
 
+    if (isLoading || isAuthenticated)
+        return (
+            <PageLoading
+                layout="register"
+                label={isLoading ? "Checking your session…" : "Getting your booking page started…"}
+            />
+        );
+
     return (
-        <div className="relative flex min-h-dvh flex-col">
-            <main className="flex flex-1 flex-col items-center px-4 pt-6 pb-24 sm:px-6 sm:pt-12 sm:pb-40">
-                <StandaloneHeader className="max-w-sm sm:max-w-md" />
+        <AuthShell
+            title="Make time for your clients."
+            description="Create your free account. Next, we’ll set up your booking page and availability."
+        >
+            <form onSubmit={handleSubmit} aria-busy={isPending} className="mt-6 flex flex-col gap-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="flex flex-col gap-1.5">
+                        <label htmlFor="firstName" className="label-caps">
+                            First name
+                        </label>
+                        <Input
+                            type="text"
+                            id="firstName"
+                            name="firstName"
+                            autoComplete="given-name"
+                            value={firstName}
+                            onChange={(e) => setFirstName(e.target.value)}
+                            required
+                        />
+                    </div>
 
-                <div className="w-full max-w-sm sm:max-w-md">
-
-                    <h1 className="text-xl font-semibold tracking-tight text-[hsl(var(--foreground))]">
-                        Create account
-                    </h1>
-                    <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
-                        Join Sessionly
-                    </p>
-
-                    <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
-                        <div className="grid gap-4 sm:grid-cols-2">
-                            <div className="flex flex-col gap-1.5">
-                                <label htmlFor="firstName" className="label-caps">First name</label>
-                                <Input
-                                    type="text"
-                                    id="firstName"
-                                    name="firstName"
-                                    autoComplete="given-name"
-                                    value={firstName}
-                                    onChange={(e) => setFirstName(e.target.value)}
-                                    required
-                                />
-                            </div>
-
-                            <div className="flex flex-col gap-1.5">
-                                <label htmlFor="lastName" className="label-caps">Last name</label>
-                                <Input
-                                    type="text"
-                                    id="lastName"
-                                    name="lastName"
-                                    autoComplete="family-name"
-                                    value={lastName}
-                                    onChange={(e) => setLastName(e.target.value)}
-                                />
-                            </div>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                            <label htmlFor="email" className="label-caps">Email</label>
-                            <Input
-                                type="email"
-                                id="email"
-                                name="email"
-                                placeholder="you@example.com"
-                                autoComplete="email"
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                                required
-                            />
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                            <label htmlFor="password" className="label-caps">
-                                Password <span className="normal-case tracking-normal font-normal opacity-60">(min 8 chars)</span>
-                            </label>
-                            <Input
-                                type="password"
-                                id="password"
-                                name="password"
-                                autoComplete="new-password"
-                                minLength={8}
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                required
-                            />
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                            <label htmlFor="confirmPassword" className="label-caps">Confirm password</label>
-                            <Input
-                                type="password"
-                                id="confirmPassword"
-                                name="confirmPassword"
-                                autoComplete="new-password"
-                                value={confirmPassword}
-                                onChange={(e) => setConfirmPassword(e.target.value)}
-                                required
-                            />
-                        </div>
-
-                        <Button
-                            type="submit"
-                            size="lg"
-                            className="mt-1 w-full"
-                            disabled={isPending}
-                        >
-                            {isPending
-                                ? <BufferingButtonLabel label="Creating account…" />
-                                : "Create account"
-                            }
-                        </Button>
-                    </form>
-
-                    <p className="mt-6 text-center text-xs text-[hsl(var(--muted-foreground))]">
-                        Already have an account?{" "}
-                        <Link href="/login" className="link" prefetch>
-                            Sign in
-                        </Link>
-                    </p>
+                    <div className="flex flex-col gap-1.5">
+                        <label htmlFor="lastName" className="label-caps">
+                            Last name
+                        </label>
+                        <Input
+                            type="text"
+                            id="lastName"
+                            name="lastName"
+                            autoComplete="family-name"
+                            value={lastName}
+                            onChange={(e) => setLastName(e.target.value)}
+                        />
+                    </div>
                 </div>
-            </main>
-        </div>
+
+                <div className="flex flex-col gap-1.5">
+                    <label htmlFor="email" className="label-caps">
+                        Email
+                    </label>
+                    <Input
+                        type="email"
+                        id="email"
+                        name="email"
+                        placeholder="you@example.com"
+                        autoComplete="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        required
+                    />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                    <label htmlFor="password" className="label-caps">
+                        Password{" "}
+                        <span className="normal-case tracking-normal font-normal opacity-60">(min 8 chars)</span>
+                    </label>
+                    <Input
+                        type="password"
+                        id="password"
+                        name="password"
+                        autoComplete="new-password"
+                        minLength={8}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                    />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                    <label htmlFor="confirmPassword" className="label-caps">
+                        Confirm password
+                    </label>
+                    <Input
+                        type="password"
+                        id="confirmPassword"
+                        name="confirmPassword"
+                        autoComplete="new-password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        required
+                    />
+                </div>
+
+                <FormError>{validationError ?? error?.message}</FormError>
+                <Button type="submit" size="lg" className="mt-1 w-full" disabled={isPending}>
+                    {isPending ? <BufferingButtonLabel label="Creating account…" /> : "Create account"}
+                </Button>
+            </form>
+
+            <p className="mt-6 text-center text-xs text-[hsl(var(--muted-foreground))]">
+                Already have an account?{" "}
+                <Link
+                    href={safeNextPath() ? `/login?next=${encodeURIComponent(safeNextPath()!)}` : "/login"}
+                    className="link"
+                    prefetch
+                >
+                    Sign in
+                </Link>
+            </p>
+        </AuthShell>
     );
 }

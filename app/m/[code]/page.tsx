@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Clock, Info } from "lucide-react";
+import { Check, Clock, Info, CalendarX } from "lucide-react";
+import { SessionTime } from "@/src/components/booking/SessionTime";
 
 import { CancelBookingButton } from "@/src/components/booking/CancelBookingButton";
 import { Button } from "@/src/components/ui/button";
@@ -45,15 +46,9 @@ export default async function ConfirmationPage({ params, searchParams }: PagePro
     const booking = await fetchBooking(code);
     if (!booking) notFound();
 
-    const start = new Date(booking.startsAt);
-    const end = new Date(booking.endsAt);
     const roomOpen = booking.roomStatus === "open";
     const roomHint = roomAccessHint(booking);
-    const cancelledByLabel = booking.cancelledBy === "host"
-        ? "host"
-        : booking.cancelledBy === "guest"
-            ? "guest"
-            : null;
+    const cancelledByLabel = booking.cancelledBy === "host" ? "host" : booking.cancelledBy === "guest" ? "guest" : null;
 
     return (
         <div className="relative flex min-h-dvh flex-col">
@@ -61,21 +56,23 @@ export default async function ConfirmationPage({ params, searchParams }: PagePro
                 <StandaloneHeader />
 
                 <div className="w-full max-w-md">
-                    <div className="app-panel rounded-2xl px-6 py-8">
+                    <div className="experience-card page-enter px-6 py-8">
+                        <span
+                            className={`mb-6 flex size-14 items-center justify-center rounded-2xl ${booking.status === "cancelled" ? "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]" : "success-mark bg-[hsl(var(--success-soft))] text-[hsl(var(--success))]"}`}
+                        >
+                            {booking.status === "cancelled" ? (
+                                <CalendarX className="size-7" />
+                            ) : (
+                                <Check className="size-7" />
+                            )}
+                        </span>
                         <p className="label-caps text-[hsl(var(--primary))]">
-                            {booking.status === "cancelled" ? "Cancelled" : "Booked"}
+                            {booking.status === "cancelled" ? "Booking cancelled" : "Your session is booked"}
                         </p>
-                        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[hsl(var(--foreground))]">
+                        <h1 className="font-display mt-3 text-3xl text-[hsl(var(--foreground))]">
                             {booking.eventTitle ?? "Your meeting"}
                         </h1>
-                        <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
-                            {start.toLocaleString([], {
-                                weekday: "long", month: "long", day: "numeric",
-                                hour: "numeric", minute: "2-digit",
-                            })}
-                            {" – "}
-                            {end.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-                        </p>
+                        <SessionTime startsAt={booking.startsAt} endsAt={booking.endsAt} />
 
                         <dl className="mt-6 grid gap-3 text-sm">
                             <div className="flex justify-between gap-3">
@@ -97,7 +94,9 @@ export default async function ConfirmationPage({ params, searchParams }: PagePro
                                 <p className="label-caps text-[hsl(var(--destructive))]">
                                     {cancelledByLabel ? `Cancelled by ${cancelledByLabel}` : "Cancellation reason"}
                                 </p>
-                                <p className="mt-1 text-sm text-[hsl(var(--foreground))]">{booking.cancellationReason}</p>
+                                <p className="mt-1 text-sm text-[hsl(var(--foreground))]">
+                                    {booking.cancellationReason}
+                                </p>
                             </div>
                         )}
 
@@ -162,5 +161,6 @@ function formatDateTime(date: Date): string {
         day: "numeric",
         hour: "numeric",
         minute: "2-digit",
+        timeZoneName: "short",
     });
 }

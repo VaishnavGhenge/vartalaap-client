@@ -12,20 +12,22 @@ interface KnockingScreenProps {
 // must not be visible while the guest is unauthorized.
 export default function KnockingScreen({ onCancel }: KnockingScreenProps) {
     return (
-        <div className="flex flex-1 items-center justify-center bg-[hsl(var(--background))] text-[hsl(var(--foreground))]">
+        <div
+            role="status"
+            className="call-stage flex flex-1 items-center justify-center bg-[hsl(var(--background))] text-[hsl(var(--foreground))]"
+        >
             <div className="flex flex-col items-center gap-6 px-6 py-10 text-center max-w-sm w-full">
                 <div className="relative flex size-16 items-center justify-center rounded-full border-2 border-[hsl(var(--border))] bg-[hsl(var(--surface-2))]">
                     <Clock className="w-7 h-7 text-[hsl(var(--primary))]" />
-                    <span className="absolute inset-0 rounded-full border-2 border-[hsl(var(--primary))]/30 animate-ping" />
                 </div>
                 <div className="space-y-1.5">
                     <p className="text-base font-semibold">Waiting to be let in</p>
                     <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                        The host has been notified and will admit you shortly.
+                        Your request has been sent. You’ll join automatically if the host lets you in.
                     </p>
                 </div>
                 <div className="flex items-center gap-1.5" aria-hidden="true">
-                    {[0, 1, 2].map(i => (
+                    {[0, 1, 2].map((i) => (
                         <span
                             key={i}
                             className="size-1.5 rounded-full bg-[hsl(var(--muted-foreground))]/60"

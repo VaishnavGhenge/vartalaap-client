@@ -1,5 +1,7 @@
 "use client";
 
+import { LoadingContent } from "@/src/components/ui/PageLoading";
+
 import { ExternalLink, Pencil, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -88,7 +90,7 @@ export function EventTypesPanel({ hostSlug, onChange }: Props) {
     }
 
     if (loading) {
-        return <p className="text-sm text-[hsl(var(--muted-foreground))]">Loading event types…</p>;
+        return <LoadingContent layout="events" label="Getting your session types…" />;
     }
     if (loadError) {
         return <p className="text-sm text-[hsl(var(--destructive))]">{loadError}</p>;

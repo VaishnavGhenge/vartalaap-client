@@ -1,5 +1,7 @@
 "use client";
 
+import { LoadingContent } from "@/src/components/ui/PageLoading";
+
 import { Calendar, Video, Clock, Ban, Info } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -140,7 +142,7 @@ export function BookingsPanel() {
 
             {/* Content */}
             {loading ? (
-                <p className="text-sm text-[hsl(var(--muted-foreground))]">Loading…</p>
+                <LoadingContent label="Getting your bookings…" />
             ) : error ? (
                 <p className="text-sm text-[hsl(var(--destructive))]">{error}</p>
             ) : items.length === 0 ? (

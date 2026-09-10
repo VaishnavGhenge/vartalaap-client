@@ -1,5 +1,7 @@
 "use client";
 
+import { LoadingContent } from "@/src/components/ui/PageLoading";
+
 import { Calendar, Info, Video } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -49,7 +51,7 @@ export function UpcomingBookings({ refreshKey }: Props) {
     }, [refreshKey]);
 
     if (loading) {
-        return <p className="text-sm text-[hsl(var(--muted-foreground))]">Loading bookings…</p>;
+        return <LoadingContent label="Getting your upcoming sessions…" />;
     }
     if (error) {
         return <p className="text-sm text-[hsl(var(--destructive))]">{error}</p>;

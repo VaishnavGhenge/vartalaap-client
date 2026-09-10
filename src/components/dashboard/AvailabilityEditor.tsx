@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, Copy, LayoutGrid, List, MousePointerClick, Plus, X } from "lucide-react";
+import { Check, Copy, Globe2, LayoutGrid, List, MousePointerClick } from "lucide-react";
 
 import { Button } from "@/src/components/ui/button";
 import { ConfirmDialog } from "@/src/components/ui/ConfirmDialog";
 import { EditActionBar, EditTrigger } from "@/src/components/ui/EditActionBar";
 import { InlineNotice } from "@/src/components/ui/InlineNotice";
-import { SearchableSelect } from "@/src/components/ui/SearchableSelect";
+import { DailyHours } from "@/src/components/dashboard/DailyHours";
+import { FormError } from "@/src/components/ui/FormError";
 import { Switch } from "@/src/components/ui/Switch";
 import { cn } from "@/src/lib/utils";
 import {
@@ -55,8 +56,10 @@ export function AvailabilityEditor({ timezone, onSaved }: Props) {
     const [savedHint, setSavedHint] = useState(false);
     const [editing, setEditing] = useState(false);
     const [snapshot, setSnapshot] = useState<DayMap | null>(null);
-    const [mode, setMode] = useState<EditorMode>("chart");
+    const [mode, setMode] = useState<EditorMode>("manual");
     const [clearWeekOpen, setClearWeekOpen] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const [retry, setRetry] = useState(0);
 
     // Chart-mode state
     const [drag, setDrag] = useState<Drag>(null);
@@ -68,27 +71,28 @@ export function AvailabilityEditor({ timezone, onSaved }: Props) {
 
     useEffect(() => {
         let cancelled = false;
+        setLoaded(false);
+        setLoadError(null);
         (async () => {
             try {
                 const rules = await getAvailability();
                 if (cancelled) return;
-                setDays(rules.length > 0 ? rulesToDays(rules) : defaultDays());
+                setDays(rulesToDays(rules));
             } catch (e) {
-                if (!cancelled) setError(e instanceof Error ? e.message : "Could not load saved hours");
+                if (!cancelled) setLoadError(e instanceof Error ? e.message : "Could not load saved hours");
             } finally {
                 if (!cancelled) setLoaded(true);
             }
         })();
-        return () => { cancelled = true; };
-    }, []);
+        return () => {
+            cancelled = true;
+        };
+    }, [retry]);
 
     const grid = useMemo(() => daysToGrid(days), [days]);
     const displayGrid = useMemo(() => withDrag(grid, drag), [grid, drag]);
     const localError = useMemo(() => validateDays(days), [days]);
-    const enabledCount = useMemo(
-        () => DAYS.reduce((n, d) => (days[d].enabled ? n + 1 : n), 0),
-        [days],
-    );
+    const enabledCount = useMemo(() => DAYS.reduce((n, d) => (days[d].enabled ? n + 1 : n), 0), [days]);
 
     function markDirty() {
         if (error) setError(null);
@@ -151,7 +155,7 @@ export function AvailabilityEditor({ timezone, onSaved }: Props) {
 
     function updateShift(day: DayLabel, idx: number, field: "start" | "end", value: string) {
         setDays((prev) => {
-            const shifts = prev[day].shifts.map((s, i) => i === idx ? { ...s, [field]: value } : s);
+            const shifts = prev[day].shifts.map((s, i) => (i === idx ? { ...s, [field]: value } : s));
             return { ...prev, [day]: { ...prev[day], shifts } };
         });
         markDirty();
@@ -180,7 +184,7 @@ export function AvailabilityEditor({ timezone, onSaved }: Props) {
     // ── Copy handlers ───────────────────────────────────────────────────────────
 
     function openCopy(day: DayLabel) {
-        setCopyTargets(new Set(DAYS.filter((d) => d !== day) as DayLabel[]));
+        setCopyTargets(new Set(DAYS.filter((d) => d !== day && d !== "Sat" && d !== "Sun")));
         setCopyOpen(day);
     }
 
@@ -206,7 +210,11 @@ export function AvailabilityEditor({ timezone, onSaved }: Props) {
     }
 
     async function handleSave() {
-        if (localError) { setError(localError); return; }
+        if (saving) return;
+        if (localError) {
+            setError(localError);
+            return;
+        }
         setSaving(true);
         setError(null);
         try {
@@ -221,19 +229,50 @@ export function AvailabilityEditor({ timezone, onSaved }: Props) {
         }
     }
 
+    if (!loaded)
+        return (
+            <div role="status" aria-busy="true">
+                <span className="sr-only">Loading your working hours…</span>
+                <div aria-hidden="true">
+                    <div className="skeleton mb-5 h-9 w-52" />
+                    {DAYS.map((day) => (
+                        <div key={day} className="flex h-20 items-center gap-8 border-b border-[hsl(var(--border))]">
+                            <div className="skeleton h-4 w-24" />
+                            <div className="skeleton h-9 w-56 max-w-[55%]" />
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    if (loadError)
+        return (
+            <div>
+                <FormError>{loadError}</FormError>
+                <Button variant="outline" className="mt-4" onClick={() => setRetry((value) => value + 1)}>
+                    Retry loading hours
+                </Button>
+            </div>
+        );
+
     return (
         <div>
             {/* Header row: timezone note + mode toggle */}
-            <div className="mb-5 flex items-center justify-between gap-3">
-                <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                    Recurring weekly template. All times in {timezone.replace(/_/g, " ")}.
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
+                <p className="flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
+                    <Globe2 className="size-4" />
+                    {timezone.replace(/_/g, " ")}
                 </p>
                 <div className="flex items-center rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--surface-2))] p-0.5">
-                    {(["chart", "manual"] as EditorMode[]).map((m) => (
+                    {(["manual", "chart"] as EditorMode[]).map((m) => (
                         <button
                             key={m}
                             type="button"
-                            onClick={() => { setMode(m); setCopyOpen(null); }}
+                            onClick={() => {
+                                setMode(m);
+                                setCopyOpen(null);
+                            }}
+                            aria-pressed={mode === m}
+                            disabled={saving}
                             className={cn(
                                 "flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all",
                                 mode === m
@@ -242,11 +281,25 @@ export function AvailabilityEditor({ timezone, onSaved }: Props) {
                             )}
                         >
                             {m === "chart" ? <LayoutGrid className="size-3" /> : <List className="size-3" />}
-                            {m === "chart" ? "Chart" : "Manual"}
+                            {m === "chart" ? "Week overview" : "Daily hours"}
                         </button>
                     ))}
                 </div>
             </div>
+            {editing && enabledCount === 0 && (
+                <Button
+                    variant="outline"
+                    size="sm"
+                    className="mb-4"
+                    onClick={() => {
+                        setDays(defaultDays());
+                        markDirty();
+                    }}
+                    disabled={saving}
+                >
+                    Use Mon–Fri, 9 AM–5 PM
+                </Button>
+            )}
 
             {editing && mode === "chart" && (
                 <InlineNotice icon={MousePointerClick} className="mb-5 text-xs">
@@ -256,286 +309,252 @@ export function AvailabilityEditor({ timezone, onSaved }: Props) {
 
             {/* ── Chart mode ── */}
             {mode === "chart" && (
-                <div className="select-none touch-none">
-                    {/* Time axis */}
-                    <div className="mb-1.5 flex">
-                        <div className="w-28 shrink-0" />
-                        <div className="relative flex-1">
-                            {AXIS.map(({ label, slot }) => (
-                                <span
-                                    key={label}
-                                    className="absolute -translate-x-1/2 text-[10px] font-medium uppercase tracking-wider text-[hsl(var(--muted-foreground))]"
-                                    style={{ left: `${(slot / SLOTS_PER_DAY) * 100}%` }}
-                                >
-                                    {label}
-                                </span>
-                            ))}
+                <div className="overflow-x-auto pb-2">
+                    <div className={cn("min-w-[600px] select-none", editing && "touch-none")}>
+                        {/* Time axis */}
+                        <div className="mb-1.5 flex">
+                            <div className="w-28 shrink-0" />
+                            <div className="relative flex-1">
+                                {AXIS.map(({ label, slot }) => (
+                                    <span
+                                        key={label}
+                                        className="absolute -translate-x-1/2 whitespace-nowrap text-[10px] font-medium uppercase tracking-wider text-[hsl(var(--muted-foreground))]"
+                                        style={{ left: `${(slot / SLOTS_PER_DAY) * 100}%` }}
+                                    >
+                                        {label}
+                                    </span>
+                                ))}
+                            </div>
+                            <div className="w-8 shrink-0" />
                         </div>
-                        <div className="w-8 shrink-0" />
-                    </div>
 
-                    <div className="mt-4 flex flex-col gap-1.5">
-                        {DAYS.map((day, dayIdx) => {
-                            const enabled = days[day].enabled;
-                            const row = displayGrid[dayIdx];
-                            const runs = computeRuns(row);
+                        <div className="mt-4 flex flex-col gap-1.5">
+                            {DAYS.map((day, dayIdx) => {
+                                const enabled = days[day].enabled;
+                                const row = displayGrid[dayIdx];
+                                const runs = computeRuns(row);
 
-                            return (
-                                <div key={day} className="group flex items-center gap-3">
-                                    <div className="flex w-28 shrink-0 items-center gap-2.5">
-                                        <Switch
-                                            size="sm"
-                                            checked={enabled}
-                                            disabled={!editing}
-                                            onChange={(on) => toggleDay(day, on)}
-                                        />
-                                        <span className={cn(
-                                            "w-8 text-sm font-semibold",
-                                            enabled ? "text-[hsl(var(--foreground))]" : "text-[hsl(var(--muted-foreground))]/50",
-                                        )}>
-                                            {day}
-                                        </span>
-                                    </div>
-
-                                    {/* Grid wrapper — relative so tooltip can float above overflow-hidden */}
-                                    <div className="relative flex-1">
-                                        {hoveredSlot?.dayIdx === dayIdx && (
-                                            <div
-                                                className="pointer-events-none absolute -top-7 z-20 -translate-x-1/2 whitespace-nowrap rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--surface))] px-2 py-0.5 text-[11px] font-medium text-[hsl(var(--foreground))] shadow-sm"
-                                                style={{ left: `${((hoveredSlot.slotIdx + 0.5) / SLOTS_PER_DAY) * 100}%` }}
+                                return (
+                                    <div key={day} className="group flex items-center gap-3">
+                                        <div className="flex w-28 shrink-0 items-center gap-2.5">
+                                            <Switch
+                                                size="sm"
+                                                checked={enabled}
+                                                disabled={!editing || saving}
+                                                aria-label={`${day} available`}
+                                                onChange={(on) => toggleDay(day, on)}
+                                            />
+                                            <span
+                                                className={cn(
+                                                    "w-8 text-sm font-semibold",
+                                                    enabled
+                                                        ? "text-[hsl(var(--foreground))]"
+                                                        : "text-[hsl(var(--muted-foreground))]/50",
+                                                )}
                                             >
-                                                {slotLabel(hoveredSlot.slotIdx)}–{slotLabel(hoveredSlot.slotIdx + 1)}
-                                            </div>
-                                        )}
-                                        <div
-                                            role="grid"
-                                            aria-label={`${day} availability`}
-                                            className={cn(
-                                                "relative overflow-hidden rounded-xl ring-1 transition-colors",
-                                                enabled
-                                                    ? "bg-[hsl(var(--surface-2))] ring-[hsl(var(--border))]"
-                                                    : "bg-[hsl(var(--surface-2))]/40 ring-[hsl(var(--border))]",
-                                            )}
-                                            style={{ height: 40 }}
-                                        >
-                                            {runs.map((run) => (
+                                                {day}
+                                            </span>
+                                        </div>
+
+                                        {/* Grid wrapper — relative so tooltip can float above overflow-hidden */}
+                                        <div className="relative flex-1">
+                                            {hoveredSlot?.dayIdx === dayIdx && (
                                                 <div
-                                                    key={run.start}
-                                                    className="pointer-events-none absolute inset-y-[3px] flex items-center justify-center rounded-lg bg-[hsl(var(--primary))] shadow-[inset_0_1px_0_rgba(255,255,255,0.15)]"
+                                                    className="pointer-events-none absolute -top-7 z-20 -translate-x-1/2 whitespace-nowrap rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--surface))] px-2 py-0.5 text-[11px] font-medium text-[hsl(var(--foreground))] shadow-sm"
                                                     style={{
-                                                        left: `calc(${(run.start / SLOTS_PER_DAY) * 100}% + 2px)`,
-                                                        right: `calc(${((SLOTS_PER_DAY - run.end - 1) / SLOTS_PER_DAY) * 100}% + 2px)`,
+                                                        left: `${((hoveredSlot.slotIdx + 0.5) / SLOTS_PER_DAY) * 100}%`,
                                                     }}
                                                 >
-                                                    {run.length >= 4 && (
-                                                        <span className="truncate px-2 text-[11px] font-semibold text-white/90 drop-shadow-sm">
-                                                            {slotShortTime(run.start)}–{slotShortTime(run.end + 1)}
-                                                        </span>
-                                                    )}
+                                                    {slotLabel(hoveredSlot.slotIdx)}–
+                                                    {slotLabel(hoveredSlot.slotIdx + 1)}
                                                 </div>
-                                            ))}
-                                            <div className="absolute inset-0 grid grid-cols-[repeat(30,minmax(0,1fr))]">
-                                                {row.map((on, slotIdx) => (
-                                                    <button
-                                                        key={slotIdx}
-                                                        type="button"
-                                                        role="gridcell"
-                                                        aria-selected={on}
-                                                        aria-label={`${day} ${slotLabel(slotIdx)}`}
-                                                        tabIndex={-1}
-                                                        onPointerDown={(e) => {
-                                                            if (!enabled || !editing) return;
-                                                            e.preventDefault();
-                                                            setDrag({ dayIdx, startSlot: slotIdx, endSlot: slotIdx, mode: on ? "erase" : "paint" });
+                                            )}
+                                            <div
+                                                role="grid"
+                                                aria-label={`${day} availability`}
+                                                className={cn(
+                                                    "relative overflow-hidden rounded-xl ring-1 transition-colors",
+                                                    enabled
+                                                        ? "bg-[hsl(var(--surface-2))] ring-[hsl(var(--border))]"
+                                                        : "bg-[hsl(var(--surface-2))]/40 ring-[hsl(var(--border))]",
+                                                )}
+                                                style={{ height: 32 }}
+                                            >
+                                                {runs.map((run) => (
+                                                    <div
+                                                        key={run.start}
+                                                        className="pointer-events-none absolute inset-y-[3px] flex items-center justify-center rounded-md border border-[hsl(var(--primary))]/20 bg-[hsl(var(--secondary))]"
+                                                        style={{
+                                                            left: `calc(${(run.start / SLOTS_PER_DAY) * 100}% + 2px)`,
+                                                            right: `calc(${((SLOTS_PER_DAY - run.end - 1) / SLOTS_PER_DAY) * 100}% + 2px)`,
                                                         }}
-                                                        onPointerEnter={() => {
-                                                            if (enabled && editing) setDrag((d) => d && d.dayIdx === dayIdx ? { ...d, endSlot: slotIdx } : d);
-                                                        }}
-                                                        onMouseEnter={() => setHoveredSlot({ dayIdx, slotIdx })}
-                                                        onMouseLeave={() => setHoveredSlot(null)}
-                                                        className={cn(
-                                                            "h-full transition-colors duration-75",
-                                                            hoveredSlot?.dayIdx === dayIdx && hoveredSlot.slotIdx === slotIdx
-                                                                ? on ? "bg-white/20" : "bg-[hsl(var(--primary))]/20"
-                                                                : "",
-                                                            editing && enabled ? "cursor-pointer" : enabled ? "cursor-default" : "cursor-not-allowed",
+                                                    >
+                                                        {run.length >= 4 && (
+                                                            <span className="truncate px-2 text-[11px] font-medium text-[hsl(var(--secondary-foreground))]">
+                                                                {slotShortTime(run.start)}–{slotShortTime(run.end + 1)}
+                                                            </span>
                                                         )}
-                                                    />
+                                                    </div>
                                                 ))}
+                                                <div className="absolute inset-0 grid grid-cols-[repeat(30,minmax(0,1fr))]">
+                                                    {row.map((on, slotIdx) => (
+                                                        <button
+                                                            key={slotIdx}
+                                                            type="button"
+                                                            role="gridcell"
+                                                            aria-selected={on}
+                                                            aria-label={`${day} ${slotLabel(slotIdx)}`}
+                                                            tabIndex={-1}
+                                                            onPointerDown={(e) => {
+                                                                if (!enabled || !editing || saving) return;
+                                                                e.preventDefault();
+                                                                setDrag({
+                                                                    dayIdx,
+                                                                    startSlot: slotIdx,
+                                                                    endSlot: slotIdx,
+                                                                    mode: on ? "erase" : "paint",
+                                                                });
+                                                            }}
+                                                            onPointerEnter={() => {
+                                                                if (enabled && editing && !saving)
+                                                                    setDrag((d) =>
+                                                                        d && d.dayIdx === dayIdx
+                                                                            ? { ...d, endSlot: slotIdx }
+                                                                            : d,
+                                                                    );
+                                                            }}
+                                                            onMouseEnter={() => setHoveredSlot({ dayIdx, slotIdx })}
+                                                            onMouseLeave={() => setHoveredSlot(null)}
+                                                            className={cn(
+                                                                "h-full transition-colors duration-75",
+                                                                hoveredSlot?.dayIdx === dayIdx &&
+                                                                    hoveredSlot.slotIdx === slotIdx
+                                                                    ? on
+                                                                        ? "bg-white/20"
+                                                                        : "bg-[hsl(var(--primary))]/20"
+                                                                    : "",
+                                                                editing && enabled
+                                                                    ? "cursor-pointer"
+                                                                    : enabled
+                                                                      ? "cursor-default"
+                                                                      : "cursor-not-allowed",
+                                                            )}
+                                                        />
+                                                    ))}
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
 
-                                    {/* Per-row copy */}
-                                    <div className="relative w-8 shrink-0">
-                                        {enabled && editing && (
-                                            <>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => copyOpen === day ? setCopyOpen(null) : openCopy(day)}
-                                                    aria-label={`Copy ${day}`}
-                                                    className={cn(
-                                                        "press flex size-7 items-center justify-center rounded-md transition-all",
-                                                        "opacity-0 group-hover:opacity-100",
-                                                        copyOpen === day
-                                                            ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))] opacity-100"
-                                                            : "text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--surface-3))] hover:text-[hsl(var(--foreground))]",
-                                                    )}
-                                                >
-                                                    <Copy className="size-3.5" />
-                                                </button>
-                                                {copyOpen === day && (
-                                                    <CopyPopover
-                                                        sourceDay={day}
-                                                        targets={copyTargets}
-                                                        onToggle={(d) => setCopyTargets((prev) => {
-                                                            const next = new Set(prev);
-                                                            next.has(d) ? next.delete(d) : next.add(d);
-                                                            return next;
-                                                        })}
-                                                        onSelectAll={() =>
-                                                            setCopyTargets(new Set(DAYS.filter((d) => d !== day) as DayLabel[]))
+                                        {/* Per-row copy */}
+                                        <div className="relative w-8 shrink-0">
+                                            {enabled && editing && (
+                                                <>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            copyOpen === day ? setCopyOpen(null) : openCopy(day)
                                                         }
-                                                        onApply={() => applyCopy(day)}
-                                                        onClose={() => setCopyOpen(null)}
-                                                    />
-                                                )}
-                                            </>
-                                        )}
+                                                        aria-label={`Copy ${day}`}
+                                                        className={cn(
+                                                            "press flex size-7 items-center justify-center rounded-md transition-all",
+                                                            "opacity-0 group-hover:opacity-100",
+                                                            copyOpen === day
+                                                                ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))] opacity-100"
+                                                                : "text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--surface-3))] hover:text-[hsl(var(--foreground))]",
+                                                        )}
+                                                    >
+                                                        <Copy className="size-3.5" />
+                                                    </button>
+                                                    {copyOpen === day && (
+                                                        <CopyPopover
+                                                            sourceDay={day}
+                                                            targets={copyTargets}
+                                                            onToggle={(d) =>
+                                                                setCopyTargets((prev) => {
+                                                                    const next = new Set(prev);
+                                                                    next.has(d) ? next.delete(d) : next.add(d);
+                                                                    return next;
+                                                                })
+                                                            }
+                                                            onSelectAll={() =>
+                                                                setCopyTargets(
+                                                                    new Set(
+                                                                        DAYS.filter((d) => d !== day) as DayLabel[],
+                                                                    ),
+                                                                )
+                                                            }
+                                                            onApply={() => applyCopy(day)}
+                                                            onClose={() => setCopyOpen(null)}
+                                                        />
+                                                    )}
+                                                </>
+                                            )}
+                                        </div>
                                     </div>
-                                </div>
-                            );
-                        })}
+                                );
+                            })}
+                        </div>
                     </div>
                 </div>
             )}
 
-            {/* ── Manual mode ── */}
             {mode === "manual" && (
-                <div className="flex flex-col divide-y divide-[hsl(var(--border))]">
-                    {DAYS.map((day) => {
-                        const cfg = days[day];
-                        const enabled = cfg.enabled;
-
-                        return (
-                            <div key={day} className="group flex items-start gap-3 py-3 first:pt-0 last:pb-0">
-                                {/* Toggle + label */}
-                                <div className="flex w-28 shrink-0 items-center gap-2.5 pt-1">
-                                    <Switch
-                                        size="sm"
-                                        checked={enabled}
-                                        disabled={!editing}
-                                        onChange={(on) => toggleDay(day, on)}
-                                    />
-                                    <span className={cn(
-                                        "text-sm font-semibold",
-                                        enabled ? "text-[hsl(var(--foreground))]" : "text-[hsl(var(--muted-foreground))]/50",
-                                    )}>
-                                        {day}
-                                    </span>
-                                </div>
-
-                                {/* Shift rows */}
-                                <div className="flex min-w-0 flex-1 flex-col gap-2">
-                                    {enabled ? (
-                                        <>
-                                            {cfg.shifts.map((shift, idx) => (
-                                                <div key={idx} className="flex items-center gap-2">
-                                                    <SearchableSelect
-                                                        selectSize="sm"
-                                                        value={shift.start}
-                                                        disabled={!editing}
-                                                        wrapperClassName="w-32"
-                                                        onValueChange={(v) => updateShift(day, idx, "start", v)}
-                                                        options={TIME_OPTIONS.map((t) => ({ value: t, label: formatTime12h(t) }))}
-                                                    />
-                                                    <span className="shrink-0 text-xs text-[hsl(var(--muted-foreground))]">–</span>
-                                                    <SearchableSelect
-                                                        selectSize="sm"
-                                                        value={shift.end}
-                                                        disabled={!editing}
-                                                        wrapperClassName="w-32"
-                                                        onValueChange={(v) => updateShift(day, idx, "end", v)}
-                                                        options={TIME_OPTIONS.map((t) => ({ value: t, label: formatTime12h(t) }))}
-                                                    />
-                                                    {editing && (
-                                                        <button
-                                                            type="button"
-                                                            aria-label="Remove shift"
-                                                            onClick={() => removeShift(day, idx)}
-                                                            className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--destructive))]/10 hover:text-[hsl(var(--destructive))]"
-                                                        >
-                                                            <X className="size-3.5" />
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            ))}
-                                            {editing && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => addShift(day)}
-                                                    className="flex w-fit items-center gap-1 text-xs text-[hsl(var(--muted-foreground))] transition-colors hover:text-[hsl(var(--primary))]"
-                                                >
-                                                    <Plus className="size-3.5" />
-                                                    Add hours
-                                                </button>
-                                            )}
-                                        </>
-                                    ) : (
-                                        <p className="pt-1 text-sm text-[hsl(var(--muted-foreground))]/50">Unavailable</p>
-                                    )}
-                                </div>
-
-                                {/* Per-row copy */}
-                                <div className="relative shrink-0 pt-0.5">
-                                    {enabled && editing && (
-                                        <>
-                                            <button
-                                                type="button"
-                                                onClick={() => copyOpen === day ? setCopyOpen(null) : openCopy(day)}
-                                                aria-label={`Copy ${day}`}
-                                                className={cn(
-                                                    "press flex size-7 items-center justify-center rounded-md transition-all",
-                                                    "opacity-0 group-hover:opacity-100",
-                                                    copyOpen === day
-                                                        ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))] opacity-100"
-                                                        : "text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--surface-3))] hover:text-[hsl(var(--foreground))]",
-                                                )}
-                                            >
-                                                <Copy className="size-3.5" />
-                                            </button>
-                                            {copyOpen === day && (
-                                                <CopyPopover
-                                                    sourceDay={day}
-                                                    targets={copyTargets}
-                                                    onToggle={(d) => setCopyTargets((prev) => {
-                                                        const next = new Set(prev);
-                                                        next.has(d) ? next.delete(d) : next.add(d);
-                                                        return next;
-                                                    })}
-                                                    onSelectAll={() =>
-                                                        setCopyTargets(new Set(DAYS.filter((d) => d !== day) as DayLabel[]))
-                                                    }
-                                                    onApply={() => applyCopy(day)}
-                                                    onClose={() => setCopyOpen(null)}
-                                                />
-                                            )}
-                                        </>
-                                    )}
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
+                <DailyHours
+                    days={days}
+                    editing={editing}
+                    saving={saving}
+                    onToggle={toggleDay}
+                    onUpdate={updateShift}
+                    onAdd={addShift}
+                    onRemove={removeShift}
+                    renderCopy={(day) => (
+                        <>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={saving}
+                                onClick={() => (copyOpen === day ? setCopyOpen(null) : openCopy(day))}
+                                aria-label={`Copy ${day} hours`}
+                            >
+                                <Copy className="size-3.5" /> Copy
+                            </Button>
+                            {copyOpen === day && (
+                                <CopyPopover
+                                    sourceDay={day}
+                                    targets={copyTargets}
+                                    onToggle={(d) =>
+                                        setCopyTargets((prev) => {
+                                            const next = new Set(prev);
+                                            next.has(d) ? next.delete(d) : next.add(d);
+                                            return next;
+                                        })
+                                    }
+                                    onSelectAll={() => setCopyTargets(new Set(DAYS.filter((d) => d !== day)))}
+                                    onApply={() => applyCopy(day)}
+                                    onClose={() => setCopyOpen(null)}
+                                />
+                            )}
+                        </>
+                    )}
+                />
             )}
 
             {/* ── Footer ── */}
-            <div className="mt-5 flex items-center justify-between gap-3 border-t border-[hsl(var(--border))] pt-4">
+            <div
+                className={cn(
+                    "mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-[hsl(var(--border))] bg-[hsl(var(--surface))] py-4",
+                    editing && "sticky bottom-20 z-10 lg:bottom-0",
+                )}
+            >
                 <div className="min-w-0 text-xs">
-                    {error ? (
-                        <span className="text-[hsl(var(--destructive))]">{error}</span>
+                    {error || (editing && localError) ? (
+                        <span role="alert" className="text-[hsl(var(--destructive))]">
+                            {error || localError}
+                        </span>
                     ) : savedHint ? (
-                        <span className="text-[hsl(var(--primary))]">Saved.</span>
+                        <span role="status" className="text-[hsl(var(--success))]">
+                            Working hours saved.
+                        </span>
                     ) : editing ? (
                         <span className="text-[hsl(var(--muted-foreground))]">Changes apply to new bookings only.</span>
                     ) : (
@@ -546,15 +565,16 @@ export function AvailabilityEditor({ timezone, onSaved }: Props) {
                 {editing ? (
                     <EditActionBar
                         onClear={() => setClearWeekOpen(true)}
-                        clearLabel="Reset"
+                        clearLabel="Clear week"
                         clearDisabled={enabledCount === 0}
                         onCancel={cancelEdit}
                         onSave={handleSave}
                         saving={saving}
                         saveDisabled={!loaded || !!localError}
+                        saveLabel="Save hours"
                     />
                 ) : (
-                    <EditTrigger disabled={!loaded} onClick={enterEdit} />
+                    <EditTrigger disabled={!loaded} onClick={enterEdit} label="Edit hours" />
                 )}
             </div>
             <ConfirmDialog
@@ -573,7 +593,12 @@ export function AvailabilityEditor({ timezone, onSaved }: Props) {
 // ─── Copy popover ─────────────────────────────────────────────────────────────
 
 function CopyPopover({
-    sourceDay, targets, onToggle, onSelectAll, onApply, onClose,
+    sourceDay,
+    targets,
+    onToggle,
+    onSelectAll,
+    onApply,
+    onClose,
 }: {
     sourceDay: DayLabel;
     targets: Set<DayLabel>;
@@ -590,8 +615,15 @@ function CopyPopover({
         function down(e: MouseEvent) {
             if (ref.current && !ref.current.contains(e.target as Node)) onClose();
         }
+        function key(e: KeyboardEvent) {
+            if (e.key === "Escape") onClose();
+        }
         document.addEventListener("mousedown", down);
-        return () => document.removeEventListener("mousedown", down);
+        document.addEventListener("keydown", key);
+        return () => {
+            document.removeEventListener("mousedown", down);
+            document.removeEventListener("keydown", key);
+        };
     }, [onClose]);
 
     return (
@@ -599,10 +631,11 @@ function CopyPopover({
             ref={ref}
             className="absolute right-0 top-9 z-20 w-44 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--surface))] p-3 shadow-lg"
         >
-            <p className="mb-2 text-xs font-semibold text-[hsl(var(--foreground))]">Copy to</p>
+            <p className="mb-2 text-xs font-semibold text-[hsl(var(--foreground))]">Copy {sourceDay} hours to</p>
             <button
                 type="button"
                 onClick={onSelectAll}
+                aria-pressed={allSelected}
                 className="press mb-1.5 flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-xs hover:bg-[hsl(var(--surface-2))]"
             >
                 <Checkbox checked={allSelected} />
@@ -614,10 +647,15 @@ function CopyPopover({
                         key={d}
                         type="button"
                         onClick={() => onToggle(d)}
+                        aria-pressed={targets.has(d)}
                         className="press flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-xs hover:bg-[hsl(var(--surface-2))]"
                     >
                         <Checkbox checked={targets.has(d)} />
-                        <span className={targets.has(d) ? "text-[hsl(var(--foreground))]" : "text-[hsl(var(--muted-foreground))]"}>
+                        <span
+                            className={
+                                targets.has(d) ? "text-[hsl(var(--foreground))]" : "text-[hsl(var(--muted-foreground))]"
+                            }
+                        >
                             {d}
                         </span>
                     </button>
@@ -637,10 +675,12 @@ function CopyPopover({
 
 function Checkbox({ checked }: { checked: boolean }) {
     return (
-        <span className={cn(
-            "flex size-3.5 shrink-0 items-center justify-center rounded-sm border transition-colors",
-            checked ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))]" : "border-[hsl(var(--border))]",
-        )}>
+        <span
+            className={cn(
+                "flex size-3.5 shrink-0 items-center justify-center rounded-sm border transition-colors",
+                checked ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))]" : "border-[hsl(var(--border))]",
+            )}
+        >
             {checked && <Check className="size-2.5 text-white" />}
         </span>
     );

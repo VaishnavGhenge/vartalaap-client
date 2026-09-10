@@ -1,4 +1,5 @@
 import { useMutation } from '@tanstack/react-query'
+import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { login, logout, register, restoreAuthSession, getMe } from '@/src/services/api/auth'
@@ -13,21 +14,30 @@ export function safeNextPath(): string | null {
     if (typeof window === 'undefined') return null
     const next = new URLSearchParams(window.location.search).get('next')
     if (!next || !next.startsWith('/') || next.startsWith('//') || next.includes('\\')) return null
+    if (['/login', '/register'].includes(next.split(/[?#]/)[0])) return null
     return next
+}
+
+export function useAuthRedirect() {
+    const { isLoading, isAuthenticated, user } = useAuthStore()
+    const router = useRouter()
+    useEffect(() => {
+        if (isLoading || !isAuthenticated || !user) return
+        const next = safeNextPath()
+        const destination = user.onboardingStep < 5 && next?.split(/[?#]/)[0] !== '/onboarding'
+            ? `/onboarding${next ? `?next=${encodeURIComponent(next)}` : ''}`
+            : next ?? '/dashboard'
+        router.replace(destination)
+    }, [isLoading, isAuthenticated, user, router])
 }
 
 export const useLogin = () => {
     const { login: storeLogin } = useAuthStore()
-    const router = useRouter()
 
     return useMutation({
         mutationFn: (creds: UserCredentials) => login(creds),
         onSuccess: ({ user }) => {
             storeLogin(user)
-            // Resume onboarding if not complete; otherwise honor a ?next=
-            // return path (e.g. back to the call a session-expired user was
-            // trying to join) before defaulting to the dashboard.
-            router.push(user.onboardingStep < 5 ? '/onboarding' : safeNextPath() ?? '/dashboard')
         },
         onError: (err: Error) => {
             toast.error(err.message || 'Login failed')
@@ -37,13 +47,11 @@ export const useLogin = () => {
 
 export const useRegister = () => {
     const { login: storeLogin } = useAuthStore()
-    const router = useRouter()
 
     return useMutation({
         mutationFn: (creds: RegisterCredentials) => register(creds),
         onSuccess: ({ user }) => {
             storeLogin(user)
-            router.push('/onboarding')
         },
         onError: (err: Error) => {
             toast.error(err.message || 'Registration failed')

@@ -6,10 +6,9 @@ import { cn } from "@/src/lib/utils"
 
 const selectVariants = cva(
   [
-    "w-full cursor-pointer appearance-none border border-[hsl(var(--border-strong))]",
-    "bg-[hsl(var(--surface))] text-[hsl(var(--foreground))] shadow-sm outline-none",
-    "transition-all hover:border-[hsl(var(--primary))]/40 hover:bg-[hsl(var(--surface-2))]",
-    "focus-visible:border-[hsl(var(--primary))] focus-visible:ring-4 focus-visible:ring-[hsl(var(--primary))]/15",
+    "field-control w-full cursor-pointer appearance-none border border-[hsl(var(--border-strong))]",
+    "bg-[hsl(var(--surface))] text-[hsl(var(--foreground))] outline-none",
+    "hover:bg-[hsl(var(--surface-2))]",
     "disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50",
     "[&>option]:bg-[hsl(var(--popover))] [&>option]:text-[hsl(var(--popover-foreground))]",
   ].join(" "),
