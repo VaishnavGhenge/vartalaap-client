@@ -40,6 +40,12 @@ function stubGetUserMedia(track: MediaStreamTrack) {
   })
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((done) => { resolve = done })
+  return { promise, resolve }
+}
+
 function makeSfuSession(): SfuSession {
   return {
     replaceTrack: vi.fn().mockResolvedValue(undefined),
@@ -82,6 +88,8 @@ beforeEach(() => {
     peerConnections: new Map(),
     peerStats: new Map(),
     iceServers: [],
+    sfuSession: null,
+    callActive: false,
   })
 })
 
@@ -93,6 +101,44 @@ afterEach(() => {
 // ─── enableMic ────────────────────────────────────────────────────────────────
 
 describe('enableMic', () => {
+  it('does not publish a microphone acquired after the user muted', async () => {
+    const acquired = deferred<MediaStream>()
+    const micTrack = makeTrack('audio')
+    const sfuSession = makeSfuSession()
+    vi.stubGlobal('navigator', {
+      mediaDevices: { getUserMedia: vi.fn(() => acquired.promise) },
+    })
+    usePeerStore.setState({ sfuSession })
+
+    const enabling = usePeerStore.getState().enableMic()
+    usePeerStore.getState().disableMic()
+    acquired.resolve(makeStream([micTrack]))
+
+    await expect(enabling).resolves.toBeNull()
+    expect(micTrack.stop).toHaveBeenCalledOnce()
+    expect(sfuSession.replaceTrack).not.toHaveBeenCalled()
+    expect(usePeerStore.getState().localStream).toBeNull()
+  })
+
+  it('cancels delayed microphone ownership when the call is cleared', async () => {
+    const acquired = deferred<MediaStream>()
+    const micTrack = makeTrack('audio')
+    const sfuSession = makeSfuSession()
+    vi.stubGlobal('navigator', {
+      mediaDevices: { getUserMedia: vi.fn(() => acquired.promise) },
+    })
+    usePeerStore.setState({ sfuSession, callActive: true })
+
+    const enabling = usePeerStore.getState().enableMic()
+    usePeerStore.getState().clearAll()
+    acquired.resolve(makeStream([micTrack]))
+
+    await expect(enabling).resolves.toBeNull()
+    expect(micTrack.stop).toHaveBeenCalledOnce()
+    expect(usePeerStore.getState().localStream).toBeNull()
+    expect(usePeerStore.getState().sfuSession).toBeNull()
+  })
+
   it('calls getUserMedia with audio constraints and returns the track', async () => {
     const track = makeTrack('audio')
     stubGetUserMedia(track)

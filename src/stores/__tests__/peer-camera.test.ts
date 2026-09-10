@@ -69,11 +69,18 @@ function stubGetUserMedia(track: MediaStreamTrack) {
   })
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((done) => { resolve = done })
+  return { promise, resolve }
+}
+
 // ─── Setup ────────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
   vi.stubGlobal('MediaStream', class {
     private _tracks: MediaStreamTrack[] = []
+    constructor(tracks: MediaStreamTrack[] = []) { this._tracks = [...tracks] }
     getTracks() { return [...this._tracks] }
     getVideoTracks() { return this._tracks.filter(t => t.kind === 'video') }
     getAudioTracks() { return this._tracks.filter(t => t.kind === 'audio') }
@@ -88,6 +95,8 @@ beforeEach(() => {
     peerConnections: new Map(),
     peerStats: new Map(),
     iceServers: [],
+    sfuSession: null,
+    callActive: false,
   })
 })
 
@@ -331,6 +340,79 @@ describe('disableCamera — peer interaction', () => {
 // ─── enableCamera — peer sender reuse ────────────────────────────────────────
 
 describe('enableCamera — peer sender reuse', () => {
+  it('does not publish a camera acquired after the user turned it off', async () => {
+    const acquired = deferred<MediaStream>()
+    const cameraTrack = makeTrack('video')
+    const sfuSession = makeSfuSession()
+    vi.stubGlobal('navigator', {
+      mediaDevices: {
+        getUserMedia: vi.fn(() => acquired.promise),
+        enumerateDevices: vi.fn().mockResolvedValue([]),
+      },
+    })
+    usePeerStore.setState({ sfuSession })
+
+    const enabling = usePeerStore.getState().enableCamera()
+    usePeerStore.getState().disableCamera()
+    acquired.resolve(makeStream([cameraTrack]))
+
+    await expect(enabling).resolves.toBeNull()
+    expect(cameraTrack.stop).toHaveBeenCalledOnce()
+    expect(sfuSession.replaceTrack).not.toHaveBeenCalled()
+    expect(usePeerStore.getState().localStream).toBeNull()
+  })
+
+  it('lets only the latest overlapping camera acquisition publish', async () => {
+    const first = deferred<MediaStream>()
+    const second = deferred<MediaStream>()
+    const oldTrack = makeTrack('video')
+    const currentTrack = makeTrack('video')
+    const sfuSession = makeSfuSession()
+    vi.stubGlobal('navigator', {
+      mediaDevices: {
+        getUserMedia: vi.fn()
+          .mockImplementationOnce(() => first.promise)
+          .mockImplementationOnce(() => second.promise),
+        enumerateDevices: vi.fn().mockResolvedValue([]),
+      },
+    })
+    usePeerStore.setState({ sfuSession })
+
+    const older = usePeerStore.getState().enableCamera()
+    const newer = usePeerStore.getState().enableCamera()
+    second.resolve(makeStream([currentTrack]))
+    await expect(newer).resolves.toBe(currentTrack)
+    first.resolve(makeStream([oldTrack]))
+    await expect(older).resolves.toBeNull()
+
+    expect(oldTrack.stop).toHaveBeenCalledOnce()
+    expect(sfuSession.replaceTrack).toHaveBeenCalledOnce()
+    expect(sfuSession.replaceTrack).toHaveBeenCalledWith('video', currentTrack)
+    expect(usePeerStore.getState().localStream?.getVideoTracks()).toContain(currentTrack)
+  })
+
+  it('cancels delayed camera ownership when the call is cleared', async () => {
+    const acquired = deferred<MediaStream>()
+    const cameraTrack = makeTrack('video')
+    const sfuSession = makeSfuSession()
+    vi.stubGlobal('navigator', {
+      mediaDevices: {
+        getUserMedia: vi.fn(() => acquired.promise),
+        enumerateDevices: vi.fn().mockResolvedValue([]),
+      },
+    })
+    usePeerStore.setState({ sfuSession, callActive: true })
+
+    const enabling = usePeerStore.getState().enableCamera()
+    usePeerStore.getState().clearAll()
+    acquired.resolve(makeStream([cameraTrack]))
+
+    await expect(enabling).resolves.toBeNull()
+    expect(cameraTrack.stop).toHaveBeenCalledOnce()
+    expect(usePeerStore.getState().localStream).toBeNull()
+    expect(usePeerStore.getState().sfuSession).toBeNull()
+  })
+
   it('calls sfuSession.replaceTrack with the new camera track', async () => {
     const sfuSession = makeSfuSession()
     const newTrack = makeTrack('video')
@@ -406,6 +488,25 @@ describe('enableCamera — peer sender reuse', () => {
 // ─── startScreenShare / stopScreenShare ───────────────────────────────────────
 
 describe('startScreenShare', () => {
+  it('does not publish a screen selected after sharing was cancelled', async () => {
+    const selected = deferred<MediaStream>()
+    const screenTrack = makeTrack('video')
+    const sfuSession = makeSfuSession()
+    vi.stubGlobal('navigator', {
+      mediaDevices: { getDisplayMedia: vi.fn(() => selected.promise) },
+    })
+    usePeerStore.setState({ sfuSession })
+
+    const starting = usePeerStore.getState().startScreenShare()
+    usePeerStore.getState().stopScreenShare()
+    selected.resolve(makeStream([screenTrack]))
+
+    await expect(starting).resolves.toBeNull()
+    expect(screenTrack.stop).toHaveBeenCalledOnce()
+    expect(sfuSession.replaceTrack).not.toHaveBeenCalledWith('video', screenTrack)
+    expect(usePeerStore.getState().screenTrack).toBeNull()
+  })
+
   it('calls sfuSession.replaceTrack with the screen track', async () => {
     const sfuSession = makeSfuSession()
     usePeerStore.setState({

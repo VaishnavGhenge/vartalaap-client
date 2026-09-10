@@ -1,5 +1,4 @@
 import { create } from 'zustand'
-import * as Sentry from '@sentry/nextjs'
 import { devtools } from 'zustand/middleware'
 import { toast } from 'sonner'
 import { SfuSession } from '@/src/services/webrtc/sfu-session'
@@ -194,19 +193,6 @@ const createBackgroundProcessor = (preference: BackgroundEffectPreference) => {
 // last frame.
 let videoPlaceholder: MediaStreamTrack | null = null
 
-// No SFU session yet, or it was torn down. Optional-chaining this away is what
-// made "my camera was never shared" invisible on both sides. Silent outside a
-// call: the pre-join preview has no session by design, and reporting it there
-// buried the real drops in false positives.
-const noOutboundSession = (kind: 'audio' | 'video') => {
-  if (!usePeerStore.getState().callActive) return
-  console.warn(`[peer] no SFU session — outbound ${kind} not published`)
-  Sentry.captureMessage(`outbound ${kind} dropped: no sfu session`, {
-    level: 'warning',
-    tags: { stage: 'sfu_publish', failure_reason: 'no_session' },
-  })
-}
-
 const replaceVideoTrackOnPeers = (
   newTrack: MediaStreamTrack,
   _peers: Map<string, PeerConnection>,
@@ -215,8 +201,10 @@ const replaceVideoTrackOnPeers = (
   const superseded = videoPlaceholder !== newTrack ? videoPlaceholder : null
   if (superseded) videoPlaceholder = null
   if (!sfuSession) {
+    // During a delayed join the UI can accept device intent before SfuSession
+    // exists. localStream retains the track and useCall publishes the complete
+    // stream after initialization, so this is pending work rather than a drop.
     superseded?.stop()
-    noOutboundSession('video')
     return
   }
   sfuSession.replaceTrack('video', newTrack)
@@ -314,7 +302,7 @@ const replaceAudioSenderOnPeers = (
   sfuSession?: SfuSession | null,
 ) => {
   if (!sfuSession) {
-    noOutboundSession('audio')
+    // See the video path above: initial call setup publishes retained intent.
     return
   }
   sfuSession.replaceTrack('audio', track).catch(e => {
@@ -327,6 +315,13 @@ const replaceAudioSenderOnPeers = (
 export const usePeerStore = create<PeerState>()(
   devtools((set, get) => {
     const savedDevices = getDevicePreferences()
+    // Device acquisition and processor startup are async. Every user action
+    // that changes the outbound audio/video intent advances its generation;
+    // work that finishes under an older generation owns nothing and must stop
+    // the tracks it acquired. This is also the cancellation boundary used by
+    // clearAll when a participant leaves while a picker is still open.
+    let audioOperationGeneration = 0
+    let videoOperationGeneration = 0
     return {
     localStream: null,
     localVideoQuality: { encodingLevel: 2, videoHeld: false },
@@ -475,6 +470,7 @@ export const usePeerStore = create<PeerState>()(
       }),
 
     enableMic: async () => {
+      const generation = ++audioOperationGeneration
       try {
         const { preferredAudioInputId, suppressNoise, noiseSuppressor } = get()
         const audioConstraints: MediaTrackConstraints = {
@@ -484,6 +480,10 @@ export const usePeerStore = create<PeerState>()(
         const media = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints })
         const rawTrack = media.getAudioTracks()[0]
         if (!rawTrack) return null
+        if (generation !== audioOperationGeneration) {
+          media.getTracks().forEach((track) => track.stop())
+          return null
+        }
 
         const existing = get().localStream
         const stream = existing ?? new MediaStream()
@@ -496,6 +496,12 @@ export const usePeerStore = create<PeerState>()(
           try {
             const suppressor = new NoiseSuppressor()
             const processedTrack = await suppressor.start(rawTrack)
+            if (generation !== audioOperationGeneration) {
+              suppressor.stop()
+              rawTrack.stop()
+              processedTrack.stop()
+              return null
+            }
             stream.addTrack(processedTrack)
             if (!existing) set({ localStream: stream })
             set({ noiseSuppressor: suppressor, rawMicTrack: rawTrack })
@@ -519,6 +525,7 @@ export const usePeerStore = create<PeerState>()(
     },
 
     disableMic: () => {
+      audioOperationGeneration++
       const { localStream, peerConnections, noiseSuppressor, rawMicTrack, sfuSession } = get()
       if (!localStream) return
       // Replace sender with silent placeholder BEFORE stopping the track, so
@@ -534,6 +541,7 @@ export const usePeerStore = create<PeerState>()(
     },
 
     enableCamera: async () => {
+      const generation = ++videoOperationGeneration
       try {
         const { facingMode, preferredVideoInputId, blurProcessor: activeProcessor, localStream: existingStream, backgroundEffect, backgroundImageDataUrl } = get()
         const videoConstraints: MediaTrackConstraints = preferredVideoInputId
@@ -542,6 +550,10 @@ export const usePeerStore = create<PeerState>()(
         const media = await getUserMediaWithFallback({ video: videoConstraints })
         const track = media.getVideoTracks()[0]
         if (!track) return null
+        if (generation !== videoOperationGeneration) {
+          media.getTracks().forEach((candidate) => candidate.stop())
+          return null
+        }
 
         existingStream?.getVideoTracks().forEach((t) => t.stop())
         const audioTracks = existingStream?.getAudioTracks() ?? []
@@ -559,6 +571,12 @@ export const usePeerStore = create<PeerState>()(
           activeProcessor?.stop()
           try {
             const canvasTrack = await processor.start(track)
+            if (generation !== videoOperationGeneration) {
+              processor.stop()
+              track.stop()
+              canvasTrack.stop()
+              return null
+            }
             set({
               localStream: new MediaStream([...audioTracks, canvasTrack]),
               blurProcessor: processor,
@@ -585,6 +603,7 @@ export const usePeerStore = create<PeerState>()(
     },
 
     disableCamera: () => {
+      videoOperationGeneration++
       const { localStream, peerConnections, blurProcessor, rawCameraTrack, sfuSession } = get()
       if (!localStream) return
 
@@ -607,6 +626,7 @@ export const usePeerStore = create<PeerState>()(
     },
 
     switchCamera: async () => {
+      const generation = ++videoOperationGeneration
       const { localStream, facingMode, peerConnections, blurProcessor: activeProcessor, backgroundEffect, backgroundImageDataUrl, sfuSession } = get()
       if (!localStream) return false
 
@@ -623,6 +643,10 @@ export const usePeerStore = create<PeerState>()(
         })
         const newTrack = media.getVideoTracks()[0]
         if (!newTrack) return false
+        if (generation !== videoOperationGeneration) {
+          media.getTracks().forEach((track) => track.stop())
+          return false
+        }
 
         localStream.getVideoTracks().forEach((t) => t.stop())
         const audioTracks = localStream.getAudioTracks()
@@ -633,6 +657,12 @@ export const usePeerStore = create<PeerState>()(
             const newProcessor = createBackgroundProcessor({ mode: backgroundEffect, imageDataUrl: backgroundImageDataUrl ?? undefined })
               ?? createBackgroundBlurProcessor('blur-medium')
             const canvasTrack = await newProcessor.start(newTrack)
+            if (generation !== videoOperationGeneration) {
+              newProcessor.stop()
+              newTrack.stop()
+              canvasTrack.stop()
+              return false
+            }
             set({ localStream: new MediaStream([...audioTracks, canvasTrack]), facingMode: nextFacing, blurProcessor: newProcessor, rawCameraTrack: newTrack })
             replaceVideoTrackOnPeers(canvasTrack, peerConnections, sfuSession)
           } catch {
@@ -653,6 +683,7 @@ export const usePeerStore = create<PeerState>()(
     },
 
     setAudioInput: async (deviceId) => {
+      const generation = ++audioOperationGeneration
       setDevicePreference('audioInputId', deviceId)
       set({ preferredAudioInputId: deviceId })
       const { localStream, peerConnections, suppressNoise, noiseSuppressor, sfuSession } = get()
@@ -665,6 +696,10 @@ export const usePeerStore = create<PeerState>()(
         const media = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints })
         const rawTrack = media.getAudioTracks()[0]
         if (!rawTrack) return
+        if (generation !== audioOperationGeneration) {
+          media.getTracks().forEach((track) => track.stop())
+          return
+        }
 
         noiseSuppressor?.stop()
         localStream.getAudioTracks().forEach(t => { t.stop(); localStream.removeTrack(t) })
@@ -673,6 +708,12 @@ export const usePeerStore = create<PeerState>()(
           try {
             const suppressor = new NoiseSuppressor()
             const processedTrack = await suppressor.start(rawTrack)
+            if (generation !== audioOperationGeneration) {
+              suppressor.stop()
+              rawTrack.stop()
+              processedTrack.stop()
+              return
+            }
             localStream.addTrack(processedTrack)
             set({ noiseSuppressor: suppressor, rawMicTrack: rawTrack })
             replaceAudioSenderOnPeers(processedTrack, peerConnections, sfuSession)
@@ -691,6 +732,7 @@ export const usePeerStore = create<PeerState>()(
     },
 
     setVideoInput: async (deviceId) => {
+      const generation = ++videoOperationGeneration
       setDevicePreference('videoInputId', deviceId)
       set({ preferredVideoInputId: deviceId })
       const { localStream, peerConnections, blurProcessor: activeProcessor, backgroundEffect, backgroundImageDataUrl, sfuSession } = get()
@@ -701,6 +743,10 @@ export const usePeerStore = create<PeerState>()(
         })
         const newTrack = media.getVideoTracks()[0]
         if (!newTrack) return
+        if (generation !== videoOperationGeneration) {
+          media.getTracks().forEach((track) => track.stop())
+          return
+        }
         const audioTracks = localStream.getAudioTracks()
         localStream.getVideoTracks().forEach(t => t.stop())
         if (activeProcessor) {
@@ -709,6 +755,12 @@ export const usePeerStore = create<PeerState>()(
             const newProcessor = createBackgroundProcessor({ mode: backgroundEffect, imageDataUrl: backgroundImageDataUrl ?? undefined })
             if (newProcessor) {
               const canvasTrack = await newProcessor.start(newTrack)
+              if (generation !== videoOperationGeneration) {
+                newProcessor.stop()
+                newTrack.stop()
+                canvasTrack.stop()
+                return
+              }
               set({ localStream: new MediaStream([...audioTracks, canvasTrack]), blurProcessor: newProcessor, rawCameraTrack: newTrack })
               replaceVideoTrackOnPeers(canvasTrack, peerConnections, sfuSession)
               return
@@ -777,6 +829,7 @@ export const usePeerStore = create<PeerState>()(
 
     startScreenShare: async () => {
       if (typeof navigator.mediaDevices?.getDisplayMedia !== 'function') return null
+      const generation = ++videoOperationGeneration
       try {
         // selfBrowserSurface: 'exclude' (Chrome 107+) removes the current tab
         // from the picker, breaking the most common infinite-mirror path.
@@ -787,6 +840,10 @@ export const usePeerStore = create<PeerState>()(
         } as DisplayMediaStreamOptions)
         const track = media.getVideoTracks()[0]
         if (!track) return null
+        if (generation !== videoOperationGeneration) {
+          media.getTracks().forEach((candidate) => candidate.stop())
+          return null
+        }
         // Push the screen track to peers via replaceTrack — no renegotiation.
         replaceVideoTrackOnPeers(track, get().peerConnections, get().sfuSession)
         set({ screenTrack: track })
@@ -799,6 +856,7 @@ export const usePeerStore = create<PeerState>()(
     },
 
     stopScreenShare: () => {
+      videoOperationGeneration++
       set({ screenTrack: null })
       // Restore peers to the current local camera track, or a black placeholder
       // if the camera is currently off.
@@ -815,6 +873,8 @@ export const usePeerStore = create<PeerState>()(
     setBackgroundBlur: async (enabled) => get().setBackgroundEffect({ mode: enabled ? 'blur-medium' : 'off' }),
 
     clearAll: () => {
+      audioOperationGeneration++
+      videoOperationGeneration++
       const { localStream, peerConnections, blurProcessor, rawCameraTrack, noiseSuppressor, rawMicTrack, sfuSession } = get()
       const backgroundPreference = getBackgroundEffectPreference()
       blurProcessor?.stop()
