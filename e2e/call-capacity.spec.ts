@@ -1,18 +1,7 @@
 import { loadavg, freemem, cpus } from 'node:os'
 import { type Page, type BrowserContext } from '@playwright/test'
 import { test, expect } from './fixtures'
-import { createNCallContexts, createRoom, fillName } from './helpers/call'
-
-async function joinWithMedia(page: Page, room: string) {
-  await page.goto(`/room/${room}`, { waitUntil: 'domcontentloaded' })
-  await fillName(page, 'Call lab')
-  const camera = page.getByRole('button', { name: /turn camera on/i })
-  if (await camera.isVisible()) await camera.click()
-  await page.getByRole('button', { name: /join now/i }).click()
-  await expect(page.getByRole('button', { name: /leave call/i })).toBeVisible({ timeout: 15_000 })
-  const microphone = page.getByRole('button', { name: /^unmute/i })
-  if (await microphone.isVisible()) await microphone.click()
-}
+import { createNCallContexts, createRoom, joinRoomWithMedia } from './helpers/call'
 
 async function inbound(page: Page) {
   return page.evaluate(async () => {
@@ -35,6 +24,26 @@ async function inbound(page: Page) {
   })
 }
 
+type FlowCount = { participant: number; video: number; audio: number }
+
+async function flowingCounts(active: Page[], sampleMs = 3_000): Promise<FlowCount[]> {
+  const before = await Promise.all(active.map(inbound))
+  await new Promise(resolve => setTimeout(resolve, sampleMs))
+  const after = await Promise.all(active.map(inbound))
+  return after.map((rows, participant) => {
+    const previous = new Map(before[participant].map(row => [row.id, row]))
+    const growing = rows.filter(row => {
+      const prev = previous.get(row.id)
+      return prev && row.bytes > prev.bytes && (row.kind === 'video' ? row.frames > prev.frames : row.energy > prev.energy)
+    })
+    return {
+      participant,
+      video: growing.filter(row => row.kind === 'video').length,
+      audio: growing.filter(row => row.kind === 'audio').length,
+    }
+  })
+}
+
 test('participants sustain all remote streams and recover after rejoin', async ({ browser }, testInfo) => {
   test.skip(process.env.E2E_CAPACITY !== 'true', 'Opt-in staging media load test')
   test.setTimeout(600_000)
@@ -44,6 +53,7 @@ test('participants sustain all remote streams and recover after rejoin', async (
   const expectedTotal = sharedRoom ? 10 : participantCount
   const rampCount = participantCount === 10 ? 8 : 2
   const observations: unknown[] = []
+  const soakHealth: unknown[] = []
   const clientMetrics: unknown[] = []
   const requests: unknown[] = []
   const failures: Array<{ participant: number; status: number; path: string }> = []
@@ -77,19 +87,9 @@ test('participants sustain all remote streams and recover after rejoin', async (
       const expected = sharedRoom ? expectedTotal : active.length
       await Promise.all(active.map(page => expect(page.getByText(`${expected} participant${expected === 1 ? '' : 's'}`, { exact: true })).toBeVisible({ timeout: sharedRoom ? 240_000 : 30_000 })))
       const deadline = Date.now() + 45_000
-      let counts: Array<{ participant: number; video: number; audio: number }> = []
+      let counts: FlowCount[] = []
       do {
-        const before = await Promise.all(active.map(inbound))
-        await new Promise(resolve => setTimeout(resolve, 3000))
-        const after = await Promise.all(active.map(inbound))
-        counts = after.map((rows, participant) => {
-          const previous = new Map(before[participant].map(row => [row.id, row]))
-          const growing = rows.filter(row => {
-            const prev = previous.get(row.id)
-            return prev && row.bytes > prev.bytes && (row.kind === 'video' ? row.frames > prev.frames : row.energy > prev.energy)
-          })
-          return { participant, video: growing.filter(row => row.kind === 'video').length, audio: growing.filter(row => row.kind === 'audio').length }
-        })
+        counts = await flowingCounts(active)
         if (counts.every(count => count.video >= expected - 1 && count.audio >= expected - 1)) break
       } while (Date.now() < deadline)
       observations.push({ label, at: new Date().toISOString(), loadavg: loadavg(), cpuTimes: cpus().map(cpu => cpu.times), freeMemoryBytes: freemem(), counts, inbound: await Promise.all(active.map(inbound)) })
@@ -100,10 +100,38 @@ test('participants sustain all remote streams and recover after rejoin', async (
       }
     }
 
+    async function monitorContinuousFlow(label: string, active: Page[], durationMs: number) {
+      const expected = sharedRoom ? expectedTotal : active.length
+      const sampleMs = Number(process.env.E2E_FLOW_SAMPLE_MS ?? 3_000)
+      const maxAllowedGapMs = Number(process.env.E2E_MAX_MEDIA_GAP_MS ?? 6_000)
+      const gaps = active.map(() => ({ video: 0, audio: 0, maxVideo: 0, maxAudio: 0 }))
+      const deadline = Date.now() + durationMs
+      let samples = 0
+
+      while (Date.now() < deadline) {
+        const counts = await flowingCounts(active, sampleMs)
+        samples++
+        for (const count of counts) {
+          const gap = gaps[count.participant]
+          gap.video = count.video >= expected - 1 ? 0 : gap.video + sampleMs
+          gap.audio = count.audio >= expected - 1 ? 0 : gap.audio + sampleMs
+          gap.maxVideo = Math.max(gap.maxVideo, gap.video)
+          gap.maxAudio = Math.max(gap.maxAudio, gap.audio)
+        }
+        soakHealth.push({ label, at: new Date().toISOString(), counts })
+      }
+
+      observations.push({ label, durationMs, sampleMs, maxAllowedGapMs, samples, gaps })
+      for (let participant = 0; participant < gaps.length; participant++) {
+        expect(gaps[participant].maxVideo, `${label}: participant ${participant} longest video gap`).toBeLessThanOrEqual(maxAllowedGapMs)
+        expect(gaps[participant].maxAudio, `${label}: participant ${participant} longest audio gap`).toBeLessThanOrEqual(maxAllowedGapMs)
+      }
+    }
+
     if (sharedRoom) {
       const sampleAt = Number(process.env.E2E_SAMPLE_AT)
       if (!Number.isFinite(sampleAt) || sampleAt < Date.now()) throw new Error('Shared runs require a future E2E_SAMPLE_AT epoch in milliseconds')
-      for (const page of pages) await joinWithMedia(page, room)
+      for (const page of pages) await joinRoomWithMedia(page, room, 'Call lab')
       await new Promise(resolve => setTimeout(resolve, Math.max(0, sampleAt - Date.now())))
       for (let round = 0; round < 3; round++) {
         await checkAll(`distributed ${round + 1}`, pages)
@@ -113,28 +141,26 @@ test('participants sustain all remote streams and recover after rejoin', async (
       return
     }
     await test.step('initial ramp', async () => {
-      for (const page of pages.slice(0, rampCount)) await joinWithMedia(page, room)
+      for (const page of pages.slice(0, rampCount)) await joinRoomWithMedia(page, room, 'Call lab')
       await checkAll(`${rampCount} participants`, pages.slice(0, rampCount))
     })
     await test.step('add two late joiners', async () => {
-      for (const page of pages.slice(rampCount)) await joinWithMedia(page, room)
+      for (const page of pages.slice(rampCount)) await joinRoomWithMedia(page, room, 'Call lab')
       await checkAll(`${participantCount} participants`, pages)
     })
     await test.step('sustain participants for one minute', async () => {
-      for (let round = 0; round < 3; round++) {
-        await new Promise(resolve => setTimeout(resolve, 20_000))
-        await checkAll(`soak ${round + 1}`, pages)
-      }
+      const durationMs = Number(process.env.E2E_SOAK_MS ?? 60_000)
+      await monitorContinuousFlow('continuous soak', pages, durationMs)
     })
     await test.step('last participant leaves and rejoins', async () => {
       await pages[participantCount - 1].getByRole('button', { name: /leave call/i }).click()
       await checkAll('after leave', pages.slice(0, participantCount - 1))
-      await joinWithMedia(pages[participantCount - 1], room)
+      await joinRoomWithMedia(pages[participantCount - 1], room, 'Call lab')
       await checkAll('after rejoin', pages)
     })
   } finally {
-    await testInfo.attach('capacity-report', { body: JSON.stringify({ participantCount, started, ended: new Date().toISOString(), observations, clientMetrics, requests, sfuHttpFailures: failures }, null, 2), contentType: 'application/json' })
-    if (sharedRoom) console.log('CAPACITY_REPORT ' + JSON.stringify({ participantCount, started, ended: new Date().toISOString(), observations, clientMetrics, requests, sfuHttpFailures: failures }))
+    await testInfo.attach('capacity-report', { body: JSON.stringify({ participantCount, started, ended: new Date().toISOString(), observations, soakHealth, clientMetrics, requests, sfuHttpFailures: failures }, null, 2), contentType: 'application/json' })
+    if (sharedRoom) console.log('CAPACITY_REPORT ' + JSON.stringify({ participantCount, started, ended: new Date().toISOString(), observations, soakHealth, clientMetrics, requests, sfuHttpFailures: failures }))
     await Promise.all(contexts.map(context => context.close().catch(() => {})))
   }
 })

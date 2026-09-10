@@ -145,6 +145,17 @@ export async function joinRoom(page: Page, roomCode: string, name: string) {
   await expect(page.getByRole('button', { name: /leave call/i })).toBeVisible({ timeout: 10_000 })
 }
 
+export async function joinRoomWithMedia(page: Page, roomCode: string, name: string) {
+  await gotoRoom(page, roomCode)
+  await fillName(page, name)
+  const camera = page.getByRole('button', { name: /turn camera on/i })
+  if (await camera.isVisible()) await camera.click()
+  await page.getByRole('button', { name: /join now/i }).click()
+  await expect(page.getByRole('button', { name: /leave call/i })).toBeVisible({ timeout: 15_000 })
+  const microphone = page.getByRole('button', { name: /^unmute/i })
+  if (await microphone.isVisible()) await microphone.click()
+}
+
 // Creates N independent authenticated browser contexts, each with its own
 // rt cookie so /auth/refresh in one context does not rotate away the others.
 // Each context gets the PC tracker init script so webrtc.ts helpers work.

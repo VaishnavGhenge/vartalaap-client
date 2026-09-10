@@ -104,6 +104,14 @@ Next, in order of leverage:
 7. **Noise suppression / blur** — currently zero E2E coverage. Add specs that toggle the processor and assert audio RMS / video variance reflect the change.
 8. **CDP network throttling** — exercise SLO ceilings (TTFM p95 ≤ 3s under 5% loss, 200ms RTT). Note: Chromium's `Network.emulateNetworkConditions` historically did not affect UDP; use WebRTC-aware CDP params.
 
+The first failure suite is now in `call-reliability.spec.ts`: it delays SFU
+control requests and interrupts a browser context's network, then applies the
+wire/video/audio assertions after recovery. `call-capacity.spec.ts` continuously
+samples the soak instead of checking only sparse checkpoints, and
+`call-load.spec.ts` exercises isolation across parallel rooms. Media-level loss,
+jitter, and bandwidth shaping remain separate because HTTP routing and browser
+offline mode do not emulate impaired UDP precisely.
+
 ---
 
 ## References

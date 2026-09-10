@@ -1,5 +1,8 @@
 # Staging call lab
 
+The full gap analysis, failure matrix, required measurements, and production
+release gates are in [Real-call reliability and scale gaps](real-call-reliability-gaps.md).
+
 The staging API runs in the `sessionly-api` Railway project, in the `staging`
 environment, with its own Postgres service and Cloudflare Realtime credentials.
 

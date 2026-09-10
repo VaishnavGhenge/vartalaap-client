@@ -30,7 +30,7 @@ export default defineConfig({
   webServer: process.env.E2E_BASE_URL ? undefined : [
     {
       name: 'signaling',
-      command: 'sh ./run.sh',
+      command: 'env GOCACHE=/tmp/vartalaap-go-cache sh ./run.sh',
       cwd: '../vartalaap-server',
       url: 'http://localhost:8080/healthz',
       reuseExistingServer: true,
