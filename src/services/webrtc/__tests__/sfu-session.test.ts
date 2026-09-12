@@ -107,6 +107,21 @@ it('constructor allocates exactly one publish PartyTracks (no eager subscribe)',
     expect((instances[0].config as { apiExtraParams: string }).apiExtraParams).toContain('kind=publish')
 })
 
+it('applies refreshed ICE servers to live and future peer connections', async () => {
+    const session = makeSession()
+    await session.replaceTrack('audio', makeTrack('audio'))
+    await session.subscribe('cf-sess-bob', ['audio'])
+    const fresh = [{ urls: ['turn:turn.example.com'], username: 'fresh', credential: 'secret' }]
+
+    session.updateIceServers(fresh)
+
+    expect(instances[0].pc.configuration.iceServers).toEqual(fresh)
+    expect(instances[1].pc.configuration.iceServers).toEqual(fresh)
+    await session.subscribe('cf-sess-carol', ['audio'])
+    expect(instances[2].config.iceServers).toEqual(fresh)
+    session.close()
+})
+
 // THE architectural invariant: each remote sessionId gets its OWN subscribe
 // PartyTracks instance. The doc comment names a specific previously-shipped
 // bug ("3rd peer joined an active call") that resulted from a shared

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { fetchIceServers } from '../ice'
+import { fetchIceServers, startIceServerKeepalive } from '../ice'
 
 describe('fetchIceServers', () => {
     beforeEach(() => {
@@ -7,7 +7,28 @@ describe('fetchIceServers', () => {
     })
 
     afterEach(() => {
+        vi.useRealTimers()
         vi.unstubAllGlobals()
+    })
+
+    it('refreshes TURN credentials before their one-hour lifetime and stops cleanly', async () => {
+        vi.useFakeTimers()
+        const refreshed = [{ urls: ['turn:turn.example.com'], username: 'fresh', credential: 'fresh-pass' }]
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ iceServers: refreshed }),
+        }))
+        const onRefresh = vi.fn()
+        const stop = startIceServerKeepalive('abc-defg-hij', onRefresh, undefined, 45 * 60_000)
+
+        await vi.advanceTimersByTimeAsync(44 * 60_000)
+        expect(fetch).not.toHaveBeenCalled()
+        await vi.advanceTimersByTimeAsync(60_000)
+        expect(onRefresh).toHaveBeenCalledWith(refreshed)
+
+        stop()
+        await vi.advanceTimersByTimeAsync(60 * 60_000)
+        expect(fetch).toHaveBeenCalledTimes(1)
     })
 
     it('returns iceServers from a successful response', async () => {

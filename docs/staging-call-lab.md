@@ -78,6 +78,47 @@ For the call lab, capture browser metrics without putting room IDs or user IDs
 into Prometheus labels. The useful aggregates are connection success, time to
 first media, p95/p99 RTT, freeze duration, reconnect success, and browser CPU.
 
+## Practical Call Lab
+
+The Call Lab runs two independent authenticated browser contexts through the
+real signaling server and Cloudflare SFU. It verifies RTP byte growth, decoded
+frames, changing video pixels, and remote audio energy before and after each
+fault. During the soak it fails on the first sampling window where audio bytes,
+video bytes, or decoded frames stop advancing. Every scenario attaches a JSON
+timeline named `call-lab-report` to the Playwright result.
+
+```bash
+CALL_LAB_SOAK_MS=60000 npm run test:call-lab
+```
+
+The default profiles are:
+
+- `baseline`: uninterrupted two-person call and continuous media soak.
+- `control-delay`: delays the first four SFU HTTP operations by two seconds.
+- `network-outage`: takes one browser fully offline for three seconds and
+  requires bidirectional media recovery without rejoining.
+- `media-controls`: camera off/on, microphone mute/unmute, screen share, screen
+  stop, and camera restoration while the other participant verifies live RTP.
+
+Select profiles and tune the observation windows with environment variables:
+
+```bash
+CALL_LAB_PROFILES=network-outage,media-controls \
+CALL_LAB_SOAK_MS=900000 \
+CALL_LAB_SAMPLE_MS=5000 \
+npm run test:call-lab
+```
+
+Run it against staging by adding the same `E2E_BASE_URL` and
+`NEXT_PUBLIC_SERVER_*` variables used by the automated baseline. The JSON
+artifact records the test-run ID, profile, impairment timestamps, media deltas,
+browser warnings/errors, failed requests, and cleanup outcome.
+
+This harness is intentionally honest about its boundary: Playwright's offline
+mode interrupts the entire browser network stack; it does not independently
+shape WebRTC UDP loss, jitter, or bandwidth. Those profiles still require a
+Linux `tc netem` runner or physical network emulator outside the browser.
+
 ## Ten-participant automated test
 
 ```bash
@@ -103,6 +144,7 @@ This is one room, one machine/network, synthetic camera/microphone, and ten
 sessions for the same test account. It tests concurrent media routing, not
 ten physical devices, distinct-user authorization, mobile/ Safari behavior,
 continuous absence of freezes, perceptual audio quality, or WAN impairments.
+
 The three-second sampling windows can miss stalls between checkpoints.
 
 The server's `node deploy/monitoring/verify.mjs --require-media --call-summary`

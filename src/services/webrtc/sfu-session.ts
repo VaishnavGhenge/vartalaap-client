@@ -14,6 +14,7 @@ import { callDebug } from '@/src/lib/call-debug'
 export interface SfuSessionOptions {
   onVideoQualityChange?: (quality: VideoQuality) => void
   onVideoQualityError?: (error: unknown) => void
+  onIceServersError?: (error: unknown) => void
   roomId: string
   peerId: string
   iceServers: RTCIceServer[]
@@ -264,6 +265,22 @@ export class SfuSession {
     const auth = apiBearerHeaders().Authorization
     if (auth) this.authHeaders.set('Authorization', auth)
     else this.authHeaders.delete('Authorization')
+  }
+
+  updateIceServers(iceServers: RTCIceServer[]): void {
+    if (this.destroyed) return
+    if (!this.pubTracksConfig || !this.subTracksConfig) return
+    this.pubTracksConfig.iceServers = iceServers
+    this.subTracksConfig.iceServers = iceServers
+    const update = (pc: RTCPeerConnection) => {
+      try {
+        pc.setConfiguration({ ...pc.getConfiguration(), iceServers })
+      } catch (error) {
+        this.opts.onIceServersError?.(error)
+      }
+    }
+    if (this.pubPc) update(this.pubPc)
+    for (const pc of this.subPcs.values()) update(pc)
   }
 
   // Pushes every track in the stream. Idempotent per kind — calling with a

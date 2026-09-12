@@ -261,8 +261,24 @@ export function startStatsMonitor(opts: StatsMonitorOptions): StatsMonitor {
     // disappears is the one failure the monitor never reports — the tile keeps
     // its last frame and nothing says so. It is also why an audio stall was
     // recorded for a call whose video had stopped first.
-    for (const record of streams.values()) {
+    for (const [key, record] of [...streams]) {
       if (record.lastSeenAt === t || record.stalled || !record.everFlowed) continue
+      // Browsers legitimately replace an RTP SSRC after renegotiation, an ICE
+      // recovery, or a device switch. If another current record carries the
+      // same source/direction/kind, media did not vanish: this bookkeeping key
+      // was superseded. Retaining it would age the old SSRC into a false stall
+      // and start an unnecessary SFU repair while the replacement is flowing.
+      const replacementIsCurrent = [...streams.entries()].some(([otherKey, other]) =>
+        otherKey !== key &&
+        other.lastSeenAt === t &&
+        other.sourceId === record.sourceId &&
+        other.direction === record.direction &&
+        other.kind === record.kind,
+      )
+      if (replacementIsCurrent) {
+        streams.delete(key)
+        continue
+      }
       if (record.direction === 'publish' && !sources.find((s) => s.id === record.sourceId)?.liveOutboundKinds.includes(record.kind)) {
         record.lastFlowAt = t
         continue

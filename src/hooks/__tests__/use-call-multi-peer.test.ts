@@ -49,12 +49,14 @@ vi.mock('@/src/services/webrtc/sfu-session', () => ({
     publish(...args: any[]) { return mockPublish(...args) }
     close(...args: any[]) { return mockClose(...args) }
     replaceTrack() { return Promise.resolve() }
+    updateIceServers() {}
     unsubscribePeer() {}
   },
 }))
 
 vi.mock('@/src/services/api/ice', () => ({
   fetchIceServers: vi.fn().mockResolvedValue([]),
+  startIceServerKeepalive: vi.fn(() => () => {}),
 }))
 
 // getAccessToken must return a truthy value so willKnock is false and the async

@@ -43,6 +43,9 @@ export interface FakePeerConnection {
   senderKinds: string[]
   getStats: () => Promise<RTCStatsReport>
   getSenders: () => RTCRtpSender[]
+  getConfiguration: () => RTCConfiguration
+  setConfiguration: (config: RTCConfiguration) => void
+  configuration: RTCConfiguration
 }
 
 function makePc(): FakePeerConnection {
@@ -51,6 +54,7 @@ function makePc(): FakePeerConnection {
     statsEntries: [],
     getStatsCalls: 0,
     senderKinds: ['audio'],
+    configuration: {},
     getStats: async () => {
       pc.getStatsCalls++
       return new Map(pc.statsEntries.map((e, i) => [String(i), e])) as unknown as RTCStatsReport
@@ -59,6 +63,8 @@ function makePc(): FakePeerConnection {
       pc.senderKinds.map((kind) => ({
         track: { kind, enabled: true, readyState: 'live' },
       })) as unknown as RTCRtpSender[],
+    getConfiguration: () => pc.configuration,
+    setConfiguration: (config) => { pc.configuration = config },
   }
   return pc
 }
@@ -70,7 +76,7 @@ export interface PulledTrack {
 }
 
 export class FakePartyTracks {
-  readonly config: { apiExtraParams?: string; headers?: Headers }
+  readonly config: { apiExtraParams?: string; headers?: Headers; iceServers?: RTCIceServer[] }
   /** 'publish' or 'subscribe', read off apiExtraParams for readable assertions. */
   readonly kind: string
   readonly pushCalls: unknown[] = []
@@ -90,7 +96,7 @@ export class FakePartyTracks {
   readonly peerConnection$: BehaviorSubject<RTCPeerConnection>
 
   constructor(config: unknown) {
-    this.config = (config ?? {}) as { apiExtraParams?: string; headers?: Headers }
+    this.config = (config ?? {}) as { apiExtraParams?: string; headers?: Headers; iceServers?: RTCIceServer[] }
     const params = this.config.apiExtraParams ?? ''
     this.kind = params.includes('kind=publish')
       ? 'publish'

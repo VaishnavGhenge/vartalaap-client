@@ -9,11 +9,12 @@
  * before it, so the live Authorization header SfuSession maintains is always
  * valid and the user never sees auth at all.
  *
- * Guests hold only a room token (no refresh path) — for them this is a no-op.
+ * Room-scoped guest tokens use their own authenticated renewal endpoint.
  */
 
-import { getAccessToken, subscribeTokenChange } from './token'
+import { getAccessToken, getRoomToken, subscribeTokenChange } from './token'
 import { refreshSession } from './auth'
+import { refreshGuestSession } from './guest-refresh'
 
 // Refresh this long before the token's exp. Generous enough to absorb a slow
 // /auth/refresh round-trip; far smaller than the 15-minute TTL.
@@ -52,8 +53,10 @@ export function startSessionKeepalive(opts: SessionKeepaliveOptions): () => void
   const schedule = () => {
     clear()
     if (stopped) return
-    const token = getAccessToken()
-    if (!token) return // guest (room token only) or signed out — nothing to keep alive
+    const accessToken = getAccessToken()
+    const roomToken = getRoomToken()
+    const token = accessToken ?? roomToken
+    if (!token) return
     const expMs = jwtExpiryMs(token)
     if (expMs === null) return
     const delay = Math.max(0, expMs - Date.now() - REFRESH_LEAD_MS)
@@ -61,7 +64,7 @@ export function startSessionKeepalive(opts: SessionKeepaliveOptions): () => void
       void (async () => {
         let resp
         try {
-          resp = await refreshSession()
+          resp = accessToken ? await refreshSession() : await refreshGuestSession()
           failures = 0
         } catch {
           if (!stopped) {

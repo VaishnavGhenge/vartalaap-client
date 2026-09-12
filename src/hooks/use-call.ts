@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import * as Sentry from '@sentry/nextjs'
 import type { SignalingClient } from '@/src/services/signaling/client'
 import { usePeerStore, type PeerStats } from '@/src/stores/peer'
-import { fetchIceServers } from '@/src/services/api/ice'
+import { fetchIceServers, startIceServerKeepalive } from '@/src/services/api/ice'
 import type {
   CallAttemptResult,
   CallFailureReason,
@@ -64,6 +64,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
     callDebug.init()
     const store = usePeerStore
     let disposed = false
+    let stopIceKeepalive: (() => void) | null = null
     store.getState().setCallActive(true)
 
     // Keep the access token fresh for the whole call. The SFU layer
@@ -577,7 +578,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
         // Fetch ICE/TURN credentials only after the server accepts the room
         // join. The backend gates Cloudflare TURN to rooms that are active
         // now, so pre-join fetching would be denied for instant meetings.
-        if (store.getState().iceServers.length === 0) {
+        {
           // One retry with jitter before giving up — a transient API blip
           // shouldn't cost TURN for the whole call. Proceeding without TURN
           // is silent degradation for users on restrictive networks (their
@@ -643,6 +644,9 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
           roomId,
           peerId,
           iceServers,
+          onIceServersError: (error) => {
+            Sentry.captureException(error, { tags: { stage: 'ice_refresh_apply' } })
+          },
           // Server intercepts /sfu/sessions/{id}/tracks/new and broadcasts
           // sfu-tracks via hub.BroadcastSfuTracks (sfu_handler.go), so we
           // don't announce from the client.
@@ -823,6 +827,16 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
         }
         callDebug.callSfuSessionReady(peerId, sfuSession)
         store.getState().setSfuSession(sfuSession)
+        stopIceKeepalive = startIceServerKeepalive(roomId, (freshIceServers) => {
+          if (disposed) return
+          callDebug.callIceFetched(freshIceServers)
+          store.getState().setIceServers(freshIceServers)
+          sfuSession.updateIceServers(freshIceServers as RTCIceServer[])
+        }, (error) => {
+          if (disposed) return
+          callDebug.callIceFailed(error)
+          Sentry.captureException(error, { tags: { stage: 'ice_refresh' } })
+        })
 
         // ── Media-flow monitoring ──────────────────────────────────────────
         // Fills the PeerStats / stats-report contract, which already had
@@ -1080,6 +1094,7 @@ export function useCall({ client, roomId, enabled, userName, initialAudio, initi
       reconnectGeneration++
       releaseJoinedWaiters()
       stopKeepalive()
+      stopIceKeepalive?.()
       statsMonitor?.stop()
       // The call ended with no media. Which of the two failure shapes it was
       // depends on whether anything was owed: a peer who was present and

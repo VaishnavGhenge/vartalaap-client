@@ -30,7 +30,7 @@ import { DeviceSelect } from "@/src/components/ui/DeviceSelect";
 import { Collapsible } from "@/src/components/ui/Collapsible";
 import { Avatar } from "@/src/components/ui/Avatar";
 import { callDefaults } from "@/src/lib/call-defaults";
-import { UNRELEASED } from "@/src/lib/feature-flags";
+import { CALL_FEATURES } from "@/src/lib/feature-flags";
 
 const meetCodePattern = /^[a-z2-9]{3}-[a-z2-9]{4}-[a-z2-9]{3}$/;
 
@@ -289,7 +289,7 @@ export default function JoinMeet() {
                                     action={isVideoOff ? "close" : "open"}
                                     size="sm"
                                 />
-                                {UNRELEASED.cameraFlip && hasMultipleCameras && !isVideoOff && (
+                                {CALL_FEATURES.cameraFlip && hasMultipleCameras && !isVideoOff && (
                                     <FlipCameraButton
                                         onClickFn={async () => {
                                             const ok = await switchCamera();

@@ -4,11 +4,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 // whether the "server" renews the session. The token module is real: the
 // keepalive's rescheduling runs off its change notifications, which is
 // exactly the behavior under test.
-const { refreshMock } = vi.hoisted(() => ({ refreshMock: vi.fn() }))
+const { refreshMock, guestRefreshMock } = vi.hoisted(() => ({ refreshMock: vi.fn(), guestRefreshMock: vi.fn() }))
 vi.mock('../auth', () => ({ refreshSession: refreshMock }))
+vi.mock('../guest-refresh', () => ({ refreshGuestSession: guestRefreshMock }))
 
 import { startSessionKeepalive, jwtExpiryMs } from '../session-keepalive'
-import { setAccessToken } from '../token'
+import { setAccessToken, setRoomToken } from '../token'
 
 function fakeJwt(expSecondsFromNow: number): string {
     const payload = btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + expSecondsFromNow }))
@@ -18,7 +19,9 @@ function fakeJwt(expSecondsFromNow: number): string {
 beforeEach(() => {
     vi.useFakeTimers()
     refreshMock.mockReset()
+    guestRefreshMock.mockReset()
     setAccessToken(null)
+    setRoomToken(null)
 })
 
 afterEach(() => {
@@ -96,11 +99,19 @@ describe('startSessionKeepalive', () => {
         stop()
     })
 
-    it('is a no-op without an access token (guest with room token)', async () => {
+    it('refreshes a guest room token before expiry and reschedules', async () => {
+        setRoomToken(fakeJwt(2 * 60 * 60))
+        guestRefreshMock.mockImplementation(async () => {
+            setRoomToken(fakeJwt(2 * 60 * 60))
+            return true
+        })
         const onSessionDead = vi.fn()
         const stop = startSessionKeepalive({ onSessionDead })
-        await vi.advanceTimersByTimeAsync(60 * 60_000)
+        await vi.advanceTimersByTimeAsync(119 * 60_000)
         expect(refreshMock).not.toHaveBeenCalled()
+        expect(guestRefreshMock).toHaveBeenCalledTimes(1)
+        await vi.advanceTimersByTimeAsync(120 * 60_000)
+        expect(guestRefreshMock).toHaveBeenCalledTimes(2)
         expect(onSessionDead).not.toHaveBeenCalled()
         stop()
     })

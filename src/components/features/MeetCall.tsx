@@ -34,8 +34,9 @@ import { useJoinMeetStore } from "@/src/stores/joinMeet";
 import type { SignalingClient, ConnState } from "@/src/services/signaling/client";
 import type { Envelope, KnockRequestData, PeerLeftData } from "@/src/services/signaling/protocol";
 import { getAccessToken } from "@/src/services/api/token";
-import { UNRELEASED } from "@/src/lib/feature-flags";
+import { CALL_FEATURES } from "@/src/lib/feature-flags";
 import { InlineNotice } from "@/src/components/ui/InlineNotice";
+import { observeMediaTrackInterruption } from "@/src/services/webrtc/media-interruption";
 
 const LOCAL_TILE_ID = "local";
 
@@ -61,6 +62,8 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
     } = useMeetStore();
     const {
         localStream,
+        rawCameraTrack,
+        rawMicTrack,
         screenTrack,
         enableMic,
         disableMic,
@@ -132,7 +135,7 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
     const cameraWasOnBeforeShare = useRef(false);
 
     const handleEndCall = () => {
-        screenTrackRef.current?.stop();
+        if (screenTrackRef.current) usePeerStore.getState().stopScreenShare();
         screenTrackRef.current = null;
         playLeaveCall();
         if (onLeave) {
@@ -157,55 +160,64 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
 
     useEffect(() => {
         setCanShare("share" in navigator);
-        setCanScreenShare(UNRELEASED.screenShare && typeof navigator.mediaDevices?.getDisplayMedia === "function");
+        setCanScreenShare(CALL_FEATURES.screenShare && typeof navigator.mediaDevices?.getDisplayMedia === "function");
     }, []);
 
-    // When the laptop wakes from sleep the OS revokes camera/mic access and the
-    // MediaStreamTrack readyState becomes 'ended'. visibilitychange fires on wake,
-    // so we check the hardware tracks here and sync UI state if they were revoked.
-    useEffect(() => {
-        const handleVisibilityChange = () => {
-            if (document.visibilityState !== "visible") return;
-
+    const reconcileInterruptedDevice = useCallback((kind: "camera" | "microphone", interruptedTrack: MediaStreamTrack) => {
             const peerState = usePeerStore.getState();
             const meetState = useMeetStore.getState();
 
-            // rawCameraTrack is the hardware track when blur is active; otherwise
-            // the video track in localStream is the hardware track directly.
-            const cameraHwTrack = peerState.rawCameraTrack ?? peerState.localStream?.getVideoTracks()[0] ?? null;
-            let cameraRevoked = false;
-            if (!meetState.isVideoOff && cameraHwTrack?.readyState === "ended") {
+            if (kind === "camera") {
+                const current = peerState.rawCameraTrack ?? peerState.localStream?.getVideoTracks()[0] ?? null;
+                if (current !== interruptedTrack || meetState.isVideoOff) return;
                 peerState.disableCamera();
                 meetState.toggleVideo();
-                cameraRevoked = true;
                 toast("Camera was interrupted. Click to re-enable.");
-            }
-
-            const micHwTrack = peerState.rawMicTrack ?? peerState.localStream?.getAudioTracks()[0] ?? null;
-            let micRevoked = false;
-            // macOS revokes the mic by setting muted=true rather than ending the track,
-            // unlike the camera which becomes 'ended'. Check both states.
-            if (!meetState.isMuted && micHwTrack && (micHwTrack.readyState === "ended" || micHwTrack.muted)) {
+            } else {
+                const current = peerState.rawMicTrack ?? peerState.localStream?.getAudioTracks()[0] ?? null;
+                if (current !== interruptedTrack || meetState.isMuted) return;
                 peerState.disableMic();
                 useMeetStore.getState().toggleMute();
-                micRevoked = true;
                 toast("Microphone was interrupted. Click to re-enable.");
             }
 
-            if (cameraRevoked || micRevoked) {
-                const fresh = useMeetStore.getState();
-                client?.send("peer-state", {
-                    audio: !fresh.isMuted,
-                    video: !fresh.isVideoOff,
-                    screenSharing: fresh.isScreenSharing,
-                    videoHeld: usePeerStore.getState().localVideoQuality.videoHeld,
-                });
+            const fresh = useMeetStore.getState();
+            client?.send("peer-state", {
+                audio: !fresh.isMuted,
+                video: !fresh.isVideoOff,
+                screenSharing: fresh.isScreenSharing,
+                videoHeld: usePeerStore.getState().localVideoQuality.videoHeld,
+            });
+    }, [client]);
+
+    // Track events handle unplug/revocation while the page remains visible.
+    // The visibility check remains as a wake-from-sleep fallback because some
+    // browser/OS combinations update readyState without dispatching promptly.
+    useEffect(() => {
+        const cameraHwTrack = rawCameraTrack ?? localStream?.getVideoTracks()[0] ?? null;
+        const micHwTrack = rawMicTrack ?? localStream?.getAudioTracks()[0] ?? null;
+        const cleanups: Array<() => void> = [];
+        if (cameraHwTrack) cleanups.push(observeMediaTrackInterruption(
+            cameraHwTrack, () => reconcileInterruptedDevice("camera", cameraHwTrack),
+        ));
+        if (micHwTrack) cleanups.push(observeMediaTrackInterruption(
+            micHwTrack, () => reconcileInterruptedDevice("microphone", micHwTrack), 3_000,
+        ));
+
+        const handleVisibilityChange = () => {
+            if (document.visibilityState !== "visible") return;
+            if (cameraHwTrack?.readyState === "ended") reconcileInterruptedDevice("camera", cameraHwTrack);
+            if (micHwTrack && (micHwTrack.readyState === "ended" || micHwTrack.muted)) {
+                reconcileInterruptedDevice("microphone", micHwTrack);
             }
         };
 
         document.addEventListener("visibilitychange", handleVisibilityChange);
-        return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-    }, [client]);
+        return () => {
+            document.removeEventListener("visibilitychange", handleVisibilityChange);
+            cleanups.forEach((cleanup) => cleanup());
+        };
+    }, [localStream, rawCameraTrack, rawMicTrack, reconcileInterruptedDevice]);
 
     // Host: listen for knock-request and queue incoming guests.
     // knock-request is broadcast to all room members, but only the authenticated
@@ -367,7 +379,6 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
     };
 
     const doStopScreenShare = async (suppressCameraRestore = false) => {
-        screenTrackRef.current?.stop();
         screenTrackRef.current = null;
         stopScreenShare();
         const shouldRestoreCamera = !suppressCameraRestore && cameraWasOnBeforeShare.current;
@@ -765,11 +776,11 @@ export default function MeetCall({ client, connState, reconnectAttempt, routeMee
                     >
                         <Settings className="size-5" />
                     </button>
-                    {UNRELEASED.cameraFlip && hasMultipleCameras && !isVideoOff && !isScreenSharing && (
+                    {CALL_FEATURES.cameraFlip && hasMultipleCameras && !isVideoOff && !isScreenSharing && (
                         <FlipCameraButton onClickFn={handleFlipCamera} />
                     )}
 
-                    {UNRELEASED.screenShare && canScreenShare && (
+                    {CALL_FEATURES.screenShare && canScreenShare && (
                         <button
                             type="button"
                             onClick={handleScreenShare}

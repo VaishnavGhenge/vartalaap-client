@@ -424,6 +424,30 @@ describe('grading', () => {
 // showed up as an audio stall being recorded for a call whose video had
 // stopped first.
 describe('a stream that disappears from the report', () => {
+    it('retires an old SSRC when a replacement of the same kind is flowing', async () => {
+        const stalls: FlowStall[] = []
+        let clock = 0
+        let report = statsReport([inboundAudio(1_000, 0)])
+        const monitor = startStatsMonitor({
+            collect: async () => [{ id: 'sub:cf-a', direction: 'subscribe', sessionId: 'cf-a', report, liveOutboundKinds: [] }],
+            onStall: (stall) => stalls.push(stall),
+            now: () => clock,
+        })
+        await monitor.poll()
+        clock = 2_000
+        report = statsReport([inboundAudio(2_000, 2_000)])
+        await monitor.poll()
+
+        for (let i = 0; i < 5; i++) {
+            clock = 4_000 + i * 2_000
+            report = statsReport([inboundAudio(3_000 + i * 1_000, clock, { id: 'in-replacement', ssrc: 999 })])
+            await monitor.poll()
+        }
+
+        expect(stalls).toEqual([])
+        monitor.stop()
+    })
+
     it('is reported as a stall once the silence passes the threshold', async () => {
         const stalls: FlowStall[] = []
         let clock = 0

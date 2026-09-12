@@ -1,4 +1,6 @@
 import { test, expect, type Page, type BrowserContext } from '@playwright/test'
+import { createCallContexts, createRoom, joinRoomWithMedia } from './helpers/call'
+import { expectInboundMediaFlowing, expectRemoteVideoLive } from './helpers/webrtc'
 
 const ROOM = 'cam-defg-hij'
 
@@ -78,6 +80,41 @@ test.describe('Flip camera button — join screen', () => {
 })
 
 test.describe('Flip camera button — in call', () => {
+  test('remote video keeps flowing after a mobile camera flip', async ({ browser }) => {
+    test.setTimeout(120_000)
+    const room = await createRoom()
+    const { ctx1, ctx2 } = await createCallContexts(browser)
+    try {
+      await ctx2.addInitScript(() => {
+        const original = navigator.mediaDevices.enumerateDevices.bind(navigator.mediaDevices)
+        Object.defineProperty(navigator.mediaDevices, 'enumerateDevices', {
+          configurable: true,
+          value: async () => {
+            const real = await original()
+            return [
+              ...real.filter((device) => device.kind !== 'videoinput'),
+              { kind: 'videoinput', deviceId: 'front', label: 'Front camera', groupId: '', toJSON: () => ({}) },
+              { kind: 'videoinput', deviceId: 'back', label: 'Back camera', groupId: '', toJSON: () => ({}) },
+            ]
+          },
+        })
+      })
+      const alice = await ctx1.newPage()
+      const bob = await ctx2.newPage()
+      await joinRoomWithMedia(alice, room, 'Alice')
+      await joinRoomWithMedia(bob, room, 'Bob')
+      await expectInboundMediaFlowing(alice, 'video', { timeoutMs: 30_000 })
+
+      await expect(bob.getByRole('button', { name: /switch camera/i })).toBeVisible({ timeout: 10_000 })
+      await bob.getByRole('button', { name: /switch camera/i }).click()
+
+      await expectInboundMediaFlowing(alice, 'video', { timeoutMs: 30_000 })
+      await expectRemoteVideoLive(alice, undefined, { timeoutMs: 30_000 })
+    } finally {
+      await Promise.all([ctx1.close(), ctx2.close()])
+    }
+  })
+
   test('flip button is hidden when device has only one camera', async ({ browser }) => {
     const ctx = await contextWithCameras(browser, 1)
     const page = await ctx.newPage()

@@ -1,5 +1,7 @@
 import { expect, test, type Browser } from '@playwright/test'
 import { createCallContexts, joinRoom, createRoom, type InitScriptTarget } from './helpers/call'
+import { joinRoomWithMedia } from './helpers/call'
+import { expectInboundMediaFlowing, expectRemoteVideoLive } from './helpers/webrtc'
 
 async function installScreenShareStub(target: InitScriptTarget, options: { reject?: boolean } = {}) {
   await target.addInitScript(({ reject }) => {
@@ -32,8 +34,15 @@ async function installScreenShareStub(target: InitScriptTarget, options: { rejec
         canvas.height = 180
         const ctx = canvas.getContext('2d')
         if (ctx) {
-          ctx.fillStyle = '#0f766e'
-          ctx.fillRect(0, 0, canvas.width, canvas.height)
+          let frame = 0
+          const draw = () => {
+            ctx.fillStyle = '#0f766e'
+            ctx.fillRect(0, 0, canvas.width, canvas.height)
+            ctx.fillStyle = '#ffffff'
+            ctx.fillRect((frame++ * 7) % 200, 0, 120, 90)
+            requestAnimationFrame(draw)
+          }
+          draw()
         }
 
         const stream = canvas.captureStream(5)
@@ -96,6 +105,7 @@ test.describe('In-call feature controls', () => {
   })
 
   test('remote participant sees when a peer starts screen sharing', async ({ browser }: { browser: Browser }) => {
+    test.setTimeout(120_000)
     const roomCode = await createRoom()
     const { ctx1: aliceContext, ctx2: bobContext } = await createCallContexts(browser)
     await installScreenShareStub(aliceContext)
@@ -103,13 +113,20 @@ test.describe('In-call feature controls', () => {
     const alice = await aliceContext.newPage()
     const bob = await bobContext.newPage()
 
-    await joinRoom(alice, roomCode, 'Alice')
-    await joinRoom(bob, roomCode, 'Bob')
-    await expect(alice.getByText('Bob')).toBeVisible({ timeout: 15_000 })
+    await joinRoomWithMedia(alice, roomCode, 'Alice')
+    await joinRoomWithMedia(bob, roomCode, 'Bob')
+    await expect(alice.getByText('2 participants', { exact: true })).toBeVisible({ timeout: 15_000 })
 
     await alice.getByRole('button', { name: /share screen/i }).click()
 
-    await expect(bob.getByText(/Alice.*Screen/i)).toBeVisible({ timeout: 15_000 })
+    await expect(bob.getByText(/• Screen$/)).toBeVisible({ timeout: 15_000 })
+    await expectInboundMediaFlowing(bob, 'video', { timeoutMs: 30_000 })
+    await expectRemoteVideoLive(bob, undefined, { timeoutMs: 30_000 })
+
+    await alice.getByRole('button', { name: /stop sharing screen/i }).click()
+    await expect(bob.getByText(/• Screen$/)).not.toBeVisible({ timeout: 15_000 })
+    await expectInboundMediaFlowing(bob, 'video', { timeoutMs: 30_000 })
+    await expectRemoteVideoLive(bob, undefined, { timeoutMs: 30_000 })
 
     await aliceContext.close()
     await bobContext.close()

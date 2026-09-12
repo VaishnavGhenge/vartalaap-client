@@ -857,6 +857,7 @@ export const usePeerStore = create<PeerState>()(
 
     stopScreenShare: () => {
       videoOperationGeneration++
+      get().screenTrack?.stop()
       set({ screenTrack: null })
       // Restore peers to the current local camera track, or a black placeholder
       // if the camera is currently off.
@@ -875,16 +876,18 @@ export const usePeerStore = create<PeerState>()(
     clearAll: () => {
       audioOperationGeneration++
       videoOperationGeneration++
-      const { localStream, peerConnections, blurProcessor, rawCameraTrack, noiseSuppressor, rawMicTrack, sfuSession } = get()
+      const { localStream, screenTrack, peerConnections, blurProcessor, rawCameraTrack, noiseSuppressor, rawMicTrack, sfuSession } = get()
       const backgroundPreference = getBackgroundEffectPreference()
       blurProcessor?.stop()
       rawCameraTrack?.stop()
       noiseSuppressor?.stop()
       rawMicTrack?.stop()
       localStream?.getTracks().forEach((t) => t.stop())
+      screenTrack?.stop()
       sfuSession?.close()
       set({
         localStream: null,
+        iceServers: [],
         localVideoQuality: { encodingLevel: 2, videoHeld: false },
         screenTrack: null,
         blurProcessor: null,

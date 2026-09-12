@@ -13,16 +13,10 @@ export function migrateFlags(): void {
 }
 
 /**
- * Built and merged, not yet reaching the other side of a call. Shipping these
- * behind a working-looking button costs a user their call and hides what the
- * app is actually doing, so the entry point stays off until the path is fixed
- * and verified end to end.
- *
- * screenShare: the remote peer does not receive the shared screen, and
- *   stopping the share does not restore the camera for them.
- * cameraFlip: switching cameras on mobile does not recover the outbound track.
+ * Release switches retained in one place so an emergency rollback can hide a
+ * media control without changing the call UI.
  */
-export const UNRELEASED = {
-  screenShare: false,
-  cameraFlip: false,
+export const CALL_FEATURES = {
+  screenShare: true,
+  cameraFlip: true,
 } as const

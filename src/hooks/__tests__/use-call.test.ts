@@ -12,6 +12,7 @@ const origCreateElement = document.createElement.bind(document)
 
 vi.mock('@/src/services/api/ice', () => ({
   fetchIceServers: vi.fn().mockResolvedValue([]),
+  startIceServerKeepalive: vi.fn(() => () => {}),
 }))
 
 // Without a token useCall knocks and waits for an admit that never comes, so
@@ -39,6 +40,7 @@ vi.mock('@/src/services/webrtc/sfu-session', () => ({
       unsubscribeTrack: vi.fn(),
       getLocalTracksAnnouncement: vi.fn(() => null),
       collectStats: vi.fn().mockResolvedValue([]),
+      updateIceServers: vi.fn(),
       close: vi.fn(),
     }
   }),

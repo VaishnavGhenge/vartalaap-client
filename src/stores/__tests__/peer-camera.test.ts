@@ -564,6 +564,7 @@ describe('stopScreenShare', () => {
     usePeerStore.getState().stopScreenShare()
 
     expect(usePeerStore.getState().screenTrack).toBeNull()
+    expect(screenTrack.stop).toHaveBeenCalledOnce()
   })
 
   it('restores camera track via sfuSession when camera is on', async () => {

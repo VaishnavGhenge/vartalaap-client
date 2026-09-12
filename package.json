@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:call-lab": "CALL_LAB=true playwright test call-lab.spec.ts --reporter=line,html"
   },
   "dependencies": {
     "@dicebear/collection": "^9.4.2",

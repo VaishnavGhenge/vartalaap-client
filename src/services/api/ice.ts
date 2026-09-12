@@ -8,6 +8,7 @@ export interface IceServer {
 
 const FETCH_TIMEOUT_MS = 5_000
 const MAX_ATTEMPTS = 3
+export const ICE_REFRESH_AFTER_MS = 45 * 60_000
 
 export async function fetchIceServers(roomId: string): Promise<IceServer[]> {
   let lastError: unknown
@@ -37,4 +38,38 @@ export async function fetchIceServers(roomId: string): Promise<IceServer[]> {
     }
   }
   throw lastError
+}
+
+export function startIceServerKeepalive(
+  roomId: string,
+  onRefresh: (servers: IceServer[]) => void,
+  onError?: (error: unknown) => void,
+  refreshAfterMs = ICE_REFRESH_AFTER_MS,
+): () => void {
+  let stopped = false
+  let timer: ReturnType<typeof setTimeout> | null = null
+
+  const schedule = () => {
+    if (stopped) return
+    timer = setTimeout(() => {
+      void fetchIceServers(roomId).then((servers) => {
+        if (stopped) return
+        onRefresh(servers)
+        schedule()
+      }).catch((error) => {
+        if (stopped) return
+        onError?.(error)
+        // fetchIceServers already used bounded retries. Retry the lifecycle
+        // sooner than the normal refresh interval while the old credentials
+        // still have some useful life left.
+        timer = setTimeout(schedule, Math.min(60_000, refreshAfterMs))
+      })
+    }, refreshAfterMs)
+  }
+
+  schedule()
+  return () => {
+    stopped = true
+    if (timer) clearTimeout(timer)
+  }
 }
