@@ -10,6 +10,7 @@ import { PageLoading } from "@/src/components/ui/PageLoading";
 import { FormError } from "@/src/components/ui/FormError";
 import { useRegister, safeNextPath, useAuthRedirect } from "@/src/hooks/use-auth";
 import { useAuthStore } from "@/src/stores/auth";
+import { GoogleSignInButton } from "@/src/components/ui/GoogleSignInButton";
 
 export default function Register() {
     const [firstName, setFirstName] = useState("");
@@ -49,7 +50,8 @@ export default function Register() {
             title="Make time for your clients."
             description="Create your free account. Next, we’ll set up your booking page and availability."
         >
-            <form onSubmit={handleSubmit} aria-busy={isPending} className="mt-6 flex flex-col gap-4">
+            <GoogleSignInButton />
+            <form onSubmit={handleSubmit} aria-busy={isPending} className="flex flex-col gap-4">
                 <div className="grid gap-4 sm:grid-cols-2">
                     <div className="flex flex-col gap-1.5">
                         <label htmlFor="firstName" className="label-caps">

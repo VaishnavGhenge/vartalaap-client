@@ -12,9 +12,12 @@ import type { RegisterCredentials, UserCredentials } from '@/src/types/auth'
 // redirect.
 export function safeNextPath(): string | null {
     if (typeof window === 'undefined') return null
-    const next = new URLSearchParams(window.location.search).get('next')
+    return safeInternalPath(new URLSearchParams(window.location.search).get('next'))
+}
+
+export function safeInternalPath(next: string | null): string | null {
     if (!next || !next.startsWith('/') || next.startsWith('//') || next.includes('\\')) return null
-    if (['/login', '/register'].includes(next.split(/[?#]/)[0])) return null
+    if (['/login', '/register', '/auth/google/callback'].includes(next.split(/[?#]/)[0])) return null
     return next
 }
 

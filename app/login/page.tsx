@@ -10,6 +10,7 @@ import { PageLoading } from "@/src/components/ui/PageLoading";
 import { FormError } from "@/src/components/ui/FormError";
 import { useLogin, safeNextPath, useAuthRedirect } from "@/src/hooks/use-auth";
 import { useAuthStore } from "@/src/stores/auth";
+import { GoogleSignInButton } from "@/src/components/ui/GoogleSignInButton";
 
 export default function Login() {
     const [email, setEmail] = useState("");
@@ -28,7 +29,8 @@ export default function Login() {
 
     return (
         <AuthShell title="Welcome back." description="Sign in to manage your bookings and join your sessions.">
-            <form onSubmit={handleSubmit} aria-busy={isPending} className="mt-6 flex flex-col gap-4">
+            <GoogleSignInButton />
+            <form onSubmit={handleSubmit} aria-busy={isPending} className="flex flex-col gap-4">
                 <div className="flex flex-col gap-1.5">
                     <label htmlFor="email" className="label-caps">
                         Email

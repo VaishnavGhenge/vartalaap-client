@@ -155,7 +155,7 @@ describe('auth return paths', () => {
         await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/onboarding?next=%2Froom%2Fabc-defg-hjk'))
     })
 
-    it.each(['https://example.com', '//example.com', '/login', '/register?next=/login'])('ignores unsafe or looping return path %s', async next => {
+    it.each(['https://example.com', '//example.com', '/login', '/register?next=/login', '/auth/google/callback'])('ignores unsafe or looping return path %s', async next => {
         window.history.replaceState({}, '', `/login?next=${encodeURIComponent(next)}`)
         useAuthStore.getState().login(onboardedUser)
         renderHook(() => useAuthRedirect())

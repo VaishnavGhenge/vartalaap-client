@@ -43,6 +43,18 @@ export async function login(creds: UserCredentials): Promise<AuthResponse> {
     return resp
 }
 
+export async function startGoogleSignIn(next?: string | null): Promise<string> {
+    const query = next ? `?next=${encodeURIComponent(next)}` : ''
+    const res = await fetch(`${authServerUri}/auth/google${query}`, {
+        method: 'GET',
+        credentials: 'include',
+    })
+    if (!res.ok) throw await parseApiError(res)
+    const body = await res.json() as { authUrl?: string }
+    if (!body.authUrl) throw new Error('Google sign-in is unavailable right now.')
+    return body.authUrl
+}
+
 export async function restoreAuthSession(): Promise<AuthResponse | null> {
     const existingToken = getAccessToken()
     if (existingToken) {
