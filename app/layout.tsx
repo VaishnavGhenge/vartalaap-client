@@ -6,6 +6,7 @@ import React from "react";
 import { HomeWrapper } from "@/src/components/ui/HomeWrapper";
 import { Providers } from "@/src/components/providers";
 import { SentryInit } from "@/src/components/SentryInit";
+import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/src/lib/seo";
 
 const instrument = Instrument_Sans({
     subsets: ["latin"],
@@ -23,9 +24,32 @@ const geist = Geist({
 });
 
 export const metadata: Metadata = {
+    metadataBase: SITE_URL,
     title: "Sessionly: booking pages with the video call built in",
-    description:
-        "A booking link for coaches, consultants and therapists, with a private video room for every session. Free while in beta.",
+    description: SITE_DESCRIPTION,
+    applicationName: SITE_NAME,
+    openGraph: {
+        type: "website",
+        locale: "en_US",
+        siteName: SITE_NAME,
+        title: "Sessionly: booking pages with the video call built in",
+        description: SITE_DESCRIPTION,
+        url: "/",
+        images: [
+            {
+                url: "/brand/sessionly-mark-1024.png",
+                width: 1024,
+                height: 1024,
+                alt: "Sessionly",
+            },
+        ],
+    },
+    twitter: {
+        card: "summary",
+        title: "Sessionly: booking pages with the video call built in",
+        description: SITE_DESCRIPTION,
+        images: ["/brand/sessionly-mark-1024.png"],
+    },
 };
 
 export const viewport: Viewport = {

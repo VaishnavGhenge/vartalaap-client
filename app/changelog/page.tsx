@@ -16,6 +16,8 @@ const ENTRIES = [
             "Level-triggered call recovery: a stalled track is repaired rather than left frozen",
             "Time-to-first-media measured against a published p95 target of 3 seconds",
             "Guests can cancel from their confirmation email without an account",
+            "Guests can reschedule from the same confirmation link without re-entering their details",
+            "Automatic email reminders go to both participants 24 hours and 1 hour before each session",
         ],
     },
     {
@@ -30,7 +32,6 @@ const ENTRIES = [
             "5-step onboarding wizard to get set up in under two minutes",
             "Confirmation and cancellation email for both host and guest",
             "Profile page with timezone and display name settings",
-            "Free, Solo and Teams tiers published as prices only: no billing, no paid sessions",
         ],
     },
     {

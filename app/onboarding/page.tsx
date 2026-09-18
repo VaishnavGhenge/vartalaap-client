@@ -27,6 +27,7 @@ import {
 } from "@/src/services/api/calendar";
 import { useAuthStore } from "@/src/stores/auth";
 import { TIMEZONES } from "@/src/lib/timezones";
+import { PRODUCT_FEATURES } from "@/src/lib/feature-flags";
 
 const TOTAL_STEPS = 5;
 
@@ -657,37 +658,39 @@ function Step3({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
                         </p>
                     )}
                 </div>
-                <div>
-                    <label className="label-caps block mb-2">Pricing</label>
-                    <div className="flex gap-2">
-                        <button
-                            type="button"
-                            aria-pressed={true}
-                            className="flex-1 cursor-pointer rounded-lg border border-[hsl(var(--primary))] bg-[hsl(var(--primary))]/10
-                                       py-2 text-sm font-medium text-[hsl(var(--primary))]"
-                        >
-                            Free
-                        </button>
-                        <button
-                            type="button"
-                            disabled
-                            aria-label="Paid sessions are available on the Solo plan"
-                            className="flex-1 rounded-lg border border-[hsl(var(--border))] py-2 text-sm font-medium
-                                       text-[hsl(var(--muted-foreground))] flex items-center justify-center gap-1.5 cursor-not-allowed"
-                        >
-                            <Lock className="size-3" /> Paid
-                            <span
-                                className="rounded-full bg-[hsl(var(--primary))]/10 px-1.5 py-0.5 text-[9px]
-                                           font-bold uppercase tracking-wider text-[hsl(var(--primary))]"
+                {PRODUCT_FEATURES.clientPayments && (
+                    <div>
+                        <label className="label-caps block mb-2">Pricing</label>
+                        <div className="flex gap-2">
+                            <button
+                                type="button"
+                                aria-pressed={true}
+                                className="flex-1 cursor-pointer rounded-lg border border-[hsl(var(--primary))] bg-[hsl(var(--primary))]/10
+                                           py-2 text-sm font-medium text-[hsl(var(--primary))]"
                             >
-                                Solo
-                            </span>
-                        </button>
+                                Free
+                            </button>
+                            <button
+                                type="button"
+                                disabled
+                                aria-label="Paid sessions are available on the Solo plan"
+                                className="flex flex-1 cursor-not-allowed items-center justify-center gap-1.5 rounded-lg border border-[hsl(var(--border))]
+                                           py-2 text-sm font-medium text-[hsl(var(--muted-foreground))]"
+                            >
+                                <Lock className="size-3" /> Paid
+                                <span
+                                    className="rounded-full bg-[hsl(var(--primary))]/10 px-1.5 py-0.5 text-[9px]
+                                               font-bold uppercase tracking-wider text-[hsl(var(--primary))]"
+                                >
+                                    Solo
+                                </span>
+                            </button>
+                        </div>
+                        <p className="mt-1.5 text-xs text-[hsl(var(--muted-foreground))]">
+                            Paid sessions are available on the Solo plan.
+                        </p>
                     </div>
-                    <p className="mt-1.5 text-xs text-[hsl(var(--muted-foreground))]">
-                        Paid sessions are available on the Solo plan.
-                    </p>
-                </div>
+                )}
                 {error && <p className="text-xs text-red-500">{error}</p>}
             </div>
         </StepShell>

@@ -49,6 +49,7 @@ import { updateProfile } from "@/src/services/api/auth";
 import { SearchableSelect } from "@/src/components/ui/SearchableSelect";
 import { Avatar } from "@/src/components/ui/Avatar";
 import { TIMEZONES } from "@/src/lib/timezones";
+import { PRODUCT_FEATURES } from "@/src/lib/feature-flags";
 
 type PanelKey = "overview" | "profile" | "availability" | "booking-types" | "bookings" | "payments" | "settings";
 type SidebarPanelKey = Exclude<PanelKey, "profile">;
@@ -66,7 +67,9 @@ const SIDEBAR_ITEMS: ReadonlyArray<{
     { key: "bookings", icon: CalendarDays, label: "Bookings", shortLabel: "Bookings" },
     { key: "availability", icon: CalendarCheck, label: "Availability", shortLabel: "Hours" },
     { key: "booking-types", icon: Link2, label: "Event types", shortLabel: "Events" },
-    { key: "payments", icon: CreditCard, label: "Payments", shortLabel: "Pay" },
+    ...(PRODUCT_FEATURES.clientPayments
+        ? [{ key: "payments" as const, icon: CreditCard, label: "Payments", shortLabel: "Pay" }]
+        : []),
     { key: "settings", icon: Settings, label: "Settings" },
 ];
 
@@ -120,7 +123,8 @@ const THEME_OPTIONS: ReadonlyArray<{
 ];
 
 const VALID_PANELS = new Set<PanelKey>([
-    "overview", "profile", "availability", "booking-types", "bookings", "payments", "settings",
+    "overview", "profile", "availability", "booking-types", "bookings", "settings",
+    ...(PRODUCT_FEATURES.clientPayments ? ["payments" as const] : []),
 ]);
 
 export default function DashboardPage() {
@@ -306,9 +310,11 @@ function DashboardInner() {
                     </nav>
 
                     <div className="mt-auto border-t border-[hsl(var(--border))] px-1 pt-3">
-                        <Button variant="outline" size="sm" className="w-full" asChild>
-                            <Link href="/pricing">View plans</Link>
-                        </Button>
+                        {PRODUCT_FEATURES.subscriptions && (
+                            <Button variant="outline" size="sm" className="w-full" asChild>
+                                <Link href="/pricing">View plans</Link>
+                            </Button>
+                        )}
                         <button
                             type="button"
                             onClick={logout}
@@ -422,7 +428,7 @@ function DashboardInner() {
 
                     {activePanel === "bookings" && <BookingsPanel />}
 
-                    {activePanel === "payments" && (
+                    {PRODUCT_FEATURES.clientPayments && activePanel === "payments" && (
                         <PanelShell>
                             <p className="text-sm text-[hsl(var(--muted-foreground))]">
                                 Paid event types are disabled until the payout path is finished. The
@@ -442,8 +448,11 @@ function DashboardInner() {
             */}
             <nav
                 aria-label="Dashboard sections"
-                className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-6 border-t border-[hsl(var(--border))] bg-[hsl(var(--background))]/95 backdrop-blur lg:hidden"
-                style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+                className="fixed inset-x-0 bottom-0 z-30 grid border-t border-[hsl(var(--border))] bg-[hsl(var(--background))]/95 backdrop-blur lg:hidden"
+                style={{
+                    paddingBottom: "env(safe-area-inset-bottom)",
+                    gridTemplateColumns: `repeat(${SIDEBAR_ITEMS.length}, minmax(0, 1fr))`,
+                }}
             >
                 {SIDEBAR_ITEMS.map(({ key, icon: Icon, label, shortLabel }) => {
                     const active = activePanel === key;

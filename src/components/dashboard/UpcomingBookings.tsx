@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/src/components/ui/button";
+import { EmailReminderNotice } from "@/src/components/booking/EmailReminderNotice";
 import { ConfirmDialog } from "@/src/components/ui/ConfirmDialog";
 import { InlineNotice } from "@/src/components/ui/InlineNotice";
 import { cancelBooking, listMyBookings, type HostBooking } from "@/src/services/api/bookings";
@@ -166,6 +167,7 @@ export function UpcomingBookings({ refreshKey }: Props) {
                                             {roomHint}
                                         </p>
                                     )}
+                                    <EmailReminderNotice startsAt={b.startsAt} currentAt={nowMs} className="mt-1" />
                                 </div>
 
                                 {/* Actions */}

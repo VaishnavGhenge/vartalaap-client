@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Check, Minus, ArrowRight } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
 import { LandingHeader } from "@/src/components/ui/LandingHeader";
 import { SiteFooter } from "@/src/components/ui/SiteFooter";
+import { PRODUCT_FEATURES } from "@/src/lib/feature-flags";
 
 // Free is the only plan that can be signed up for. Solo and Teams are the
 // prices we intend to charge; both are listed as unavailable because billing is
@@ -113,6 +115,8 @@ function Cell({ v }: { v: string | boolean }) {
 }
 
 export default function PricingPage() {
+    if (!PRODUCT_FEATURES.subscriptions) redirect("/");
+
     return (
         <div className="flex min-h-dvh flex-col">
             <LandingHeader />

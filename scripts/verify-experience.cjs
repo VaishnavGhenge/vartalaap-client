@@ -112,6 +112,8 @@ async function run() {
     try {
         await page.goto("/");
         await expect(page.getByRole("heading", { level: 1 })).toContainText("Booking pages.");
+        await expect(page.getByRole("link", { name: "Pricing", exact: true })).toHaveCount(0);
+        await expect(page.getByText("Client payments", { exact: false })).toHaveCount(0);
         await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
         await page.getByRole("button", { name: "1:00 PM", exact: true }).click();
         await page.getByRole("button", { name: "Preview confirmation", exact: true }).click();
@@ -169,6 +171,8 @@ async function run() {
         await page.getByRole("button", { name: "Sign in", exact: true }).click();
         await expect(page).toHaveURL(/dashboard\?panel=bookings/);
         await expect(page.getByRole("heading", { name: "All bookings", exact: true })).toBeVisible();
+        await expect(page.getByRole("button", { name: "Payments", exact: true })).toHaveCount(0);
+        await expect(page.getByRole("link", { name: "View plans", exact: true })).toHaveCount(0);
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
         await page.screenshot({
             path: path.join(output, "sessionly-dashboard-mobile.png"),

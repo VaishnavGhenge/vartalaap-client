@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { LegalList, LegalPage, LegalSection } from "@/src/components/ui/LegalPage";
+import { createPublicPageMetadata } from "@/src/lib/seo";
 
 // TODO before launch: replace with the registered legal entity name and address
 // once the Indian entity exists, and confirm CONTACT is a monitored mailbox.
@@ -9,10 +10,11 @@ import { LegalList, LegalPage, LegalSection } from "@/src/components/ui/LegalPag
 const OPERATOR = "Sessionly";
 const CONTACT = "support@getsessionly.com";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = createPublicPageMetadata({
     title: "Privacy Policy — Sessionly",
     description: "What Sessionly collects, why, who it is shared with, and how to have it deleted.",
-};
+    path: "/privacy",
+});
 
 export default function PrivacyPage() {
     return (

@@ -1,48 +1,36 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { Button } from "@/src/components/ui/button";
 import { PoweredBy } from "@/src/components/ui/PoweredBy";
 import { StandaloneHeader } from "@/src/components/ui/StandaloneHeader";
-import { httpServerUri } from "@/src/services/api/config";
-import type { HostProfile } from "@/src/services/api/public";
-
-// Server-rendered so the profile page works without JS and so search engines
-// can index host pages cleanly (matches the SEO requirement in roadmap §4).
-// We fetch through the absolute httpServerUri rather than the public.ts client
-// because that helper is bundled with `credentials: 'include'` for the
-// browser; on the server we just need a plain GET.
-async function fetchProfile(slug: string): Promise<HostProfile | null> {
-    const res = await fetch(`${httpServerUri}/u/${encodeURIComponent(slug)}`, {
-        // Hosts can publish a new event between requests; small window is fine
-        // but we don't want a long CDN cache here. 60s matches the rate limit
-        // window for `/u/` so a single visitor's burst never re-hits origin.
-        next: { revalidate: 60 },
-    });
-    if (res.status === 404) return null;
-    if (!res.ok) throw new Error(`profile fetch ${res.status}`);
-    return (await res.json()) as HostProfile;
-}
+import { createPublicPageMetadata } from "@/src/lib/seo";
+import { fetchPublicProfile } from "@/src/services/api/public-server";
 
 interface PageProps {
     params: Promise<{ slug: string }>;
 }
 
-export async function generateMetadata({ params }: PageProps) {
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
     const { slug } = await params;
-    const profile = await fetchProfile(slug).catch(() => null);
+    const profile = await fetchPublicProfile(slug).catch(() => null);
     if (!profile) {
-        return { title: "Not found · Sessionly" };
+        return {
+            title: "Not found · Sessionly",
+            robots: { index: false, follow: false },
+        };
     }
-    return {
+    return createPublicPageMetadata({
         title: `Book time with ${profile.name} · Sessionly`,
         description: `Pick a time to meet with ${profile.name}.`,
-    };
+        path: `/u/${encodeURIComponent(profile.slug)}`,
+    });
 }
 
 export default async function HostProfilePage({ params }: PageProps) {
     const { slug } = await params;
-    const profile = await fetchProfile(slug);
+    const profile = await fetchPublicProfile(slug);
     if (!profile) notFound();
 
     return (

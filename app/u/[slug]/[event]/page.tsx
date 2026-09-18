@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Check, ChevronLeft, ChevronRight, Clock, Globe2, Loader2, MailCheck, Video } from "lucide-react";
 
@@ -22,6 +22,7 @@ import {
     createBooking,
     getPublicEvent,
     listSlots,
+    rescheduleBookingByMeetCode,
     type PublicEventResponse,
 } from "@/src/services/api/public";
 import { use } from "react";
@@ -33,6 +34,10 @@ interface PageProps {
 export default function PublicEventPage({ params }: PageProps) {
     const { slug, event: eventSlug } = use(params);
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const rescheduleCode = searchParams.get("reschedule");
+    const rescheduleToken = searchParams.get("t");
+    const isRescheduling = Boolean(rescheduleCode && rescheduleToken);
 
     const [meta, setMeta] = useState<PublicEventResponse | null>(null);
     const [metaError, setMetaError] = useState<string | null>(null);
@@ -109,7 +114,13 @@ export default function PublicEventPage({ params }: PageProps) {
         const from = isoDate(windowStart);
         // Server `to` is exclusive — pass the day after windowEnd.
         const to = isoDate(addDays(windowEnd, 1));
-        listSlots(slug, eventSlug, from, to)
+        listSlots(
+            slug,
+            eventSlug,
+            from,
+            to,
+            isRescheduling ? { code: rescheduleCode!, token: rescheduleToken! } : undefined,
+        )
             .then((res) => {
                 if (cancelled) return;
                 setSlots(res.slots);
@@ -137,7 +148,7 @@ export default function PublicEventPage({ params }: PageProps) {
         return () => {
             cancelled = true;
         };
-    }, [slug, eventSlug, windowStart, windowEnd, monthAnchor, today]);
+    }, [slug, eventSlug, windowStart, windowEnd, monthAnchor, today, isRescheduling, rescheduleCode, rescheduleToken]);
 
     // Bucket slots by local calendar date so each day gets its own column. We
     // do this in the guest's timezone, not the host's, so "Tuesday at 9am" is
@@ -201,6 +212,14 @@ export default function PublicEventPage({ params }: PageProps) {
         setSubmitError(null);
         const token = holdToken ?? undefined;
         try {
+            if (isRescheduling) {
+                await rescheduleBookingByMeetCode(rescheduleCode!, rescheduleToken!, selectedSlot, token);
+                setBookedSlot(selectedSlot);
+                setConfirmed(true);
+                consumeHold();
+                router.replace(`/m/${encodeURIComponent(rescheduleCode!)}?t=${encodeURIComponent(rescheduleToken!)}&rescheduled=1`);
+                return;
+            }
             const booking = await createBooking({
                 hostSlug: slug,
                 eventTypeSlug: eventSlug,
@@ -219,7 +238,13 @@ export default function PublicEventPage({ params }: PageProps) {
         } catch (err: unknown) {
             if (err instanceof PublicApiError && err.code === "SLOT_TAKEN") {
                 setSubmitError("That time is no longer available. Pick another.");
-                listSlots(slug, eventSlug, isoDate(windowStart), isoDate(addDays(windowEnd, 1)))
+                listSlots(
+                    slug,
+                    eventSlug,
+                    isoDate(windowStart),
+                    isoDate(addDays(windowEnd, 1)),
+                    isRescheduling ? { code: rescheduleCode!, token: rescheduleToken! } : undefined,
+                )
                     .then((res) => {
                         setSlots(res.slots);
                         setSlotsStale(res.calendarSyncDegraded === true);
@@ -262,10 +287,10 @@ export default function PublicEventPage({ params }: PageProps) {
             <div className="experience-card page-enter w-full max-w-6xl lg:grid lg:grid-cols-[300px_minmax(0,1fr)]">
                 <header className="rounded-t-2xl border-b border-[hsl(var(--border))] bg-[hsl(var(--surface-2))]/65 p-6 sm:p-8 lg:rounded-l-2xl lg:rounded-tr-none lg:border-b-0 lg:border-r">
                     <Link
-                        href={`/u/${meta.host.slug}`}
+                        href={isRescheduling ? `/m/${encodeURIComponent(rescheduleCode!)}?t=${encodeURIComponent(rescheduleToken!)}` : `/u/${meta.host.slug}`}
                         className="mb-7 inline-flex items-center gap-1 text-xs text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--primary))]"
                     >
-                        <ChevronLeft className="size-3.5" /> All sessions
+                        <ChevronLeft className="size-3.5" /> {isRescheduling ? "Back to booking" : "All sessions"}
                     </Link>
                     <div className="flex items-start gap-4 lg:flex-col lg:gap-5">
                         <Avatar name={meta.host.name} src={meta.host.avatarUrl} size="lg" />
@@ -307,7 +332,7 @@ export default function PublicEventPage({ params }: PageProps) {
                 </header>
                 <div className="min-w-0 p-5 sm:p-8">
                     <ol aria-label="Booking progress" className="mb-7 flex flex-wrap items-center gap-4 text-xs">
-                        {["Choose a time", "Your details", "Confirmed"].map((label, index) => {
+                        {(isRescheduling ? ["Choose new time", "Review", "Updated"] : ["Choose a time", "Your details", "Confirmed"]).map((label, index) => {
                             const current = confirmed ? 2 : selectedSlot ? 1 : 0;
                             return (
                                 <li
@@ -333,7 +358,9 @@ export default function PublicEventPage({ params }: PageProps) {
                             );
                         })}
                     </ol>
-                    <h2 className="text-xl font-semibold tracking-tight">Choose a time to connect.</h2>
+                    <h2 className="text-xl font-semibold tracking-tight">
+                        {isRescheduling ? "Choose your new time." : "Choose a time to connect."}
+                    </h2>
                     <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
                         Select a date, then a time that works for you.
                     </p>
@@ -597,7 +624,7 @@ export default function PublicEventPage({ params }: PageProps) {
                                     </span>
                                     <div className="min-w-0">
                                         <p className="text-sm font-semibold text-[hsl(var(--foreground))]">
-                                            Booking confirmed!
+                                            {isRescheduling ? "Booking rescheduled!" : "Booking confirmed!"}
                                         </p>
                                         <p className="mt-0.5 text-xs text-[hsl(var(--muted-foreground))]">
                                             {new Date(bookedSlot!).toLocaleString([], {
@@ -609,13 +636,13 @@ export default function PublicEventPage({ params }: PageProps) {
                                                 hour12: true,
                                             })}
                                             {" · "}
-                                            {meta.event.durationMin} min · Taking you to your confirmation…
+                                            {meta.event.durationMin} min · Taking you to your {isRescheduling ? "updated " : ""}confirmation…
                                         </p>
                                     </div>
                                 </div>
                             ) : (
                                 <>
-                                    <h2 className="label-caps mb-2">Your details</h2>
+                                    <h2 className="label-caps mb-2">{isRescheduling ? "Review new time" : "Your details"}</h2>
                                     <form
                                         onSubmit={handleConfirm}
                                         aria-busy={submitting}
@@ -638,40 +665,45 @@ export default function PublicEventPage({ params }: PageProps) {
                                         </div>
 
                                         <InlineNotice icon={MailCheck} className="mb-4 text-xs">
-                                            We will email your confirmation, meeting link, and cancellation link after
-                                            booking.
+                                            {isRescheduling
+                                                ? "Your meeting link stays the same. We’ll email the updated time to you and the host."
+                                                : "We will email your confirmation, meeting link, and cancellation link after booking."}
                                         </InlineNotice>
 
                                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                            <div className="flex flex-col gap-1">
-                                                <label htmlFor="name" className="label-caps">
-                                                    Name
-                                                </label>
-                                                <Input
-                                                    id="name"
-                                                    name="name"
-                                                    value={guestName}
-                                                    onChange={(e) => setGuestName(e.target.value)}
-                                                    placeholder="Your full name"
-                                                    required
-                                                />
-                                            </div>
+                                            {!isRescheduling && (
+                                                <>
+                                                    <div className="flex flex-col gap-1">
+                                                        <label htmlFor="name" className="label-caps">
+                                                            Name
+                                                        </label>
+                                                        <Input
+                                                            id="name"
+                                                            name="name"
+                                                            value={guestName}
+                                                            onChange={(e) => setGuestName(e.target.value)}
+                                                            placeholder="Your full name"
+                                                            required
+                                                        />
+                                                    </div>
 
-                                            <div className="flex flex-col gap-1">
-                                                <label htmlFor="email" className="label-caps">
-                                                    Email
-                                                </label>
-                                                <Input
-                                                    id="email"
-                                                    name="email"
-                                                    type="email"
-                                                    autoComplete="email"
-                                                    value={guestEmail}
-                                                    onChange={(e) => setGuestEmail(e.target.value)}
-                                                    placeholder="you@example.com"
-                                                    required
-                                                />
-                                            </div>
+                                                    <div className="flex flex-col gap-1">
+                                                        <label htmlFor="email" className="label-caps">
+                                                            Email
+                                                        </label>
+                                                        <Input
+                                                            id="email"
+                                                            name="email"
+                                                            type="email"
+                                                            autoComplete="email"
+                                                            value={guestEmail}
+                                                            onChange={(e) => setGuestEmail(e.target.value)}
+                                                            placeholder="you@example.com"
+                                                            required
+                                                        />
+                                                    </div>
+                                                </>
+                                            )}
 
                                             <div className="self-end sm:col-span-2">
                                                 <Button
@@ -683,11 +715,11 @@ export default function PublicEventPage({ params }: PageProps) {
                                                     {!selectedSlot ? (
                                                         "Choose a time to continue"
                                                     ) : submitting ? (
-                                                        <BufferingButtonLabel label="Confirming…" />
+                                                        <BufferingButtonLabel label={isRescheduling ? "Rescheduling…" : "Confirming…"} />
                                                     ) : !holdToken && !holdError ? (
                                                         <BufferingButtonLabel label="Reserving…" />
                                                     ) : (
-                                                        "Confirm booking"
+                                                        isRescheduling ? "Confirm new time" : "Confirm booking"
                                                     )}
                                                 </Button>
                                             </div>

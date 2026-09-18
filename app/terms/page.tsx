@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { LegalList, LegalPage, LegalSection } from "@/src/components/ui/LegalPage";
+import { createPublicPageMetadata } from "@/src/lib/seo";
 
 // TODO before launch: replace with the registered legal entity name and address
 // once the Indian entity exists, and set GOVERNING_LAW to match where it is
@@ -10,10 +11,11 @@ const OPERATOR = "Sessionly";
 const CONTACT = "support@getsessionly.com";
 const GOVERNING_LAW = "India";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = createPublicPageMetadata({
     title: "Terms of Service — Sessionly",
     description: "The terms you agree to when you use Sessionly.",
-};
+    path: "/terms",
+});
 
 export default function TermsPage() {
     return (
@@ -79,13 +81,8 @@ export default function TermsPage() {
 
             <LegalSection heading="Price and payment">
                 <p>
-                    Sessionly is currently free while in beta. Paid plans are described on the{" "}
-                    <Link href="/pricing" className="text-[hsl(var(--primary))] underline underline-offset-4">
-                        pricing page
-                    </Link>{" "}
-                    and are not yet active. We do not currently process payments between hosts and their
-                    clients. If that changes, we will publish updated terms and tell account holders before
-                    charging anyone.
+                    Sessionly does not currently ask for payment details. If that changes, we will publish
+                    updated terms and tell account holders before charging anyone.
                 </p>
             </LegalSection>
 

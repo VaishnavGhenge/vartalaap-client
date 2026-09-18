@@ -1,9 +1,17 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { ArrowRight, CalendarDays, Check, Globe2, Video } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
 import { LandingHeader } from "@/src/components/ui/LandingHeader";
 import { SiteFooter } from "@/src/components/ui/SiteFooter";
 import { BookingPreview } from "@/src/components/landing/BookingPreview";
+import { createPublicPageMetadata, SITE_DESCRIPTION } from "@/src/lib/seo";
+
+export const metadata: Metadata = createPublicPageMetadata({
+    title: "Sessionly: booking pages with the video call built in",
+    description: SITE_DESCRIPTION,
+    path: "/",
+});
 
 const FEATURES = [
     {
@@ -63,7 +71,7 @@ export default function Home() {
                             </Button>
                         </div>
                         <p className="mt-4 text-xs text-[hsl(var(--muted-foreground))]">
-                            Free during beta · No credit card needed
+                            Open beta · No credit card needed
                         </p>
                         <div className="mt-10 flex items-center gap-3 border-t border-[hsl(var(--border))] pt-5 text-sm text-[hsl(var(--muted-foreground))]">
                             <Video className="size-5 shrink-0 text-[hsl(var(--primary))]" />
@@ -89,7 +97,7 @@ export default function Home() {
                                 [
                                     "02",
                                     "Your client picks a time",
-                                    "They book from your page. You both receive the session details and meeting link by email.",
+                                    "They book from your page. You both receive the session details and meeting link by email, and guests can reschedule themselves.",
                                 ],
                                 [
                                     "03",
@@ -134,7 +142,7 @@ export default function Home() {
                 <section className="px-5 pb-20 sm:px-8 sm:pb-28">
                     <div className="mx-auto grid max-w-6xl gap-10 rounded-3xl border border-[hsl(var(--border))] bg-[hsl(var(--success-soft))] p-7 sm:p-12 lg:grid-cols-[1.3fr_1fr] lg:p-16">
                         <div>
-                            <p className="label-caps text-[hsl(var(--success-soft-foreground))]">Free during beta</p>
+                            <p className="label-caps text-[hsl(var(--success-soft-foreground))]">Open beta</p>
                             <h2 className="font-display mt-5 text-4xl leading-tight sm:text-5xl">
                                 Make room for
                                 <br />
@@ -144,15 +152,10 @@ export default function Home() {
                                 Set up your booking page and start hosting sessions. Scheduling, calendar sync, and
                                 video are included.
                             </p>
-                            <p className="mt-3 max-w-sm text-xs leading-6 text-[hsl(var(--muted-foreground))]">
-                                Client payments aren’t available in Sessionly yet.
-                            </p>
                         </div>
                         <div className="rounded-2xl bg-[hsl(var(--surface))] p-7">
-                            <div className="flex items-baseline gap-2">
-                                <span className="font-display text-5xl">$0</span>
-                                <span className="text-sm text-[hsl(var(--muted-foreground))]">during beta</span>
-                            </div>
+                            <h3 className="font-display text-3xl">Start hosting sessions</h3>
+                            <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">No card required during beta.</p>
                             <ul className="my-6 space-y-3 text-sm">
                                 {[
                                     "1 booking page",
@@ -168,12 +171,9 @@ export default function Home() {
                             </ul>
                             <Button asChild size="lg" className="w-full">
                                 <Link href="/register">
-                                    Get started free <ArrowRight className="size-4" />
+                                    Get started <ArrowRight className="size-4" />
                                 </Link>
                             </Button>
-                            <Link href="/pricing" className="mt-4 block text-center text-xs link">
-                                About beta and future plans
-                            </Link>
                         </div>
                     </div>
                 </section>

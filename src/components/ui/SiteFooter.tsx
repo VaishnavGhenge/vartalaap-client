@@ -1,9 +1,10 @@
 import Link from "next/link";
 
 import { SessionlyWordmark } from "@/src/components/ui/SessionlyWordmark";
+import { PRODUCT_FEATURES } from "@/src/lib/feature-flags";
 
 const LINKS: ReadonlyArray<{ href: string; label: string }> = [
-    { href: "/pricing", label: "Pricing" },
+    ...(PRODUCT_FEATURES.subscriptions ? [{ href: "/pricing", label: "Pricing" }] : []),
     { href: "/changelog", label: "Changelog" },
     { href: "/privacy", label: "Privacy" },
     { href: "/terms", label: "Terms" },

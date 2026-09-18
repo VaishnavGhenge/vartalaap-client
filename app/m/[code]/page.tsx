@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Check, Clock, Info, CalendarX } from "lucide-react";
+import { Check, Clock, Info, CalendarX, CalendarClock } from "lucide-react";
 import { SessionTime } from "@/src/components/booking/SessionTime";
 
 import { CancelBookingButton } from "@/src/components/booking/CancelBookingButton";
+import { EmailReminderNotice } from "@/src/components/booking/EmailReminderNotice";
 import { Button } from "@/src/components/ui/button";
 import { PoweredBy } from "@/src/components/ui/PoweredBy";
 import { StandaloneHeader } from "@/src/components/ui/StandaloneHeader";
@@ -25,7 +26,7 @@ async function fetchBooking(code: string): Promise<BookingResponse | null> {
 
 interface PageProps {
     params: Promise<{ code: string }>;
-    searchParams: Promise<{ t?: string | string[] }>;
+    searchParams: Promise<{ t?: string | string[]; rescheduled?: string | string[] }>;
 }
 
 export async function generateMetadata({ params }: PageProps) {
@@ -39,10 +40,11 @@ export async function generateMetadata({ params }: PageProps) {
 
 export default async function ConfirmationPage({ params, searchParams }: PageProps) {
     const { code } = await params;
-    const { t } = await searchParams;
+    const { t, rescheduled } = await searchParams;
     // searchParams values can be string | string[] in Next 15. Only the first
     // hit is meaningful — the token isn't a multi-value param.
     const cancelToken = Array.isArray(t) ? t[0] : t;
+    const wasRescheduled = (Array.isArray(rescheduled) ? rescheduled[0] : rescheduled) === "1";
     const booking = await fetchBooking(code);
     if (!booking) notFound();
 
@@ -73,6 +75,13 @@ export default async function ConfirmationPage({ params, searchParams }: PagePro
                             {booking.eventTitle ?? "Your meeting"}
                         </h1>
                         <SessionTime startsAt={booking.startsAt} endsAt={booking.endsAt} />
+
+                        {wasRescheduled && (
+                            <div role="status" className="mt-5 flex items-center gap-2 rounded-lg bg-[hsl(var(--success-soft))] px-3 py-2 text-sm text-[hsl(var(--success-soft-foreground))]">
+                                <CalendarClock className="size-4 shrink-0" />
+                                Your booking has been moved. We emailed the updated time to both participants.
+                            </div>
+                        )}
 
                         <dl className="mt-6 grid gap-3 text-sm">
                             <div className="flex justify-between gap-3">
@@ -106,6 +115,11 @@ export default async function ConfirmationPage({ params, searchParams }: PagePro
                                     <Clock className="size-3.5 shrink-0" />
                                     {roomHint}
                                 </div>
+                                <EmailReminderNotice
+                                    startsAt={booking.startsAt}
+                                    currentAt={booking.serverNow ?? Date.now()}
+                                    className="rounded-lg bg-[hsl(var(--surface-2))] px-3 py-2"
+                                />
                                 {roomOpen ? (
                                     <Button asChild size="lg" className="w-full">
                                         <Link href={`/room/${booking.meetCode}`} prefetch>
@@ -121,7 +135,14 @@ export default async function ConfirmationPage({ params, searchParams }: PagePro
                                     Use the same confirmation link if you need to return later.
                                 </p>
                                 {cancelToken && (
-                                    <div className="mt-2 border-t border-[hsl(var(--border))] pt-3">
+                                    <div className="mt-2 flex flex-col gap-2 border-t border-[hsl(var(--border))] pt-3">
+                                        {booking.roomStatus === "too_early" && booking.hostSlug && booking.eventTypeSlug && (
+                                            <Button asChild variant="outline" className="w-full">
+                                                <Link href={`/u/${encodeURIComponent(booking.hostSlug)}/${encodeURIComponent(booking.eventTypeSlug)}?reschedule=${encodeURIComponent(booking.meetCode)}&t=${encodeURIComponent(cancelToken)}`}>
+                                                    Reschedule
+                                                </Link>
+                                            </Button>
+                                        )}
                                         <CancelBookingButton meetCode={booking.meetCode} cancelToken={cancelToken} />
                                     </div>
                                 )}

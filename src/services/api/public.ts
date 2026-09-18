@@ -120,9 +120,14 @@ export async function listSlots(
     eventSlug: string,
     from: string,
     to?: string,
+    reschedule?: { code: string; token: string },
 ): Promise<SlotsResponse> {
     const qs = new URLSearchParams({ from })
     if (to) qs.set('to', to)
+    if (reschedule) {
+        qs.set('reschedule', reschedule.code)
+        qs.set('t', reschedule.token)
+    }
     return get<SlotsResponse>(
         `/u/${encodeURIComponent(hostSlug)}/${encodeURIComponent(eventSlug)}/slots?${qs}`,
     )
@@ -229,4 +234,26 @@ export async function cancelBookingByMeetCode(code: string, token: string, reaso
     if (!res.ok) {
         throw await asPublicError(res)
     }
+}
+
+// holdToken is optional, matching createBooking: the server treats a missing
+// or expired hold as "not reserved" rather than an error, so a guest whose
+// reservation lapsed can still move their booking.
+export async function rescheduleBookingByMeetCode(
+    code: string,
+    token: string,
+    startsAt: string,
+    holdToken?: string,
+): Promise<BookingResponse> {
+    const url = `${httpServerUri}/m/${encodeURIComponent(code)}?t=${encodeURIComponent(token)}`
+    const res = await fetch(url, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ startsAt, holdToken }),
+    })
+    if (!res.ok) {
+        throw await asPublicError(res)
+    }
+    return (await res.json()) as BookingResponse
 }

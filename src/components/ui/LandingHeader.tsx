@@ -8,11 +8,12 @@ import { Button } from "@/src/components/ui/button";
 import { SessionlyBrand } from "@/src/components/ui/SessionlyBrand";
 import { ThemeToggleButton } from "@/src/components/ui/ThemeToggleButton";
 import { useAuth } from "@/src/hooks/use-auth";
+import { PRODUCT_FEATURES } from "@/src/lib/feature-flags";
 
 const NAV = [
     { label: "Features",   href: "/#features" },
     { label: "How it works", href: "/#how-it-works" },
-    { label: "Pricing",    href: "/pricing" },
+    ...(PRODUCT_FEATURES.subscriptions ? [{ label: "Pricing", href: "/pricing" }] : []),
 ];
 
 export function LandingHeader() {

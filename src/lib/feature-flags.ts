@@ -20,3 +20,13 @@ export const CALL_FEATURES = {
   screenShare: true,
   cameraFlip: true,
 } as const
+
+/**
+ * Product surfaces that must only appear when their complete end-to-end flow
+ * is ready to ship. Keeping these separate lets us introduce one commercial
+ * capability without accidentally exposing the other.
+ */
+export const PRODUCT_FEATURES = {
+  clientPayments: false,
+  subscriptions: false,
+} as const
