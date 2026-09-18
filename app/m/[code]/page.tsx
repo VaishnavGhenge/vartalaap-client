@@ -117,7 +117,7 @@ export default async function ConfirmationPage({ params, searchParams }: PagePro
                                 </div>
                                 <EmailReminderNotice
                                     startsAt={booking.startsAt}
-                                    currentAt={booking.serverNow ?? Date.now()}
+                                    currentAt={booking.serverNow ?? booking.startsAt}
                                     className="rounded-lg bg-[hsl(var(--surface-2))] px-3 py-2"
                                 />
                                 {roomOpen ? (
