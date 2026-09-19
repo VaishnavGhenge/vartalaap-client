@@ -142,7 +142,7 @@ export const VideoTile = ({
                     onPlaying={() => setPlayingStream(stream)}
                     visible={showingVideo}
                     isLocal={isLocal}
-                    objectFit={isScreenSharing ? "contain" : "cover"}
+                    objectFit={isScreenSharing ? "contain" : "adaptive"}
                 />
             )}
 

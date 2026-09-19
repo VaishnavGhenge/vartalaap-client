@@ -1,6 +1,6 @@
-import { render } from '@testing-library/react'
+import { fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AudioStream, VideoStream } from '../Video'
+import { AudioStream, resolveVideoObjectFit, VideoStream } from '../Video'
 
 class FakeMediaStream extends EventTarget {
   private tracks: MediaStreamTrack[]
@@ -59,6 +59,10 @@ describe('AudioStream', () => {
 describe('VideoStream', () => {
   beforeEach(() => {
     vi.stubGlobal('MediaStream', FakeMediaStream)
+    vi.stubGlobal('ResizeObserver', class {
+      observe() {}
+      disconnect() {}
+    })
     Object.defineProperty(HTMLMediaElement.prototype, 'play', {
       configurable: true,
       value: vi.fn().mockResolvedValue(undefined),
@@ -82,5 +86,39 @@ describe('VideoStream', () => {
     const attached = video.srcObject as MediaStream
     expect(attached.getVideoTracks()).toEqual([track])
     expect(HTMLMediaElement.prototype.play).toHaveBeenCalled()
+  })
+
+  it('contains a portrait camera in a landscape tile and responds to rotation', () => {
+    const stream = new FakeMediaStream([makeTrack('video')])
+    const { container } = render(
+      <VideoStream stream={stream as unknown as MediaStream} isLocal={false} objectFit="adaptive" />
+    )
+    const video = container.querySelector('video')!
+    Object.defineProperties(video, {
+      videoWidth: { configurable: true, value: 540 },
+      videoHeight: { configurable: true, value: 960 },
+      clientWidth: { configurable: true, value: 960 },
+      clientHeight: { configurable: true, value: 540 },
+    })
+
+    fireEvent.loadedMetadata(video)
+    expect(video).toHaveClass('object-contain')
+
+    Object.defineProperties(video, {
+      videoWidth: { configurable: true, value: 960 },
+      videoHeight: { configurable: true, value: 540 },
+    })
+    fireEvent(video, new Event('resize'))
+    expect(video).toHaveClass('object-cover')
+  })
+})
+
+describe('resolveVideoObjectFit', () => {
+  it('keeps common 4:3 cameras filled in a 16:9 tile', () => {
+    expect(resolveVideoObjectFit(640, 480, 960, 540)).toBe('cover')
+  })
+
+  it('preserves a portrait camera in a landscape tile', () => {
+    expect(resolveVideoObjectFit(540, 960, 960, 540)).toBe('contain')
   })
 })

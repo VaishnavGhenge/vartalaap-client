@@ -1,13 +1,31 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 
 
 interface VideoProps {
     stream: MediaStream | null;
     isLocal: boolean;
-    objectFit?: 'cover' | 'contain';
+    objectFit?: 'cover' | 'contain' | 'adaptive';
     onPlaying?: () => void;
     visible?: boolean;
+}
+
+// A 4:3 camera in a 16:9 tile retains 75% of its frame and still looks natural.
+// Portrait-to-landscape retains only 32%, which is the zoomed-face failure.
+const MIN_VISIBLE_COVER_FRACTION = 0.7;
+
+export function resolveVideoObjectFit(
+    sourceWidth: number,
+    sourceHeight: number,
+    tileWidth: number,
+    tileHeight: number,
+): 'cover' | 'contain' {
+    if (sourceWidth <= 0 || sourceHeight <= 0 || tileWidth <= 0 || tileHeight <= 0) return 'cover';
+
+    const sourceAspect = sourceWidth / sourceHeight;
+    const tileAspect = tileWidth / tileHeight;
+    const visibleFraction = Math.min(sourceAspect / tileAspect, tileAspect / sourceAspect);
+    return visibleFraction >= MIN_VISIBLE_COVER_FRACTION ? 'cover' : 'contain';
 }
 
 
@@ -63,14 +81,47 @@ function useAttachTracks<T extends HTMLMediaElement>(
 
 export const VideoStream = ({stream, isLocal, objectFit = 'cover', onPlaying, visible = true}: VideoProps) => {
     const ref = useRef<HTMLVideoElement>(null);
+    const [resolvedObjectFit, setResolvedObjectFit] = useState<'cover' | 'contain'>(
+        objectFit === 'contain' ? 'contain' : 'cover',
+    );
 
     useAttachTracks(ref, stream, 'video');
+
+    useEffect(() => {
+        const video = ref.current;
+        if (!video) return;
+
+        const syncObjectFit = () => {
+            if (objectFit !== 'adaptive') {
+                setResolvedObjectFit(objectFit);
+                return;
+            }
+            setResolvedObjectFit(resolveVideoObjectFit(
+                video.videoWidth,
+                video.videoHeight,
+                video.clientWidth,
+                video.clientHeight,
+            ));
+        };
+
+        syncObjectFit();
+        video.addEventListener('loadedmetadata', syncObjectFit);
+        video.addEventListener('resize', syncObjectFit);
+        const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(syncObjectFit);
+        observer?.observe(video);
+
+        return () => {
+            video.removeEventListener('loadedmetadata', syncObjectFit);
+            video.removeEventListener('resize', syncObjectFit);
+            observer?.disconnect();
+        };
+    }, [objectFit]);
 
     return <video
         ref={ref}
         onPlaying={onPlaying}
         style={{ visibility: visible ? 'visible' : 'hidden' }}
-        className={`absolute inset-0 w-full h-full pointer-events-none ${objectFit === 'contain' ? 'object-contain' : 'object-cover'}`}
+        className={`absolute inset-0 w-full h-full pointer-events-none ${resolvedObjectFit === 'contain' ? 'object-contain' : 'object-cover'}`}
         autoPlay
         muted={isLocal}
         playsInline
